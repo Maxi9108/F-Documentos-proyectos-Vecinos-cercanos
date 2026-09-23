@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bg192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#09090b" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="grad-wave" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#06b6d4" />
+      <stop offset="50%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+    <linearGradient id="grad-cyan" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+    <linearGradient id="grad-violet" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#a855f7" />
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="44" fill="url(#bg192)" stroke="#1e1e24" stroke-width="2" />
+  <g transform="translate(16, 16) scale(1.6)">
+    <!-- Anillo exterior violeta -->
+    <path d="M 50,14 A 36,36 0 1,1 14,50" stroke="url(#grad-violet)" stroke-width="7" stroke-linecap="round" fill="none" />
+    <!-- Anillo intermedio degradado -->
+    <path d="M 50,26 A 24,24 0 1,1 26,50" stroke="url(#grad-wave)" stroke-width="6.5" stroke-linecap="round" fill="none" />
+    <!-- Anillo central cian -->
+    <circle cx="50" cy="50" r="12" stroke="url(#grad-cyan)" stroke-width="6" stroke-linecap="round" fill="none" />
+    <!-- Punto central emisor -->
+    <circle cx="50" cy="50" r="4.5" fill="#22d3ee" />
+  </g>
+</svg>

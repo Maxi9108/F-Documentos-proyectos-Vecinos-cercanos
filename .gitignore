@@ -1,0 +1,36 @@
+# Dependencias
+node_modules/
+*/node_modules/
+.pnp
+.pnp.js
+
+# Next.js builds
+.next/
+*/.next/
+out/
+build/
+dist/
+
+# Archivos de entorno y credenciales (mantener seguros)
+.env
+.env*.local
+!.env.example
+!*/.env.example
+
+# Binarios y herramientas locales
+tools/*.exe
+tools/
+
+# Respaldos generados localmente
+backups/
+
+# Logs y depuración
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Sistema operativo y Vercel
+.DS_Store
+Thumbs.db
+.vercel

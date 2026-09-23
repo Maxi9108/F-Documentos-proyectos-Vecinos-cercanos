@@ -1,0 +1,23 @@
+{
+  "name": "vecinos-conectados",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/pwa",
+    "dev:pwa": "npm run dev --workspace=apps/pwa",
+    "dev:admin": "npm run dev --workspace=apps/admin",
+    "build": "npm run build --workspace=apps/pwa",
+    "build:pwa": "npm run build --workspace=apps/pwa",
+    "build:admin": "npm run build --workspace=apps/admin",
+    "build:all": "npm run build --workspaces",
+    "start:pwa": "npm run start --workspace=apps/pwa",
+    "start:admin": "npm run start --workspace=apps/admin",
+    "backup:db": "node scripts/backup-supabase.mjs",
+    "backup:12h": "powershell -ExecutionPolicy Bypass -File scripts/iniciar-respaldo-12h.ps1",
+    "tunnel": ".\\tools\\cloudflared.exe tunnel --protocol http2 --url http://localhost:3000"
+  },
+  "devDependencies": {}
+}
