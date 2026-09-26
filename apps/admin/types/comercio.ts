@@ -69,6 +69,27 @@ export interface Comercio {
   vacaciones_desde?: string;
   vacaciones_hasta?: string;
   mensaje_vacaciones?: string;
+  // Cuarentena preventiva por reportes comunitarios
+  en_cuarentena?: boolean;
+  fecha_cuarentena?: string;
+  motivo_cuarentena?: string;
+  strikes_reportes?: number;
+}
+
+export type MotivoReporte =
+  | 'cerro_definitivamente'
+  | 'ubicacion_incorrecta'
+  | 'telefono_no_existe'
+  | 'horarios_incorrectos'
+  | 'otro_problema';
+
+export interface ReporteComercio {
+  id: string;
+  comercio_id: string;
+  motivo: MotivoReporte;
+  ip_usuario: string;
+  fingerprint: string;
+  fecha: string;
 }
 
 export type CreateComercioInput = Omit<Comercio, 'id'>;

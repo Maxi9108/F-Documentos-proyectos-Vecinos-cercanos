@@ -8,6 +8,7 @@ import {
   updateComercio,
   deleteComercio,
   toggleComercioEstado,
+  levantarCuarentena,
 } from '@/lib/supabase';
 import AdminHeader from '@/components/AdminHeader';
 import ComerciosTable from '@/components/ComerciosTable';
@@ -68,9 +69,42 @@ export default function AdminDashboard() {
 
   // Cálculos estadísticos para el header
   const totalComercios = comercios.length;
-  const totalAbiertos = useMemo(() => comercios.filter((c) => c.esta_abierto).length, [comercios]);
+  const totalAbiertos = useMemo(() => comercios.filter((c) => c.esta_abierto && !c.en_cuarentena).length, [comercios]);
   const totalCerrados = totalComercios - totalAbiertos;
   const totalRubros = useMemo(() => new Set(comercios.map((c) => c.rubro)).size, [comercios]);
+  const totalCuarentena = useMemo(() => comercios.filter((c) => Boolean(c.en_cuarentena)).length, [comercios]);
+
+  // Levantar cuarentena de un comercio
+  const handleLevantarCuarentena = async (comercio: Comercio) => {
+    if (confirm(`¿Levantar la cuarentena preventiva de "${comercio.nombre}" y restaurar su visibilidad pública en el mapa?`)) {
+      const res = await levantarCuarentena(comercio.id);
+      if (res.success) {
+        setComercios((prev) =>
+          prev.map((c) =>
+            c.id === comercio.id
+              ? {
+                  ...c,
+                  en_cuarentena: false,
+                  fecha_cuarentena: undefined,
+                  motivo_cuarentena: undefined,
+                  strikes_reportes: 0,
+                  esta_abierto: true,
+                }
+              : c
+          )
+        );
+        setNotification({
+          type: 'success',
+          message: `Cuarentena de "${comercio.nombre}" levantada exitosamente.`,
+        });
+      } else {
+        setNotification({
+          type: 'error',
+          message: `Error al levantar cuarentena: ${res.error}`,
+        });
+      }
+    }
+  };
 
   // Abrir modal de creación
   const handleNuevoComercio = () => {
@@ -183,6 +217,7 @@ export default function AdminDashboard() {
         totalAbiertos={totalAbiertos}
         totalCerrados={totalCerrados}
         totalRubros={totalRubros}
+        totalCuarentena={totalCuarentena}
         onNuevoComercio={handleNuevoComercio}
         onRefresh={cargarComercios}
         isLoading={isLoading}
@@ -222,6 +257,7 @@ export default function AdminDashboard() {
           onEdit={handleEditarComercio}
           onDelete={handleDeletePrompt}
           onToggleEstado={handleToggleEstado}
+          onLevantarCuarentena={handleLevantarCuarentena}
           isUpdatingEstadoId={isUpdatingEstadoId}
         />
       </main>

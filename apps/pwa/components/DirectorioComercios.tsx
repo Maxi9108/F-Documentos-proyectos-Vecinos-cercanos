@@ -6,6 +6,7 @@ import FiltrosYBusqueda from './FiltrosYBusqueda';
 import MapaWrapper from './MapaWrapper';
 import TarjetaComercio from './TarjetaComercio';
 import ModalDetalleComercio from './ModalDetalleComercio';
+import ModalReportarComercio from './ModalReportarComercio';
 import PaletaOfertas from './PaletaOfertas';
 import { Map, List, Store, Sparkles, Navigation } from 'lucide-react';
 
@@ -61,6 +62,7 @@ export default function DirectorioComercios({
   const [soloTurno, setSoloTurno] = useState(false);
   const [comercioSeleccionado, setComercioSeleccionado] = useState<Comercio | null>(null);
   const [comercioModal, setComercioModal] = useState<Comercio | null>(null);
+  const [comercioAReportar, setComercioAReportar] = useState<Comercio | null>(null);
   const [vistaMovil, setVistaMovil] = useState<'ambos' | 'mapa' | 'lista'>('ambos');
 
   const {
@@ -99,10 +101,35 @@ export default function DirectorioComercios({
     }
   }, [busqueda]);
 
-  // Solo comercios con estado aprobado (o sin campo de moderación previa) son públicos
+  // Solo comercios con estado aprobado, no ocultos por inactividad (+60 días) y no en cuarentena
   const comerciosAprobados = useMemo(() => {
-    return comercios.filter((c) => !c.estado_aprobacion || c.estado_aprobacion === 'aprobado');
+    return comercios.filter(
+      (c) =>
+        (!c.estado_aprobacion || c.estado_aprobacion === 'aprobado') &&
+        !c.oculto_por_inactividad &&
+        !c.en_cuarentena
+    );
   }, [comercios]);
+
+  // Manejar resolución inmediata cuando un reporte activa la cuarentena
+  const handleReporteEnviado = useCallback((comercioId: string, enCuarentena: boolean) => {
+    if (enCuarentena) {
+      setComercios((prev) =>
+        prev.map((c) =>
+          c.id === comercioId
+            ? {
+                ...c,
+                en_cuarentena: true,
+                motivo_cuarentena: 'Cuarentena preventiva: 3 reportes ciudadanos en menos de 15 días',
+              }
+            : c
+        )
+      );
+      setComercios((prev) => [...prev]);
+      setComercioModal(null);
+      setComercioSeleccionado(null);
+    }
+  }, []);
 
   // Calcular cantidad total de ofertas en todos los comercios aprobados
   const totalOfertas = useMemo(() => {
@@ -468,6 +495,7 @@ export default function DirectorioComercios({
                       isSelected={comercioSeleccionado?.id === comercio.id}
                       onVerEnMapa={handleVerEnMapa}
                       onOpenDetalle={(comercio) => setComercioModal(comercio)}
+                      onReportar={(comercio) => setComercioAReportar(comercio)}
                     />
                   ))}
                 </div>
@@ -482,6 +510,15 @@ export default function DirectorioComercios({
         comercio={comercioModal}
         onClose={() => setComercioModal(null)}
         onVerEnMapa={handleVerEnMapa}
+        onReportar={(comercio) => setComercioAReportar(comercio)}
+      />
+
+      {/* Modal para Reportar Problema o Sugerir Corrección */}
+      <ModalReportarComercio
+        isOpen={Boolean(comercioAReportar)}
+        onClose={() => setComercioAReportar(null)}
+        comercio={comercioAReportar}
+        onReporteEnviado={handleReporteEnviado}
       />
     </div>
   );

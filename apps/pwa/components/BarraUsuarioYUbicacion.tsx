@@ -1,7 +1,9 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { useUser } from '@/context/user-context';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import {
   Navigation,
   MapPin,
@@ -11,12 +13,15 @@ import {
   ChevronDown,
   Sparkles,
   Compass,
+  ShieldCheck,
+  Database,
 } from 'lucide-react';
 
 export default function BarraUsuarioYUbicacion() {
   const {
     usuario,
     estaAutenticado,
+    esAdmin,
     abrirModalAuth,
     favoritosIds,
     ubicacionReferencia,
@@ -81,24 +86,73 @@ export default function BarraUsuarioYUbicacion() {
 
       {/* Botón de Cuenta de Usuario / Registro / Favoritos */}
       {estaAutenticado && usuario ? (
-        <button
-          type="button"
-          onClick={() => abrirModalAuth('login')}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 text-xs font-semibold transition-all cursor-pointer shadow-sm"
-        >
-          <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-violet-600 to-cyan-500 text-white flex items-center justify-center text-[10px] font-bold">
-            {usuario.nombre ? usuario.nombre[0].toUpperCase() : 'U'}
-          </div>
-          <span className="max-w-[100px] truncate hidden md:inline">
-            {usuario.nombre || usuario.email.split('@')[0]}
-          </span>
-          {favoritosIds.length > 0 && (
-            <span className="flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-bold">
-              <Heart className="w-2.5 h-2.5 fill-rose-400 text-rose-400" />
-              {favoritosIds.length}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => abrirModalAuth('login')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-sm ${
+              esAdmin
+                ? 'bg-zinc-900 hover:bg-zinc-800 border-violet-500/60 text-zinc-100 ring-1 ring-violet-500/30'
+                : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-200'
+            }`}
+          >
+            <div
+              className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ${
+                esAdmin
+                  ? 'bg-gradient-to-tr from-amber-500 to-violet-600'
+                  : 'bg-gradient-to-tr from-violet-600 to-cyan-500'
+              }`}
+            >
+              {usuario.nombre ? usuario.nombre[0].toUpperCase() : 'U'}
+            </div>
+            <span className="max-w-[100px] truncate hidden md:inline">
+              {usuario.nombre || usuario.email.split('@')[0]}
             </span>
+            {esAdmin && (
+              <span className="px-1.5 py-0.2 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/40 text-[9px] font-bold uppercase tracking-wider">
+                Admin
+              </span>
+            )}
+            {favoritosIds.length > 0 && (
+              <span className="flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-bold">
+                <Heart className="w-2.5 h-2.5 fill-rose-400 text-rose-400" />
+                {favoritosIds.length}
+              </span>
+            )}
+          </button>
+
+          {/* Acceso al Panel de Administración (SOLO VISIBLE SI ES ADMINISTRADOR) */}
+          {esAdmin && (
+            <Link
+              href="/admin"
+              title="Panel del Administrador (Acceso Autorizado)"
+              className="py-1.5 px-2.5 sm:px-3 bg-gradient-to-r from-violet-950/90 to-cyan-950/90 hover:from-violet-900 hover:to-cyan-900 border border-violet-500/60 hover:border-cyan-400 text-cyan-300 hover:text-white font-medium rounded-xl transition-all flex items-center gap-1.5 shadow-md shadow-violet-950/40 text-xs cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+              <span className="font-bold">Panel Admin</span>
+            </Link>
           )}
-        </button>
+
+          {/* Indicador de Conexión a Base de Datos (SOLO VISIBLE SI ES ADMINISTRADOR) */}
+          {esAdmin && (
+            <div className="hidden lg:flex items-center" title="Estado de la base de datos (visible solo para administradores)">
+              {isSupabaseConfigured ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/70 text-emerald-300 border border-emerald-800/70 text-[11px] font-mono">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Supabase Conectado
+                </span>
+              ) : (
+                <span
+                  title="Configura NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en .env.local"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900 text-amber-400 border border-zinc-800 text-[11px] font-mono cursor-help"
+                >
+                  <Database className="w-3 h-3 text-amber-400" />
+                  Demo Local
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       ) : (
         <button
           type="button"

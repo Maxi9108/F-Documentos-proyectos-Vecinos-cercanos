@@ -3,12 +3,16 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { obtenerUbicacionGpsActual, PosicionSatelital } from '@/lib/geolocation';
 import { supabase } from '@/lib/supabase';
+import { Administrador } from '@/types/comercio';
+import { obtenerAdminPorEmail, guardarSesion, cerrarSesionAdmin } from '@/lib/auth-admin';
 
 export interface Usuario {
   id: string;
   email: string;
   nombre?: string;
   creado_en: string;
+  esAdmin?: boolean;
+  rol?: 'superadmin' | 'admin_nivel2' | 'usuario';
 }
 
 export interface UbicacionFavorita {
@@ -33,7 +37,23 @@ export interface UbicacionReferencia {
 interface UserContextType {
   usuario: Usuario | null;
   estaAutenticado: boolean;
+  esAdmin: boolean;
+  adminData: Administrador | null;
   iniciarSesion: (email: string, password: string) => Promise<{ ok: boolean; mensaje?: string }>;
+  solicitarTokenRegistro: (
+    email: string,
+    nombre: string
+  ) => Promise<{ ok: boolean; token?: string; mensaje?: string }>;
+  verificarTokenRegistro: (
+    email: string,
+    token: string
+  ) => Promise<{ ok: boolean; mensaje?: string }>;
+  completarRegistroConPassword: (
+    email: string,
+    token: string,
+    password: string,
+    nombre?: string
+  ) => Promise<{ ok: boolean; mensaje?: string }>;
   registrar: (
     email: string,
     password: string,
@@ -106,7 +126,14 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     try {
       const rawUser = localStorage.getItem(STORAGE_KEYS.USUARIO);
       if (rawUser) {
-        setUsuario(JSON.parse(rawUser));
+        const parsed: Usuario = JSON.parse(rawUser);
+        const admin = obtenerAdminPorEmail(parsed.email);
+        if (admin) {
+          parsed.esAdmin = true;
+          parsed.rol = admin.rol;
+          guardarSesion(admin);
+        }
+        setUsuario(parsed);
       }
 
       const rawFavs = localStorage.getItem(STORAGE_KEYS.FAVORITOS);
@@ -188,12 +215,19 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      const admin = obtenerAdminPorEmail(cleanEmail);
       const nuevoUsuario: Usuario = {
-        id: 'usr_' + Date.now(),
+        id: admin ? admin.id : 'usr_' + Date.now(),
         email: cleanEmail,
-        nombre: nombre || cleanEmail.split('@')[0],
+        nombre: nombre || (admin ? admin.nombre : cleanEmail.split('@')[0]),
+        esAdmin: !!admin,
+        rol: admin ? admin.rol : 'usuario',
         creado_en: new Date().toISOString(),
       };
+
+      if (admin) {
+        guardarSesion(admin);
+      }
 
       setUsuario(nuevoUsuario);
       localStorage.setItem(STORAGE_KEYS.USUARIO, JSON.stringify(nuevoUsuario));
@@ -203,6 +237,100 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, mensaje: err?.message || 'Ocurrió un error al registrarte.' };
     }
   };
+
+  // Autenticación con Token (Paso 1: Solicitar Token para comprobar mail)
+  const solicitarTokenRegistro = async (
+    email: string,
+    nombre: string
+  ): Promise<{ ok: boolean; token?: string; mensaje?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanNombre = nombre.trim();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { ok: false, mensaje: 'Por favor ingresa un correo electrónico válido.' };
+    }
+    if (!cleanNombre) {
+      return { ok: false, mensaje: 'Por favor ingresa tu nombre completo o de pila.' };
+    }
+
+    // Generar token de 6 dígitos
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+    const expira = Date.now() + 15 * 60 * 1000; // 15 minutos de validez
+
+    try {
+      const datosToken = { email: cleanEmail, nombre: cleanNombre, token, expira };
+      localStorage.setItem('vecinos_token_' + cleanEmail, JSON.stringify(datosToken));
+
+      if (supabase) {
+        Promise.resolve(supabase.from('tokens_registro').upsert(datosToken)).catch(() => {});
+      }
+
+      return {
+        ok: true,
+        token,
+        mensaje: `Código de comprobación generado para ${cleanEmail}. Ingrésalo para verificar tu correo.`,
+      };
+    } catch (e: any) {
+      return { ok: false, mensaje: 'Error al generar el código de verificación.' };
+    }
+  };
+
+  // Autenticación con Token (Paso 2: Comprobar Token)
+  const verificarTokenRegistro = async (
+    email: string,
+    tokenIngresado: string
+  ): Promise<{ ok: boolean; mensaje?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanToken = tokenIngresado.trim();
+
+    if (!cleanToken) {
+      return { ok: false, mensaje: 'Por favor ingresa el código de comprobación de 6 dígitos.' };
+    }
+
+    try {
+      const raw = localStorage.getItem('vecinos_token_' + cleanEmail);
+      if (!raw) {
+        return { ok: false, mensaje: 'No hay un código pendiente para este correo. Solicita uno nuevo.' };
+      }
+      const data = JSON.parse(raw);
+      if (Date.now() > data.expira) {
+        return { ok: false, mensaje: 'El código ha expirado (validez 15 minutos). Por favor solicita uno nuevo.' };
+      }
+      if (data.token !== cleanToken) {
+        return { ok: false, mensaje: 'El código ingresado no coincide. Revisa el código de 6 dígitos.' };
+      }
+
+      return { ok: true, mensaje: '¡Correo comprobado con éxito! Ahora ingresa tu contraseña.' };
+    } catch (e) {
+      return { ok: false, mensaje: 'Error al comprobar el token.' };
+    }
+  };
+
+  // Autenticación con Token (Paso 3: Establecer contraseña tras confirmación)
+  const completarRegistroConPassword = async (
+    email: string,
+    token: string,
+    password: string,
+    nombre?: string
+  ): Promise<{ ok: boolean; mensaje?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    const resToken = await verificarTokenRegistro(cleanEmail, token);
+    if (!resToken.ok) {
+      return resToken;
+    }
+
+    if (password.length < 4) {
+      return { ok: false, mensaje: 'La contraseña debe tener al menos 4 caracteres.' };
+    }
+
+    const res = await registrar(cleanEmail, password, password, nombre);
+    if (res.ok) {
+      try {
+        localStorage.removeItem('vecinos_token_' + cleanEmail);
+      } catch (e) {}
+    }
+    return res;
+  };
+
 
   // Autenticación: Iniciar sesión
   const iniciarSesion = async (
@@ -229,17 +357,24 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      const admin = obtenerAdminPorEmail(cleanEmail);
       const usuarioSesion: Usuario = {
-        id: 'usr_' + Date.now(),
+        id: admin ? admin.id : 'usr_' + Date.now(),
         email: cleanEmail,
-        nombre: cleanEmail.split('@')[0],
+        nombre: admin ? admin.nombre : cleanEmail.split('@')[0],
+        esAdmin: !!admin,
+        rol: admin ? admin.rol : 'usuario',
         creado_en: new Date().toISOString(),
       };
+
+      if (admin) {
+        guardarSesion(admin);
+      }
 
       setUsuario(usuarioSesion);
       localStorage.setItem(STORAGE_KEYS.USUARIO, JSON.stringify(usuarioSesion));
       setModalAuthAbierto(false);
-      return { ok: true, mensaje: '¡Sesión iniciada correctamente!' };
+      return { ok: true, mensaje: admin ? `¡Bienvenido SuperAdmin ${admin.nombre}!` : '¡Sesión iniciada correctamente!' };
     } catch (err: any) {
       return { ok: false, mensaje: err?.message || 'Error al iniciar sesión.' };
     }
@@ -248,6 +383,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   // Autenticación: Cerrar sesión
   const cerrarSesion = () => {
     setUsuario(null);
+    cerrarSesionAdmin();
     try {
       localStorage.removeItem(STORAGE_KEYS.USUARIO);
       if (supabase) {
@@ -397,12 +533,20 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const abrirModalUbicaciones = () => setModalUbicacionesAbierto(true);
   const cerrarModalUbicaciones = () => setModalUbicacionesAbierto(false);
 
+  const adminData = usuario ? obtenerAdminPorEmail(usuario.email) : null;
+  const esAdmin = !!(usuario?.esAdmin || adminData);
+
   return (
     <UserContext.Provider
       value={{
         usuario,
         estaAutenticado: Boolean(usuario),
+        esAdmin,
+        adminData,
         iniciarSesion,
+        solicitarTokenRegistro,
+        verificarTokenRegistro,
+        completarRegistroConPassword,
         registrar,
         cerrarSesion,
         favoritosIds,

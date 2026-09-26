@@ -23,26 +23,32 @@ import {
   Info,
   Heart,
   Navigation,
+  Flag,
 } from 'lucide-react';
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
+import ContadorMembresia from '@/components/ContadorMembresia';
+import ModalCrearDebate from '@/components/ModalCrearDebate';
 
 interface ModalDetalleComercioProps {
   comercio: Comercio | null;
   onClose: () => void;
   onVerEnMapa: (comercio: Comercio) => void;
+  onReportar?: (comercio: Comercio) => void;
 }
 
 export default function ModalDetalleComercio({
   comercio,
   onClose,
   onVerEnMapa,
+  onReportar,
 }: ModalDetalleComercioProps) {
   const { esFavorito, toggleFavorito, ubicacionReferencia } = useUser();
 
   // Pestaña activa con sincronización cuando cambia el comercio
   const [pestanaActiva, setPestanaActiva] = useState<'ofertas' | 'catalogo' | 'info'>('catalogo');
+  const [modalDebateAbierto, setModalDebateAbierto] = useState(false);
 
   React.useEffect(() => {
     if (comercio?.productos?.some((p) => p.es_oferta)) {
@@ -179,6 +185,16 @@ export default function ModalDetalleComercio({
               </button>
             </div>
 
+            {/* Contador de tiempo para comercios Premium y Gold (1 mes) */}
+            {(comercio.nivel === 'gold' || comercio.nivel === 'premium') && (
+              <ContadorMembresia
+                fechaVencimiento={comercio.fecha_vencimiento_nivel}
+                nivel={comercio.nivel}
+                formato="tarjeta"
+                className="mt-1 mb-2"
+              />
+            )}
+
             {/* Nombre del Comercio */}
             <div>
               <h2 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-white leading-tight">
@@ -208,30 +224,41 @@ export default function ModalDetalleComercio({
               </div>
             )}
 
-            {/* Banner: Cerrado momentáneamente */}
+            {/* Banner: Cerrado por Emergencia con Caducidad Automática */}
             {comercio.cerrado_momentaneo && (
-              <div className="p-3 rounded-2xl bg-amber-950/60 border border-amber-500/50 flex items-start gap-2.5 text-amber-200 text-xs">
+              <div className="p-3.5 rounded-2xl bg-amber-950/60 border border-amber-500/50 flex items-start gap-2.5 text-amber-200 text-xs shadow-sm">
                 <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-amber-300 block">Cerrado Momentáneamente</span>
-                  <p className="text-[11px] text-amber-200/90 leading-tight mt-0.5">
+                <div className="space-y-1">
+                  <span className="font-bold text-amber-300 block">Cierre Temporal por Emergencia</span>
+                  <p className="text-[11px] text-amber-200/90 leading-tight">
                     {comercio.motivo_cierre_momentaneo || 'Atención en pausa por inconvenientes operativos.'}
                   </p>
+                  {comercio.reapertura_emergencia_programada && (
+                    <div className="text-[11px] text-amber-300 font-mono flex items-center gap-1.5 pt-0.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Restablecimiento automático a horarios habituales: {new Date(comercio.reapertura_emergencia_programada).toLocaleDateString('es-AR', { weekday: 'long', day: '2-digit', month: 'long' })} a las 06:00 hs.</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Banner: En Vacaciones */}
+            {/* Banner: En Vacaciones Programadas */}
             {comercio.en_vacaciones && (
-              <div className="p-3 rounded-2xl bg-sky-950/60 border border-sky-500/50 flex items-start gap-2.5 text-sky-200 text-xs">
+              <div className="p-3.5 rounded-2xl bg-sky-950/60 border border-sky-500/50 flex items-start gap-2.5 text-sky-200 text-xs shadow-sm">
                 <Palmtree className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-sky-300 block">En Receso por Vacaciones</span>
-                  <p className="text-[11px] text-sky-200/90 leading-tight mt-0.5">
-                    {comercio.vacaciones_desde ? `Desde el ${comercio.vacaciones_desde}` : ''}
-                    {comercio.vacaciones_hasta ? ` hasta el ${comercio.vacaciones_hasta}` : ''}
+                <div className="space-y-1">
+                  <span className="font-bold text-sky-300 block">Receso por Vacaciones Programadas</span>
+                  <p className="text-[11px] text-sky-200/90 leading-tight">
+                    {comercio.vacaciones_desde ? `Desde el ${new Date(comercio.vacaciones_desde).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}` : ''}
+                    {comercio.vacaciones_hasta ? ` hasta el ${new Date(comercio.vacaciones_hasta).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })} (Día de Retorno)` : ''}
                     {comercio.mensaje_vacaciones ? ` — "${comercio.mensaje_vacaciones}"` : ''}
                   </p>
+                  {comercio.vacaciones_hasta && (
+                    <p className="text-[10.5px] text-sky-400 font-medium">
+                      El local se volverá a visibilizar y abrir automáticamente en la fecha de retorno indicada.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -339,6 +366,31 @@ export default function ModalDetalleComercio({
                 Ubicar en Mapa
               </button>
             </div>
+
+            {/* Botón de Iniciar Debate / Reportar Inconveniente */}
+            <button
+              type="button"
+              onClick={() => setModalDebateAbierto(true)}
+              className="w-full py-2 px-3 rounded-xl bg-zinc-900/90 hover:bg-amber-950/40 border border-zinc-800 hover:border-amber-700/50 text-zinc-400 hover:text-amber-300 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span>Reportar inconveniente / Abrir debate</span>
+            </button>
+
+            {/* Enlace discreto de Sugerir corrección */}
+            {onReportar && (
+              <div className="pt-1 flex items-center justify-center">
+                <button
+                  type="button"
+                  onClick={() => onReportar(comercio)}
+                  className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1.5 cursor-pointer py-1 px-2.5 rounded-lg hover:bg-zinc-800/60"
+                  title="Sugerir corrección o reportar problema sobre este comercio"
+                >
+                  <Flag className="w-3 h-3 text-zinc-500" />
+                  <span>Sugerir corrección de datos</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -670,6 +722,14 @@ export default function ModalDetalleComercio({
           </div>
         </div>
       </div>
+
+      {/* Modal de Debate e Inconveniente (Privado) */}
+      {modalDebateAbierto && (
+        <ModalCrearDebate
+          comercio={comercio}
+          onClose={() => setModalDebateAbierto(false)}
+        />
+      )}
     </div>
   );
 }

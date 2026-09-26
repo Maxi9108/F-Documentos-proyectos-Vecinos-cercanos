@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Comercio, CreateComercioInput, UpdateComercioInput } from '@/types/comercio';
+import { Comercio, CreateComercioInput, UpdateComercioInput, ReporteComercio } from '@/types/comercio';
 import { INITIAL_MOCK_COMERCIOS } from './mock-comercios';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
@@ -143,3 +143,50 @@ export async function toggleComercioEstado(
     ? { success: false, error: 'Error al cambiar estado' }
     : { success: true, error: null };
 }
+
+/**
+ * Levanta la cuarentena de un comercio desde el panel de control admin (puerto 3001)
+ */
+export async function levantarCuarentena(
+  id: string
+): Promise<{ success: boolean; error: string | null }> {
+  const updateRes = await updateComercio(id, {
+    en_cuarentena: false,
+    fecha_cuarentena: undefined,
+    motivo_cuarentena: undefined,
+    strikes_reportes: 0,
+    esta_abierto: true,
+  });
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('reportes').delete().eq('comercio_id', id);
+    } catch {
+      // ignorar
+    }
+  }
+
+  return updateRes.error
+    ? { success: false, error: updateRes.error }
+    : { success: true, error: null };
+}
+
+/**
+ * Obtiene los reportes asociados a un comercio para revisión
+ */
+export async function getReportesComercio(comercioId?: string): Promise<ReporteComercio[]> {
+  if (!isSupabaseConfigured) {
+    return [];
+  }
+  try {
+    let query = supabase.from('reportes').select('*').order('fecha', { ascending: false });
+    if (comercioId) {
+      query = query.eq('comercio_id', comercioId);
+    }
+    const { data } = await query;
+    return (data as ReporteComercio[]) || [];
+  } catch {
+    return [];
+  }
+}
+

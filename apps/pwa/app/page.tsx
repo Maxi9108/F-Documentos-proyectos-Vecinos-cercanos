@@ -4,8 +4,8 @@ import DirectorioComercios from '@/components/DirectorioComercios';
 import BarraUsuarioYUbicacion from '@/components/BarraUsuarioYUbicacion';
 import NeoFaroLogo from '@/components/NeoFaroLogo';
 import BotonCompartirApp from '@/components/BotonCompartirApp';
-import { getComercios, isSupabaseConfigured } from '@/lib/supabase';
-import { Database, Plus, ShieldCheck } from 'lucide-react';
+import { getComercios } from '@/lib/supabase';
+import { Plus, Store } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,34 +47,16 @@ export default async function HomePage() {
             </Link>
 
             <Link
-              href="/admin"
-              title="Panel del Administrador Único"
-              className="py-1.5 sm:py-2 px-2.5 sm:px-3 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 hover:border-violet-500/50 text-zinc-300 hover:text-white font-medium rounded-xl transition-all flex items-center gap-1.5"
+              href="/mi-comercio"
+              title="Portal de Mi Comercio (Modificar opciones, Comprobantes, Debates)"
+              className="py-1.5 sm:py-2 px-2.5 sm:px-3 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 hover:border-cyan-500/50 text-zinc-300 hover:text-white font-medium rounded-xl transition-all flex items-center gap-1.5"
             >
-              <ShieldCheck className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-cyan-400" />
-              <span className="hidden sm:inline">Admin</span>
+              <Store className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-violet-400" />
+              <span className="hidden sm:inline">Mi Comercio</span>
             </Link>
 
             <div className="hidden md:flex">
               <BotonCompartirApp />
-            </div>
-
-            {/* Indicador de conexión Supabase */}
-            <div className="hidden md:flex items-center">
-              {isSupabaseConfigured ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 text-[11px]">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Supabase Conectado
-                </span>
-              ) : (
-                <span
-                  title="Configura NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en apps/pwa/.env.local para vincular tu base de datos"
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900 text-zinc-400 border border-zinc-800 text-[11px] cursor-help"
-                >
-                  <Database className="w-3 h-3 text-cyan-400" />
-                  Demo Local
-                </span>
-              )}
             </div>
           </div>
         </div>

@@ -76,10 +76,20 @@ ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS esta_de_turno BOOLEAN DEFA
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS fecha_turno DATE;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS cerrado_momentaneo BOOLEAN DEFAULT false;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS motivo_cierre_momentaneo TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS fecha_cierre_emergencia TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS reapertura_emergencia_programada TIMESTAMP WITH TIME ZONE;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS en_vacaciones BOOLEAN DEFAULT false;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS vacaciones_desde DATE;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS vacaciones_hasta DATE;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS mensaje_vacaciones TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS oculto_por_inactividad BOOLEAN DEFAULT false;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS ticket_baja_definitiva BOOLEAN DEFAULT false;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS fecha_ticket_baja TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS motivo_ticket_baja TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS en_cuarentena BOOLEAN DEFAULT false;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS fecha_cuarentena TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS motivo_cuarentena TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS strikes_reportes INTEGER DEFAULT 0;
 
 -- 3. Tabla Secundaria: productos (catálogo y ofertas)
 CREATE TABLE IF NOT EXISTS public.productos (
@@ -181,3 +191,154 @@ CREATE POLICY "Lectura admins" ON public.administradores FOR SELECT USING (true)
 CREATE POLICY "Escritura admins" ON public.administradores FOR ALL USING (true);
 CREATE POLICY "Lectura eventos" ON public.eventos_analytics FOR SELECT USING (true);
 CREATE POLICY "Escritura eventos" ON public.eventos_analytics FOR ALL USING (true);
+
+-- 9. Tabla de Comprobantes de Transferencias (Pagos de Membresías)
+CREATE TABLE IF NOT EXISTS public.comprobantes_transferencia (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    comercio_id UUID REFERENCES public.comercios(id) ON DELETE CASCADE,
+    comercio_nombre TEXT NOT NULL,
+    categoria_solicitada TEXT NOT NULL, -- 'premium' o 'gold'
+    monto NUMERIC(12, 2),
+    fecha_envio TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    comprobante_url TEXT NOT NULL,
+    comprobante_nombre TEXT,
+    numero_operacion TEXT,
+    banco_origen TEXT,
+    notas TEXT,
+    estado TEXT DEFAULT 'pendiente', -- 'pendiente', 'aprobado', 'rechazado'
+    motivo_rechazo TEXT,
+    aprobado_por TEXT,
+    fecha_aprobacion TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 10. Tabla de Debates e Inconvenientes (Privado entre Usuario, Comercio y Administrador)
+CREATE TABLE IF NOT EXISTS public.debates_inconvenientes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    comercio_id UUID REFERENCES public.comercios(id) ON DELETE CASCADE,
+    comercio_nombre TEXT NOT NULL,
+    usuario_id TEXT NOT NULL,
+    usuario_nombre TEXT NOT NULL,
+    usuario_email TEXT NOT NULL,
+    usuario_telefono TEXT,
+    motivo TEXT NOT NULL,
+    descripcion TEXT NOT NULL,
+    fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    estado TEXT DEFAULT 'abierto', -- 'abierto', 'en_revision', 'resuelto'
+    respuesta_comercio TEXT,
+    fecha_respuesta TIMESTAMP WITH TIME ZONE,
+    nota_administrador TEXT,
+    fecha_resolucion TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 11. Tabla de Solicitudes de Modificación de Datos del Comercio
+CREATE TABLE IF NOT EXISTS public.solicitudes_modificacion (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    comercio_id UUID REFERENCES public.comercios(id) ON DELETE CASCADE,
+    comercio_nombre TEXT NOT NULL,
+    cambios JSONB NOT NULL,
+    datos_anteriores JSONB,
+    fecha_solicitud TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    estado TEXT DEFAULT 'pendiente', -- 'pendiente', 'aprobado', 'rechazado'
+    motivo_rechazo TEXT,
+    aprobado_por TEXT,
+    fecha_aprobacion TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 12. Tabla de Tokens de Verificación de Email para Registro
+CREATE TABLE IF NOT EXISTS public.tokens_registro (
+    email TEXT PRIMARY KEY,
+    nombre TEXT NOT NULL,
+    token TEXT NOT NULL,
+    expira BIGINT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Índices adicionales
+CREATE INDEX IF NOT EXISTS idx_comprobantes_estado ON public.comprobantes_transferencia(estado);
+CREATE INDEX IF NOT EXISTS idx_comprobantes_comercio ON public.comprobantes_transferencia(comercio_id);
+CREATE INDEX IF NOT EXISTS idx_debates_comercio ON public.debates_inconvenientes(comercio_id);
+CREATE INDEX IF NOT EXISTS idx_debates_estado ON public.debates_inconvenientes(estado);
+CREATE INDEX IF NOT EXISTS idx_modificaciones_comercio ON public.solicitudes_modificacion(comercio_id);
+CREATE INDEX IF NOT EXISTS idx_modificaciones_estado ON public.solicitudes_modificacion(estado);
+
+-- RLS para las nuevas tablas
+ALTER TABLE public.comprobantes_transferencia ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.debates_inconvenientes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.solicitudes_modificacion ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tokens_registro ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Lectura comprobantes" ON public.comprobantes_transferencia FOR SELECT USING (true);
+CREATE POLICY "Escritura comprobantes" ON public.comprobantes_transferencia FOR ALL USING (true);
+CREATE POLICY "Lectura debates" ON public.debates_inconvenientes FOR SELECT USING (true);
+CREATE POLICY "Escritura debates" ON public.debates_inconvenientes FOR ALL USING (true);
+CREATE POLICY "Lectura solicitudes mod" ON public.solicitudes_modificacion FOR SELECT USING (true);
+CREATE POLICY "Escritura solicitudes mod" ON public.solicitudes_modificacion FOR ALL USING (true);
+CREATE POLICY "Lectura tokens" ON public.tokens_registro FOR SELECT USING (true);
+CREATE POLICY "Escritura tokens" ON public.tokens_registro FOR ALL USING (true);
+
+-- 14. Tabla de Reportes Ciudadanos / Sugerir Corrección
+CREATE TABLE IF NOT EXISTS public.reportes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    comercio_id UUID REFERENCES public.comercios(id) ON DELETE CASCADE,
+    motivo TEXT NOT NULL, -- 'cerro_definitivamente', 'ubicacion_incorrecta', 'telefono_no_existe', 'horarios_incorrectos', 'otro_problema'
+    ip_usuario TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    fecha TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Índices para búsquedas rápidas anti-spam y ventana de 15/30 días
+CREATE INDEX IF NOT EXISTS idx_reportes_comercio_fecha ON public.reportes(comercio_id, fecha);
+CREATE INDEX IF NOT EXISTS idx_reportes_ip_fp ON public.reportes(ip_usuario, fingerprint, comercio_id);
+
+ALTER TABLE public.reportes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Lectura reportes" ON public.reportes FOR SELECT USING (true);
+CREATE POLICY "Escritura reportes" ON public.reportes FOR ALL USING (true);
+
+-- ==============================================================================
+-- FUNCIÓN & TRIGGER: Control Anti-Spam y Cuarentena Automática por 3 Strikes
+-- Cuenta usuarios únicos (por fingerprint o IP) en una ventana de 15 días.
+-- Al alcanzar 3 reportes válidos, actualiza el comercio a estado 'cuarentena'.
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION public.fn_verificar_reportes_cuarentena()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_reportes_unicos INTEGER;
+BEGIN
+    -- Contar reportes de usuarios distintos (por fingerprint o IP) en los últimos 15 días
+    SELECT COUNT(DISTINCT COALESCE(NULLIF(fingerprint, ''), ip_usuario))
+    INTO v_reportes_unicos
+    FROM public.reportes
+    WHERE comercio_id = NEW.comercio_id
+      AND fecha >= (NOW() - INTERVAL '15 days');
+
+    -- Si alcanza 3 o más reportes válidos en la ventana de 15 días, pasa automáticamente a cuarentena
+    IF v_reportes_unicos >= 3 THEN
+        UPDATE public.comercios
+        SET en_cuarentena = true,
+            fecha_cuarentena = NOW(),
+            motivo_cuarentena = 'Cuarentena preventiva: ' || v_reportes_unicos || ' reportes ciudadanos en menos de 15 días',
+            strikes_reportes = v_reportes_unicos,
+            updated_at = NOW()
+        WHERE id = NEW.comercio_id;
+    ELSE
+        -- Actualizar contador informativo de strikes
+        UPDATE public.comercios
+        SET strikes_reportes = v_reportes_unicos,
+            updated_at = NOW()
+        WHERE id = NEW.comercio_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_verificar_reportes_cuarentena ON public.reportes;
+CREATE TRIGGER trg_verificar_reportes_cuarentena
+AFTER INSERT ON public.reportes
+FOR EACH ROW
+EXECUTE FUNCTION public.fn_verificar_reportes_cuarentena();
+
+

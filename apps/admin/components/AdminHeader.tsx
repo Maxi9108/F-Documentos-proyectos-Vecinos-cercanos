@@ -9,6 +9,7 @@ interface AdminHeaderProps {
   totalAbiertos: number;
   totalCerrados: number;
   totalRubros: number;
+  totalCuarentena?: number;
   onNuevoComercio: () => void;
   onRefresh: () => void;
   isLoading: boolean;
@@ -19,6 +20,7 @@ export default function AdminHeader({
   totalAbiertos,
   totalCerrados,
   totalRubros,
+  totalCuarentena = 0,
   onNuevoComercio,
   onRefresh,
   isLoading,
@@ -143,6 +145,26 @@ export default function AdminHeader({
             </p>
           </div>
         </div>
+
+        {/* Alerta Destacada en Rojo para Cuarentena en Puerto 3001 */}
+        {totalCuarentena > 0 && (
+          <div className="mt-3.5 p-3 rounded-2xl bg-rose-950/80 border-2 border-rose-500 flex items-center justify-between gap-3 text-xs text-rose-200 shadow-lg shadow-rose-950/50 animate-pulse">
+            <div className="flex items-center gap-2.5">
+              <span className="w-3 h-3 rounded-full bg-rose-500 animate-ping shrink-0" />
+              <div>
+                <strong className="text-white font-bold block sm:inline mr-1">
+                  🚨 Comercios en Cuarentena Preventiva ({totalCuarentena}):
+                </strong>
+                <span>
+                  Han acumulado 3 strikes de reportes comunitarios en menos de 15 días y fueron ocultados del mapa para revisión.
+                </span>
+              </div>
+            </div>
+            <span className="font-black text-[10px] uppercase bg-rose-600 text-white px-2.5 py-1 rounded-full shrink-0">
+              Revisar Abajo
+            </span>
+          </div>
+        )}
       </div>
     </header>
   );

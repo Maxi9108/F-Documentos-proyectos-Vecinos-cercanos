@@ -110,9 +110,35 @@ export function autenticarAdmin(
 }
 
 /**
+ * Busca si un correo electrónico corresponde a un administrador activo del sistema
+ */
+export function obtenerAdminPorEmail(email: string): Administrador | null {
+  if (!email || typeof window === 'undefined') {
+    // Si estamos en SSR o inicio, comprobar contra el superadmin por defecto
+    const clean = (email || '').trim().toLowerCase();
+    if (clean === SUPERADMIN_POR_DEFECTO.email.toLowerCase()) {
+      return SUPERADMIN_POR_DEFECTO;
+    }
+    return null;
+  }
+
+  const clean = email.trim().toLowerCase();
+  const admins = getAdministradores();
+  const encontrado = admins.find((a) => a.email.toLowerCase() === clean && a.activo);
+  if (encontrado) return encontrado;
+
+  // Respaldo garantizado para el email principal
+  if (clean === SUPERADMIN_POR_DEFECTO.email.toLowerCase()) {
+    return SUPERADMIN_POR_DEFECTO;
+  }
+
+  return null;
+}
+
+/**
  * Guarda los datos de sesión en sessionStorage
  */
-function guardarSesion(admin: Administrador): void {
+export function guardarSesion(admin: Administrador): void {
   if (typeof window !== 'undefined') {
     try {
       sessionStorage.setItem(STORAGE_KEY_SESION, JSON.stringify(admin));

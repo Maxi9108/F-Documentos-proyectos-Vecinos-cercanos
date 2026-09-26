@@ -21,6 +21,7 @@ interface ComerciosTableProps {
   onEdit: (comercio: Comercio) => void;
   onDelete: (comercio: Comercio) => void;
   onToggleEstado: (id: string, nuevoEstado: boolean) => void;
+  onLevantarCuarentena?: (comercio: Comercio) => void;
   isUpdatingEstadoId: string | null;
 }
 
@@ -29,11 +30,12 @@ export default function ComerciosTable({
   onEdit,
   onDelete,
   onToggleEstado,
+  onLevantarCuarentena,
   isUpdatingEstadoId,
 }: ComerciosTableProps) {
   const [busqueda, setBusqueda] = useState('');
   const [rubroFiltro, setRubroFiltro] = useState('Todos');
-  const [estadoFiltro, setEstadoFiltro] = useState<'todos' | 'abiertos' | 'cerrados'>('todos');
+  const [estadoFiltro, setEstadoFiltro] = useState<'todos' | 'abiertos' | 'cerrados' | 'cuarentena'>('todos');
 
   // Obtener rubros únicos disponibles
   const rubrosDisponibles = useMemo(() => {
@@ -41,6 +43,11 @@ export default function ComerciosTable({
     comercios.forEach((c) => rubros.add(c.rubro));
     return ['Todos', ...Array.from(rubros).sort()];
   }, [comercios]);
+
+  const totalCuarentena = useMemo(
+    () => comercios.filter((c) => Boolean(c.en_cuarentena)).length,
+    [comercios]
+  );
 
   // Filtrado reactivo
   const comerciosFiltrados = useMemo(() => {
@@ -57,8 +64,9 @@ export default function ComerciosTable({
 
       const coincideEstado =
         estadoFiltro === 'todos' ||
-        (estadoFiltro === 'abiertos' && c.esta_abierto) ||
-        (estadoFiltro === 'cerrados' && !c.esta_abierto);
+        (estadoFiltro === 'abiertos' && c.esta_abierto && !c.en_cuarentena) ||
+        (estadoFiltro === 'cerrados' && !c.esta_abierto && !c.en_cuarentena) ||
+        (estadoFiltro === 'cuarentena' && c.en_cuarentena);
 
       return coincideBusqueda && coincideRubro && coincideEstado;
     });
@@ -141,6 +149,24 @@ export default function ComerciosTable({
               >
                 Cerrados
               </button>
+              <button
+                type="button"
+                onClick={() => setEstadoFiltro('cuarentena')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  estadoFiltro === 'cuarentena'
+                    ? 'bg-rose-600 text-white shadow-xs font-bold'
+                    : totalCuarentena > 0
+                    ? 'text-rose-500 font-extrabold bg-rose-500/10 hover:bg-rose-500/20'
+                    : 'text-zinc-500 dark:text-zinc-400'
+                }`}
+              >
+                <span>Cuarentena</span>
+                {totalCuarentena > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                    {totalCuarentena}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -176,10 +202,16 @@ export default function ComerciosTable({
             ) : (
               comerciosFiltrados.map((comercio) => {
                 const isChanging = isUpdatingEstadoId === comercio.id;
+                const esCuarentena = Boolean(comercio.en_cuarentena);
+
                 return (
                   <tr
                     key={comercio.id}
-                    className="hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40 transition-colors group"
+                    className={`transition-colors group ${
+                      esCuarentena
+                        ? 'bg-rose-50/90 dark:bg-rose-950/40 border-l-4 border-l-rose-500 hover:bg-rose-100/90 dark:hover:bg-rose-950/60'
+                        : 'hover:bg-zinc-50/80 dark:hover:bg-zinc-800/40'
+                    }`}
                   >
                     {/* Nombre e ID */}
                     <td className="py-3.5 px-4 sm:px-6">
@@ -189,6 +221,20 @@ export default function ComerciosTable({
                       <div className="text-[10px] text-zinc-400 font-mono truncate max-w-[140px] sm:max-w-xs" title={comercio.id}>
                         {comercio.id}
                       </div>
+
+                      {/* Alerta de Cuarentena en Rojo */}
+                      {esCuarentena && (
+                        <div className="mt-1 space-y-0.5">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-600 text-white animate-pulse">
+                            🚨 EN CUARENTENA ({comercio.strikes_reportes || 3} strikes)
+                          </span>
+                          {comercio.motivo_cuarentena && (
+                            <p className="text-[10px] text-rose-700 dark:text-rose-300 font-medium leading-tight">
+                              {comercio.motivo_cuarentena}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </td>
 
                     {/* Rubro */}
@@ -219,34 +265,52 @@ export default function ComerciosTable({
 
                     {/* Estado con Toggle interactivo de un clic */}
                     <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => onToggleEstado(comercio.id, !comercio.esta_abierto)}
-                        disabled={isChanging}
-                        title="Haz clic para alternar estado"
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ${
-                          comercio.esta_abierto
-                            ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                            : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700'
-                        } ${isChanging ? 'opacity-50 cursor-wait' : ''}`}
-                      >
-                        {comercio.esta_abierto ? (
-                          <>
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            Abierto
-                          </>
-                        ) : (
-                          <>
-                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
-                            Cerrado
-                          </>
-                        )}
-                      </button>
+                      {esCuarentena ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-rose-600 text-white shadow-sm shadow-rose-950/50">
+                          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                          En Cuarentena
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onToggleEstado(comercio.id, !comercio.esta_abierto)}
+                          disabled={isChanging}
+                          title="Haz clic para alternar estado"
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ${
+                            comercio.esta_abierto
+                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                              : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700'
+                          } ${isChanging ? 'opacity-50 cursor-wait' : ''}`}
+                        >
+                          {comercio.esta_abierto ? (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              Abierto
+                            </>
+                          ) : (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+                              Cerrado
+                            </>
+                          )}
+                        </button>
+                      )}
                     </td>
 
                     {/* Acciones */}
                     <td className="py-3.5 px-4 text-right pr-4 sm:pr-6 whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
+                        {esCuarentena && onLevantarCuarentena && (
+                          <button
+                            type="button"
+                            onClick={() => onLevantarCuarentena(comercio)}
+                            className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                            title="Levantar cuarentena y volver a habilitar en el mapa"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Liberar Cuarentena</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onEdit(comercio)}

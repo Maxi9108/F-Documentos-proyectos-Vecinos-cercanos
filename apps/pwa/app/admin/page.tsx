@@ -2,7 +2,18 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Comercio, Administrador, Categoria, PermisosAdmin, NivelComercio, NIVELES_CONFIG } from '@/types/comercio';
+import {
+  Comercio,
+  Administrador,
+  Categoria,
+  PermisosAdmin,
+  NivelComercio,
+  NIVELES_CONFIG,
+  ComprobanteTransferencia,
+  DebateInconveniente,
+  ModificacionComercio,
+  EstadoDebate,
+} from '@/types/comercio';
 import {
   getComercios,
   eliminarComercio,
@@ -15,7 +26,22 @@ import {
   toggleFarmaciaTurno,
   configurarVacaciones,
   reanudarHorarioNormal,
+  getComprobantesTransferencia,
+  aprobarComprobanteTransferencia,
+  rechazarComprobanteTransferencia,
+  getDebates,
+  actualizarEstadoDebate,
+  getSolicitudesModificacion,
+  aprobarSolicitudModificacion,
+  rechazarSolicitudModificacion,
+  calcularSiguienteDiaHabil6AM,
+  reactivarComercioInactivo,
+  confirmarBajaDefinitivaComercio,
+  levantarCuarentenaAdmin,
+  isSupabaseConfigured,
 } from '@/lib/supabase';
+import ContadorMembresia from '@/components/ContadorMembresia';
+import { useUser } from '@/context/user-context';
 import {
   getAdminActual,
   autenticarAdmin,
@@ -25,6 +51,7 @@ import {
   getAdministradores,
   eliminarAdmin,
   actualizarAdmin,
+  obtenerAdminPorEmail,
 } from '@/lib/auth-admin';
 import {
   getCategorias,
@@ -77,6 +104,13 @@ import {
   AlertCircle,
   Database,
   Download,
+  Upload,
+  DollarSign,
+  Eye,
+  X,
+  MessageSquare,
+  ZoomIn,
+  ChevronRight,
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -88,7 +122,16 @@ export default function AdminPage() {
 
   // Pestaña Activa
   const [pestanaActiva, setPestanaActiva] = useState<
-    'pendientes' | 'activos' | 'metricas' | 'categorias' | 'equipo' | 'perfil'
+    | 'pendientes'
+    | 'activos'
+    | 'inactivos'
+    | 'transferencias'
+    | 'modificaciones'
+    | 'debates'
+    | 'metricas'
+    | 'categorias'
+    | 'equipo'
+    | 'perfil'
   >('pendientes');
 
   // Datos
@@ -97,6 +140,26 @@ export default function AdminPage() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [administradores, setAdministradores] = useState<Administrador[]>([]);
   const [metricas, setMetricas] = useState(getMetricasResumen());
+
+  // Estados de Comprobantes de Transferencias
+  const [comprobantes, setComprobantes] = useState<ComprobanteTransferencia[]>([]);
+  const [filtroEstadoComp, setFiltroEstadoComp] = useState<'todos' | 'pendiente' | 'aprobado' | 'rechazado'>('todos');
+  const [acreditandoCompId, setAcreditandoCompId] = useState<string | null>(null);
+  const [imagenModalUrl, setImagenModalUrl] = useState<string | null>(null);
+  const [motivoRechazoComp, setMotivoRechazoComp] = useState<{ [id: string]: string }>({});
+  const [mostrarRechazoCompId, setMostrarRechazoCompId] = useState<string | null>(null);
+
+  // Estados de Solicitudes de Modificación de Comercios
+  const [solicitudesMod, setSolicitudesMod] = useState<ModificacionComercio[]>([]);
+  const [procesandoModId, setProcesandoModId] = useState<string | null>(null);
+  const [motivoRechazoMod, setMotivoRechazoMod] = useState<{ [id: string]: string }>({});
+  const [mostrarRechazoModId, setMostrarRechazoModId] = useState<string | null>(null);
+
+  // Estados de Debates e Inconvenientes de Clientes
+  const [debates, setDebates] = useState<DebateInconveniente[]>([]);
+  const [filtroEstadoDebate, setFiltroEstadoDebate] = useState<'todos' | 'abierto' | 'en_revision' | 'resuelto'>('todos');
+  const [notaAdminDebate, setNotaAdminDebate] = useState<{ [id: string]: string }>({});
+  const [procesandoDebateId, setProcesandoDebateId] = useState<string | null>(null);
 
   // Estados de formularios y acciones
   const [filtroRubro, setFiltroRubro] = useState('Todos');
@@ -128,15 +191,29 @@ export default function AdminPage() {
   const [nuevaCatNombre, setNuevaCatNombre] = useState('');
   const [catMensaje, setCatMensaje] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
 
+  const { usuario, estaAutenticado, esAdmin, abrirModalAuth } = useUser();
+
   // Cargar sesión inicial
   useEffect(() => {
+    // 1. Si el usuario ya está autenticado en la PWA y es administrador, autenticarlo inmediatamente
+    if (usuario?.email) {
+      const admin = obtenerAdminPorEmail(usuario.email);
+      if (admin) {
+        setAdminActual(admin);
+        setPerfilEmail(admin.email);
+        setPerfilNombre(admin.nombre);
+        return;
+      }
+    }
+
+    // 2. Si no, verificar sesión previa en sessionStorage
     const sesion = getAdminActual();
     if (sesion) {
       setAdminActual(sesion);
       setPerfilEmail(sesion.email);
       setPerfilNombre(sesion.nombre);
     }
-  }, []);
+  }, [usuario]);
 
   // Cargar comercios y dependencias al autenticar
   useEffect(() => {
@@ -171,6 +248,16 @@ export default function AdminPage() {
     setCategorias(getCategorias());
     setAdministradores(getAdministradores());
     setMetricas(getMetricasResumen());
+
+    const comps = await getComprobantesTransferencia();
+    setComprobantes(comps);
+
+    const mods = await getSolicitudesModificacion();
+    setSolicitudesMod(mods);
+
+    const debs = await getDebates();
+    setDebates(debs);
+
     setCargando(false);
   };
 
@@ -194,10 +281,116 @@ export default function AdminPage() {
     setPasswordInput('');
   };
 
-  // Filtrado de Comercios
+  // Filtrado de Comercios y Solicitudes
   const solicitudesPendientes = useMemo(() => {
     return comercios.filter((c) => c.estado_aprobacion === 'pendiente');
   }, [comercios]);
+
+  const comprobantesPendientes = useMemo(() => {
+    return comprobantes.filter((c) => c.estado === 'pendiente');
+  }, [comprobantes]);
+
+  const solicitudesModPendientes = useMemo(() => {
+    return solicitudesMod.filter((s) => s.estado === 'pendiente');
+  }, [solicitudesMod]);
+
+  const debatesAbiertos = useMemo(() => {
+    return debates.filter((d) => d.estado !== 'resuelto');
+  }, [debates]);
+
+  const ticketsInactividad = useMemo(() => {
+    const ahora = Date.now();
+    return comercios.filter((c) => {
+      if (c.ticket_baja_definitiva || c.oculto_por_inactividad) return true;
+      if (c.en_vacaciones && c.vacaciones_desde) {
+        const msVac = ahora - new Date(c.vacaciones_desde).getTime();
+        const dias = Math.floor(msVac / (1000 * 60 * 60 * 24));
+        return dias > 60;
+      }
+      return false;
+    });
+  }, [comercios]);
+
+  const comprobantesFiltrados = useMemo(() => {
+    if (filtroEstadoComp === 'todos') return comprobantes;
+    return comprobantes.filter((c) => c.estado === filtroEstadoComp);
+  }, [comprobantes, filtroEstadoComp]);
+
+  const debatesFiltrados = useMemo(() => {
+    if (filtroEstadoDebate === 'todos') return debates;
+    return debates.filter((d) => d.estado === filtroEstadoDebate);
+  }, [debates, filtroEstadoDebate]);
+
+  // Handler: Acreditar +1 Mes Extra al comercio
+  const handleAcreditarMesExtra = async (comp: ComprobanteTransferencia) => {
+    setAcreditandoCompId(comp.id);
+    const res = await aprobarComprobanteTransferencia(comp.id, adminActual?.nombre || 'SuperAdmin');
+    setAcreditandoCompId(null);
+
+    if (res.success) {
+      registrarEvento('comprobante_aprobado', comp.comercio_id, comp.comercio_nombre, {
+        categoria: comp.categoria_solicitada,
+        nuevaFechaVencimiento: res.nuevaFechaVencimiento,
+      });
+      alert(`¡+1 Mes Extra Acreditado con Éxito para "${comp.comercio_nombre}" en categoría ${comp.categoria_solicitada.toUpperCase()}!\n\nVigencia extendida hasta: ${res.nuevaFechaVencimiento ? new Date(res.nuevaFechaVencimiento).toLocaleDateString('es-AR') : '30 días'}.\nEl mes extra comienza a correr al finalizar el período actual para no perder nunca la categoría.`);
+      recargarDatos();
+    } else {
+      alert(`Error al acreditar mes extra: ${res.error}`);
+    }
+  };
+
+  // Handler: Rechazar Comprobante de Transferencia
+  const handleRechazarComprobante = async (comp: ComprobanteTransferencia) => {
+    const motivo = motivoRechazoComp[comp.id]?.trim() || prompt('Indica el motivo de rechazo del comprobante:', 'Comprobante no acreditado en cuenta bancaria');
+    if (!motivo) return;
+
+    const res = await rechazarComprobanteTransferencia(comp.id, motivo, adminActual?.nombre || 'SuperAdmin');
+    if (res.success) {
+      registrarEvento('comprobante_rechazado', comp.comercio_id, comp.comercio_nombre, { motivo });
+      setMostrarRechazoCompId(null);
+      recargarDatos();
+    }
+  };
+
+  // Handler: Aprobar Modificaciones de Comercio
+  const handleAprobarModificacion = async (sol: ModificacionComercio) => {
+    setProcesandoModId(sol.id);
+    const res = await aprobarSolicitudModificacion(sol.id, adminActual?.nombre || 'SuperAdmin');
+    setProcesandoModId(null);
+
+    if (res.success) {
+      registrarEvento('modificacion_comercio_aprobada', sol.comercio_id, sol.comercio_nombre);
+      alert(`¡Modificaciones aprobadas y aplicadas a "${sol.comercio_nombre}"!`);
+      recargarDatos();
+    } else {
+      alert(`Error al aprobar modificaciones: ${res.error}`);
+    }
+  };
+
+  // Handler: Rechazar Modificaciones de Comercio
+  const handleRechazarModificacion = async (sol: ModificacionComercio) => {
+    const motivo = motivoRechazoMod[sol.id]?.trim() || prompt('Indica el motivo de rechazo de las modificaciones:', 'Información no homologada o inconsistente');
+    if (!motivo) return;
+
+    const res = await rechazarSolicitudModificacion(sol.id, motivo, adminActual?.nombre || 'SuperAdmin');
+    if (res.success) {
+      setMostrarRechazoModId(null);
+      recargarDatos();
+    }
+  };
+
+  // Handler: Actualizar Estado de Debate
+  const handleActualizarEstadoDebate = async (debateId: string, nuevoEstado: EstadoDebate) => {
+    setProcesandoDebateId(debateId);
+    const nota = notaAdminDebate[debateId]?.trim();
+    const res = await actualizarEstadoDebate(debateId, nuevoEstado, nota);
+    setProcesandoDebateId(null);
+
+    if (res.success) {
+      registrarEvento('debate_resuelto', '', '', { debateId, nuevoEstado });
+      recargarDatos();
+    }
+  };
 
   const comerciosAprobados = useMemo(() => {
     return comercios.filter((c) => !c.estado_aprobacion || c.estado_aprobacion === 'aprobado');
@@ -345,21 +538,38 @@ export default function AdminPage() {
   };
 
   const handleCerrarMomentaneo = async (comercio: Comercio) => {
+    const reaperturaProg = calcularSiguienteDiaHabil6AM();
+    const reaperturaFormato = reaperturaProg.toLocaleDateString('es-AR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
     const motivo = prompt(
-      `Motivo de cierre temporal para "${comercio.nombre}":`,
+      `Motivo de cierre por emergencia para "${comercio.nombre}":\n\n(El sistema lo reabrirá automáticamente el próximo día hábil: ${reaperturaFormato})`,
       comercio.motivo_cierre_momentaneo || 'Corte de luz / Mantenimiento imprevisto'
     );
     if (motivo === null) return;
-    const res = await toggleCerradoMomentaneo(comercio.id, true, motivo);
+    const res = await toggleCerradoMomentaneo(comercio.id, true, motivo, reaperturaProg.toISOString());
     if (res.success) {
       registrarEvento('visita_comercio', comercio.id, comercio.nombre, {
         accion: 'cerrado_momentaneo',
         motivo,
+        reapertura_programada: reaperturaProg.toISOString(),
       });
       setComercios((prev) =>
         prev.map((c) =>
           c.id === comercio.id
-            ? { ...c, cerrado_momentaneo: true, motivo_cierre_momentaneo: motivo, esta_abierto: false }
+            ? {
+                ...c,
+                cerrado_momentaneo: true,
+                motivo_cierre_momentaneo: motivo,
+                fecha_cierre_emergencia: new Date().toISOString(),
+                reapertura_emergencia_programada: reaperturaProg.toISOString(),
+                esta_abierto: false,
+              }
             : c
         )
       );
@@ -370,16 +580,36 @@ export default function AdminPage() {
     const hoy = new Date().toISOString().split('T')[0];
     const desde = prompt('Fecha de inicio de vacaciones (AAAA-MM-DD):', comercio.vacaciones_desde || hoy);
     if (!desde) return;
-    const hasta = prompt('Fecha estimada de regreso (AAAA-MM-DD):', comercio.vacaciones_hasta || '');
+    const hasta = prompt(
+      'Fecha obligatoria de Retorno (AAAA-MM-DD):\nEl comercio volverá a visibilizarse automáticamente llegada esta fecha.',
+      comercio.vacaciones_hasta || ''
+    );
+    if (!hasta) {
+      alert('La fecha de Retorno es obligatoria para programar el periodo de vacaciones.');
+      return;
+    }
+
+    const msDiff = new Date(hasta).getTime() - new Date(desde).getTime();
+    const dias = Math.ceil(msDiff / (1000 * 60 * 60 * 24));
+    if (dias > 60) {
+      const continua = confirm(
+        `Atención: Has indicado un receso de ${dias} días (superior al límite de 60 días).\n` +
+        `Los comercios con más de 60 días continuos en vacaciones se ocultan automáticamente del mapa y generan un ticket de revisión de baja definitiva.\n\n` +
+        `¿Deseas continuar?`
+      );
+      if (!continua) return;
+    }
+
     const mensaje = prompt('Mensaje para los clientes:', comercio.mensaje_vacaciones || 'Cerrado por descanso anual. ¡Nos vemos pronto!');
 
-    const res = await configurarVacaciones(comercio.id, true, desde, hasta || undefined, mensaje || undefined);
+    const res = await configurarVacaciones(comercio.id, true, desde, hasta, mensaje || undefined);
     if (res.success) {
       registrarEvento('visita_comercio', comercio.id, comercio.nombre, {
         accion: 'cargar_vacaciones',
         desde,
         hasta,
       });
+      const supera60 = dias > 60;
       setComercios((prev) =>
         prev.map((c) =>
           c.id === comercio.id
@@ -387,13 +617,76 @@ export default function AdminPage() {
                 ...c,
                 en_vacaciones: true,
                 vacaciones_desde: desde,
-                vacaciones_hasta: hasta || undefined,
+                vacaciones_hasta: hasta,
                 mensaje_vacaciones: mensaje || undefined,
                 esta_abierto: false,
+                oculto_por_inactividad: supera60 ? true : c.oculto_por_inactividad,
+                ticket_baja_definitiva: supera60 ? true : c.ticket_baja_definitiva,
+                fecha_ticket_baja: supera60 ? new Date().toISOString() : c.fecha_ticket_baja,
+                motivo_ticket_baja: supera60 ? `Vacaciones programadas mayores a 60 días (${dias} días)` : c.motivo_ticket_baja,
               }
             : c
         )
       );
+    }
+  };
+
+  const handleReactivarComercioInactivo = async (comercio: Comercio) => {
+    if (confirm(`¿Reactivar el comercio "${comercio.nombre}" y volver a mostrarlo en el mapa público? Se removerá el ticket de baja y la marca de inactividad prolongada.`)) {
+      const res = await reactivarComercioInactivo(comercio.id);
+      if (res.success) {
+        registrarEvento('visita_comercio', comercio.id, comercio.nombre, {
+          accion: 'reactivar_inactivo',
+        });
+        setComercios((prev) =>
+          prev.map((c) =>
+            c.id === comercio.id
+              ? {
+                  ...c,
+                  oculto_por_inactividad: false,
+                  ticket_baja_definitiva: false,
+                  en_vacaciones: false,
+                  vacaciones_desde: undefined,
+                  vacaciones_hasta: undefined,
+                  cerrado_momentaneo: false,
+                  motivo_cierre_momentaneo: undefined,
+                  esta_abierto: true,
+                }
+              : c
+          )
+        );
+      }
+    }
+  };
+
+  const handleConfirmarBajaDefinitiva = async (comercio: Comercio) => {
+    const motivo = prompt(
+      `Motivo de baja definitiva para "${comercio.nombre}":`,
+      'Inactividad prolongada mayor a 60 días sin reapertura ni contacto del titular'
+    );
+    if (!motivo) return;
+
+    if (confirm(`¿Estás SEGURO de confirmar la baja definitiva de "${comercio.nombre}"? El local pasará a estado rechazado/inactivo permanentemente.`)) {
+      const res = await confirmarBajaDefinitivaComercio(comercio.id, motivo);
+      if (res.success) {
+        registrarEvento('comercio_rechazado', comercio.id, comercio.nombre, {
+          motivo,
+          tipo: 'baja_definitiva_inactividad',
+        });
+        setComercios((prev) =>
+          prev.map((c) =>
+            c.id === comercio.id
+              ? {
+                  ...c,
+                  estado_aprobacion: 'rechazado',
+                  motivo_rechazo: motivo,
+                  oculto_por_inactividad: true,
+                  ticket_baja_definitiva: false,
+                }
+              : c
+          )
+        );
+      }
     }
   };
 
@@ -549,6 +842,47 @@ export default function AdminPage() {
     }
   };
 
+  // Si hay un usuario logueado en la PWA que NO es administrador, denegar acceso cortésmente
+  if (usuario && !esAdmin && !adminActual) {
+    return (
+      <main className="min-h-screen bg-black text-zinc-100 flex flex-col justify-center items-center p-4">
+        <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl p-8 shadow-2xl text-center space-y-5">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-600/20 text-rose-400 border border-rose-500/30 flex items-center justify-center shadow-lg shadow-rose-950/60">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-white">Acceso Restringido</h1>
+            <p className="text-xs text-zinc-400 mt-1">
+              Tu cuenta activa (<span className="text-cyan-300 font-mono">{usuario.email}</span>) no tiene permisos de administrador.
+            </p>
+          </div>
+          <div className="p-3.5 bg-zinc-900 border border-zinc-800 rounded-2xl text-xs text-zinc-400 text-left space-y-1">
+            <p className="font-semibold text-zinc-300">¿Eres el administrador?</p>
+            <p className="text-[11px]">
+              Cierra sesión e ingresa con tu cuenta autorizada (ej. <strong>maxi0802@gmail.com</strong>).
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => abrirModalAuth('login')}
+              className="w-full py-2.5 px-4 bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer"
+            >
+              Cambiar de Cuenta / Iniciar Sesión
+            </button>
+            <Link
+              href="/"
+              className="inline-flex items-center justify-center gap-1.5 py-2 px-4 text-xs text-zinc-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Volver al Mapa del Barrio
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   // Pantalla de Login de Administrador
   if (!adminActual) {
     return (
@@ -663,6 +997,25 @@ export default function AdminPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Monitor de Estado de Supabase para el Administrador */}
+            {isSupabaseConfigured ? (
+              <div
+                title="Conexión en la nube con Supabase activa y sincronizada en tiempo real"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/70 border border-emerald-800/80 text-emerald-300 text-xs font-semibold shadow-sm"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Supabase Conectado</span>
+              </div>
+            ) : (
+              <div
+                title="Operando en modo Local Storage / Demostración. Vincula tus credenciales en .env.local para activar Supabase."
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-950/60 border border-amber-800/70 text-amber-300 text-xs font-semibold"
+              >
+                <Database className="w-3.5 h-3.5 text-amber-400" />
+                <span>Modo Local</span>
+              </div>
+            )}
+
             <a
               href="/api/backup?download=true"
               target="_blank"
@@ -726,6 +1079,78 @@ export default function AdminPage() {
           >
             <Store className="w-4 h-4" />
             Comercios Aprobados ({comerciosAprobados.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('transferencias')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              pestanaActiva === 'transferencias'
+                ? 'border-emerald-500 text-emerald-300'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <DollarSign className="w-4 h-4 text-emerald-400" />
+            Transferencias & Membresías
+            {comprobantesPendientes.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500 text-black animate-pulse">
+                {comprobantesPendientes.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('modificaciones')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              pestanaActiva === 'modificaciones'
+                ? 'border-violet-500 text-violet-300'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <FileText className="w-4 h-4 text-violet-400" />
+            Modificaciones
+            {solicitudesModPendientes.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-violet-500 text-white animate-pulse">
+                {solicitudesModPendientes.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('debates')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              pestanaActiva === 'debates'
+                ? 'border-amber-500 text-amber-300'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+            Debates & Reclamos
+            {debatesAbiertos.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-black animate-pulse">
+                {debatesAbiertos.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('inactivos')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              pestanaActiva === 'inactivos'
+                ? 'border-rose-500 text-rose-300'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <AlertCircle className="w-4 h-4 text-rose-400" />
+            Tickets Inactividad (&gt;60d)
+            {ticketsInactividad.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500 text-white animate-pulse">
+                {ticketsInactividad.length}
+              </span>
+            )}
           </button>
 
           <button
@@ -1143,15 +1568,27 @@ export default function AdminPage() {
                         )}
                       </div>
 
-                      {/* Alerta de Cierre Momentáneo */}
+                      {/* Alerta de Cierre Momentáneo / Emergencia */}
                       {comercio.cerrado_momentaneo && (
                         <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs flex items-start gap-2">
                           <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                           <div className="space-y-0.5">
-                            <span className="font-bold block text-[11px]">Cerrado Momentáneamente</span>
+                            <span className="font-bold block text-[11px]">Cerrado por Emergencia</span>
                             <p className="text-[10px] text-amber-300/90 leading-tight">
                               {comercio.motivo_cierre_momentaneo || 'Inconveniente operativo temporal'}
                             </p>
+                            {comercio.reapertura_emergencia_programada && (
+                              <p className="text-[9px] text-amber-400 font-mono mt-1 flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-amber-400" />
+                                Caduca auto: {new Date(comercio.reapertura_emergencia_programada).toLocaleDateString('es-AR', {
+                                  weekday: 'short',
+                                  day: 'numeric',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1167,12 +1604,68 @@ export default function AdminPage() {
                               {comercio.vacaciones_hasta ? ` hasta ${comercio.vacaciones_hasta}` : ''}
                               {comercio.mensaje_vacaciones ? ` — "${comercio.mensaje_vacaciones}"` : ''}
                             </p>
+                            {comercio.vacaciones_hasta && (
+                              <p className="text-[9px] text-sky-400 font-medium mt-1 flex items-center gap-1">
+                                <Calendar className="w-3 h-3 text-sky-400" />
+                                Retorno: {comercio.vacaciones_hasta} (reapertura auto)
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Alerta de Cuarentena Preventiva por 3 Strikes */}
+                      {comercio.en_cuarentena && (
+                        <div className="p-3 rounded-2xl bg-rose-950/80 border-2 border-rose-500 text-rose-200 text-xs flex items-start gap-2 shadow-lg shadow-rose-950/40">
+                          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5 animate-pulse" />
+                          <div className="space-y-1 w-full">
+                            <span className="font-extrabold block text-xs text-white flex items-center justify-between">
+                              <span>🚨 En Cuarentena Preventiva ({comercio.strikes_reportes || 3} strikes)</span>
+                              <span className="text-[10px] bg-rose-600 text-white px-2 py-0.5 rounded-full">
+                                Oculto en PWA
+                              </span>
+                            </span>
+                            <p className="text-[10px] text-rose-300 leading-tight">
+                              {comercio.motivo_cuarentena || 'Acumuló 3 reportes ciudadanos en menos de 15 días.'}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (confirm(`¿Levantar la cuarentena preventiva de "${comercio.nombre}" y restaurar su visibilidad pública en el mapa?`)) {
+                                  await levantarCuarentenaAdmin(comercio.id);
+                                  setComercios((prev) =>
+                                    prev.map((c) =>
+                                      c.id === comercio.id
+                                        ? { ...c, en_cuarentena: false, motivo_cuarentena: undefined, fecha_cuarentena: undefined, strikes_reportes: 0, esta_abierto: true }
+                                        : c
+                                    )
+                                  );
+                                }
+                              }}
+                              className="mt-1.5 w-full py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Liberar Cuarentena Ahora</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Alerta de Inactividad >60d */}
+                      {comercio.oculto_por_inactividad && (
+                        <div className="p-2.5 rounded-xl bg-rose-950/50 border border-rose-500/50 text-rose-200 text-xs flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <span className="font-bold block text-[11px]">Oculto por Inactividad (&gt;60 días)</span>
+                            <p className="text-[10px] text-rose-300/90 leading-tight">
+                              {comercio.motivo_ticket_baja || 'Superó el plazo máximo de 60 días en vacaciones.'}
+                            </p>
                           </div>
                         </div>
                       )}
 
                       {/* Botón especial: Volver a cumplir horarios normales */}
-                      {(comercio.cerrado_momentaneo || comercio.en_vacaciones) && (
+                      {(comercio.cerrado_momentaneo || comercio.en_vacaciones || comercio.oculto_por_inactividad) && (
                         <button
                           type="button"
                           onClick={() => handleReanudarHorarioNormal(comercio)}
@@ -1206,10 +1699,10 @@ export default function AdminPage() {
                             type="button"
                             onClick={() => handleCerrarMomentaneo(comercio)}
                             className="px-2 py-1 rounded-lg text-[10px] font-medium bg-zinc-900 hover:bg-amber-950/30 text-zinc-400 hover:text-amber-300 border border-zinc-800 hover:border-amber-700/50 transition-colors flex items-center gap-1 cursor-pointer"
-                            title="Cierre momentáneo por imprevisto"
+                            title="Cierre por emergencia (caduca automáticamente a las 6 AM del próximo día hábil)"
                           >
                             <AlertCircle className="w-3 h-3" />
-                            Cerrar Momentáneo
+                            Cerrar Emergencia (6 AM)
                           </button>
                         )}
 
@@ -1306,6 +1799,667 @@ export default function AdminPage() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* PESTAÑA: TRANSFERENCIAS & MEMBRESÍAS */}
+        {pestanaActiva === 'transferencias' && (
+          <div className="space-y-6">
+            {/* Cabecera y Explicación */}
+            <div className="p-6 rounded-3xl bg-gradient-to-r from-emerald-950/40 via-zinc-950 to-zinc-900 border border-emerald-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-emerald-400" />
+                  <h2 className="text-base font-bold text-white">Comprobantes de Transferencias Bancarias</h2>
+                </div>
+                <p className="text-xs text-zinc-300 max-w-2xl mt-1 leading-relaxed">
+                  Los comercios que abonan su suscripción Premium o Gold envían sus comprobantes aquí. Al hacer clic en <strong>&ldquo;Acreditar +1 Mes Extra&rdquo;</strong>, la vigencia se extiende automáticamente por 30 días. Si la membresía aún está activa, el mes extra se encadena al finalizar el período actual para que nunca pierda su categoría.
+                </p>
+              </div>
+
+              {/* Filtros de Comprobantes */}
+              <div className="flex items-center gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-2xl shrink-0">
+                {(['todos', 'pendiente', 'aprobado', 'rechazado'] as const).map((filtro) => (
+                  <button
+                    key={filtro}
+                    type="button"
+                    onClick={() => setFiltroEstadoComp(filtro)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-all cursor-pointer ${
+                      filtroEstadoComp === filtro
+                        ? 'bg-emerald-500 text-black shadow-md'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {filtro}
+                    {filtro === 'pendiente' && comprobantesPendientes.length > 0 && (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] bg-black text-amber-400 font-black">
+                        {comprobantesPendientes.length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Listado de Comprobantes */}
+            {comprobantesFiltrados.length === 0 ? (
+              <div className="p-12 text-center rounded-3xl bg-zinc-950 border border-zinc-900 space-y-2">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500/40 mx-auto" />
+                <p className="text-sm font-semibold text-zinc-300">No hay comprobantes en esta vista</p>
+                <p className="text-xs text-zinc-500">
+                  {filtroEstadoComp === 'pendiente'
+                    ? 'No hay comprobantes de pago pendientes de revisión.'
+                    : 'No se encontraron registros de transferencias con el filtro seleccionado.'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {comprobantesFiltrados.map((comp) => {
+                  const esPendiente = comp.estado === 'pendiente';
+                  const esAprobado = comp.estado === 'aprobado';
+                  const esRechazado = comp.estado === 'rechazado';
+                  const comercioRel = comercios.find((c) => c.id === comp.comercio_id);
+
+                  return (
+                    <div
+                      key={comp.id}
+                      className={`p-5 rounded-3xl border transition-all ${
+                        esPendiente
+                          ? 'bg-zinc-950 border-amber-500/40 shadow-lg shadow-amber-950/20'
+                          : esAprobado
+                          ? 'bg-zinc-950/80 border-emerald-500/30'
+                          : 'bg-zinc-950/60 border-zinc-800'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white text-sm">{comp.comercio_nombre}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                                comp.categoria_solicitada === 'gold'
+                                  ? 'bg-amber-400 text-black'
+                                  : comp.categoria_solicitada === 'premium'
+                                  ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white'
+                                  : 'bg-zinc-800 text-zinc-300'
+                              }`}
+                            >
+                              ★ {comp.categoria_solicitada}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-zinc-500">
+                            ID Comercio: {comp.comercio_id.slice(0, 8)}... • {new Date(comp.fecha_envio || comp.fecha_creacion || Date.now()).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} hs
+                          </span>
+                        </div>
+
+                        {/* Estado */}
+                        <span
+                          className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                            esPendiente
+                              ? 'bg-amber-500/10 text-amber-300 border-amber-500/30 animate-pulse'
+                              : esAprobado
+                              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                              : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                          }`}
+                        >
+                          {esPendiente && '⏳ Pendiente'}
+                          {esAprobado && '✅ Aprobado (+1 Mes)'}
+                          {esRechazado && '❌ Rechazado'}
+                        </span>
+                      </div>
+
+                      {/* Detalles Financieros y Comprobante */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800/60 text-xs mb-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Monto abonado:</span>
+                            <span className="font-black text-emerald-400 text-sm">
+                              ${comp.monto ? comp.monto.toLocaleString('es-AR') : '0'} ARS
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>N° Operación:</span>
+                            <span className="font-mono text-zinc-200">{comp.numero_operacion || 'No especificado'}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-zinc-400">
+                            <span>Banco / Billetera:</span>
+                            <span className="text-zinc-200">{comp.banco_origen || 'Transferencia'}</span>
+                          </div>
+                          {comp.meses_acreditados && (
+                            <div className="flex items-center justify-between text-zinc-400">
+                              <span>Período abonado:</span>
+                              <span className="text-indigo-300 font-semibold">{comp.meses_acreditados} mes (30 días)</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Preview del Archivo / Imagen */}
+                        <div className="flex flex-col items-center justify-center p-2 rounded-xl bg-black/40 border border-zinc-800/80 text-center">
+                          {comp.comprobante_url ? (
+                            <div className="relative group cursor-pointer w-full flex flex-col items-center">
+                              {comp.comprobante_url.startsWith('data:image') || comp.comprobante_url.startsWith('http') ? (
+                                <div
+                                  onClick={() => setImagenModalUrl(comp.comprobante_url)}
+                                  className="relative w-full h-24 rounded-lg overflow-hidden border border-zinc-700/60 bg-zinc-900 group-hover:border-cyan-400 transition-all"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={comp.comprobante_url}
+                                    alt="Comprobante de pago"
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                  />
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1">
+                                    <ZoomIn className="w-4 h-4" />
+                                    Ver comprobante
+                                  </div>
+                                </div>
+                              ) : (
+                                <a
+                                  href={comp.comprobante_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 underline"
+                                >
+                                  <FileText className="w-4 h-4" />
+                                  Abrir comprobante adjunto
+                                </a>
+                              )}
+                              <span className="text-[10px] text-zinc-500 mt-1">Haz clic para ampliar comprobante</span>
+                            </div>
+                          ) : (
+                            <div className="text-zinc-600 text-[11px] flex flex-col items-center gap-1">
+                              <FileText className="w-5 h-5 text-zinc-600" />
+                              Sin archivo adjunto
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Nota del Comercio */}
+                      {comp.notas && (
+                        <p className="text-xs text-zinc-400 italic bg-zinc-900/40 p-2.5 rounded-xl border border-zinc-800/40 mb-3">
+                          &ldquo;{comp.notas}&rdquo;
+                        </p>
+                      )}
+
+                      {/* Contador de tiempo actual del comercio */}
+                      {comercioRel && (
+                        <div className="p-2.5 rounded-xl bg-zinc-900/40 border border-zinc-800/40 flex items-center justify-between gap-2 mb-3">
+                          <div className="text-[11px] text-zinc-400">
+                            Estado actual: <strong className="text-white uppercase">{comercioRel.nivel || 'standar'}</strong>
+                          </div>
+                          {comercioRel.fecha_vencimiento_nivel ? (
+                            <ContadorMembresia
+                              fechaVencimiento={comercioRel.fecha_vencimiento_nivel}
+                              nivel={comercioRel.nivel || 'standar'}
+                              formato="badge"
+                            />
+                          ) : (
+                            <span className="text-[10px] text-zinc-500">Sin vencimiento</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Metadatos de aprobación / rechazo */}
+                      {esAprobado && (
+                        <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-800/40 text-xs text-emerald-300 flex items-center justify-between">
+                          <span>Aprobado por: <strong>{comp.revisado_por || 'Admin'}</strong></span>
+                          <span>{comp.fecha_revision ? new Date(comp.fecha_revision).toLocaleDateString('es-AR') : ''}</span>
+                        </div>
+                      )}
+
+                      {esRechazado && (
+                        <div className="p-2.5 rounded-xl bg-rose-950/30 border border-rose-800/40 text-xs text-rose-300">
+                          <p><strong>Motivo de rechazo:</strong> {comp.motivo_rechazo || 'No especificado'}</p>
+                          <span className="text-[10px] text-rose-400/80">Revisado por {comp.revisado_por || 'Admin'}</span>
+                        </div>
+                      )}
+
+                      {/* Formulario de Rechazo desplegable */}
+                      {mostrarRechazoCompId === comp.id && (
+                        <div className="mt-3 p-3 rounded-2xl bg-rose-950/20 border border-rose-800/50 space-y-2">
+                          <label className="block text-[11px] font-bold text-rose-300">Motivo del Rechazo:</label>
+                          <input
+                            type="text"
+                            value={motivoRechazoComp[comp.id] || ''}
+                            onChange={(e) =>
+                              setMotivoRechazoComp((prev) => ({ ...prev, [comp.id]: e.target.value }))
+                            }
+                            placeholder="Ej: El importe no se acreditó en la cuenta bancaria"
+                            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-rose-500"
+                          />
+                          <div className="flex items-center gap-2 justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setMostrarRechazoCompId(null)}
+                              className="px-3 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRechazarComprobante(comp)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white"
+                            >
+                              Confirmar Rechazo
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Botones de Acción */}
+                      {esPendiente && mostrarRechazoCompId !== comp.id && (
+                        <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80">
+                          <button
+                            type="button"
+                            disabled={acreditandoCompId === comp.id}
+                            onClick={() => handleAcreditarMesExtra(comp)}
+                            className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-black font-extrabold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 cursor-pointer disabled:opacity-50"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                            {acreditandoCompId === comp.id ? 'Acreditando...' : 'Acreditar +1 Mes Extra'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setMostrarRechazoCompId(comp.id)}
+                            className="py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-rose-950/30 border border-zinc-800 hover:border-rose-800/60 text-zinc-400 hover:text-rose-300 text-xs font-semibold transition-all cursor-pointer"
+                          >
+                            Rechazar
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Cambio rápido de categoría manual por el admin */}
+                      <div className="mt-3 pt-2 border-t border-zinc-900 flex items-center justify-between text-[11px] text-zinc-500">
+                        <span>Cambiar categoría manualmente:</span>
+                        <div className="flex items-center gap-1">
+                          {(['standar', 'premium', 'gold'] as const).map((cat) => (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={async () => {
+                                if (confirm(`¿Cambiar categoría de "${comp.comercio_nombre}" a ${cat.toUpperCase()} con 30 días de vigencia?`)) {
+                                  await cambiarNivelComercio(comp.comercio_id, cat, 30);
+                                  recargarDatos();
+                                }
+                              }}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase transition-all ${
+                                comercioRel?.nivel === cat
+                                  ? 'bg-white text-black'
+                                  : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                              }`}
+                            >
+                              {cat}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PESTAÑA: MODIFICACIONES DE COMERCIOS */}
+        {pestanaActiva === 'modificaciones' && (
+          <div className="space-y-6">
+            <div className="p-6 rounded-3xl bg-gradient-to-r from-violet-950/40 via-zinc-950 to-zinc-900 border border-violet-500/30">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-violet-400" />
+                <h2 className="text-base font-bold text-white">Solicitudes de Modificación de Comercios</h2>
+              </div>
+              <p className="text-xs text-zinc-300 max-w-2xl mt-1 leading-relaxed">
+                Los comercios cargan o modifican información desde su panel (teléfonos, horarios, descripción, redes, fotos). Todas las solicitudes requieren tu validación antes de impactar en la aplicación pública.
+              </p>
+            </div>
+
+            {solicitudesMod.length === 0 ? (
+              <div className="p-12 text-center rounded-3xl bg-zinc-950 border border-zinc-900 space-y-2">
+                <CheckCircle2 className="w-8 h-8 text-violet-500/40 mx-auto" />
+                <p className="text-sm font-semibold text-zinc-300">No hay solicitudes de modificación</p>
+                <p className="text-xs text-zinc-500">
+                  Cuando un comercio edite sus opciones o datos desde &ldquo;Mi Comercio&rdquo;, aparecerá aquí para tu aprobación.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {solicitudesMod.map((sol) => {
+                  const esPendiente = sol.estado === 'pendiente';
+                  const esAprobada = sol.estado === 'aprobado';
+                  const esRechazada = sol.estado === 'rechazado';
+                  const cambios = sol.cambios || sol.cambios_propuestos || {};
+                  const comercioActual = comercios.find((c) => c.id === sol.comercio_id);
+
+                  return (
+                    <div
+                      key={sol.id}
+                      className={`p-6 rounded-3xl border transition-all ${
+                        esPendiente
+                          ? 'bg-zinc-950 border-violet-500/40 shadow-xl shadow-violet-950/20'
+                          : esAprobada
+                          ? 'bg-zinc-950/80 border-emerald-500/30'
+                          : 'bg-zinc-950/60 border-zinc-800'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-white text-base">{sol.comercio_nombre}</h3>
+                            <span className="text-xs text-zinc-400">({sol.usuario_email || 'Comercio'})</span>
+                          </div>
+                          <p className="text-[11px] text-zinc-500 mt-0.5">
+                            Solicitado el {new Date(sol.fecha_solicitud).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} hs
+                          </p>
+                        </div>
+
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                            esPendiente
+                              ? 'bg-violet-500/10 text-violet-300 border-violet-500/30 animate-pulse'
+                              : esAprobada
+                              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                              : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+                          }`}
+                        >
+                          {esPendiente && '⏳ Pendiente de Aprobación'}
+                          {esAprobada && '✅ Modificaciones Aprobadas'}
+                          {esRechazada && '❌ Rechazado'}
+                        </span>
+                      </div>
+
+                      {/* Comparativa de Cambios Propuestos */}
+                      <div className="mb-4 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 overflow-hidden">
+                        <div className="px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+                          Comparativa de Cambios Propuestos
+                        </div>
+                        <div className="p-4 space-y-3 text-xs">
+                          {Object.entries(cambios).map(([clave, valorNuevo]) => {
+                            if (valorNuevo === undefined || valorNuevo === null) return null;
+                            const valorActual = comercioActual ? (comercioActual as unknown as Record<string, unknown>)[clave] : undefined;
+
+                            return (
+                              <div
+                                key={clave}
+                                className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/60 grid grid-cols-1 md:grid-cols-3 gap-2"
+                              >
+                                <span className="font-semibold text-zinc-400 capitalize">
+                                  {clave.replace(/_/g, ' ')}:
+                                </span>
+                                <div className="text-zinc-500 line-through truncate">
+                                  <span className="text-[10px] text-zinc-600 block uppercase font-mono">Actual</span>
+                                  {String(valorActual || 'Sin especificar')}
+                                </div>
+                                <div className="text-emerald-300 font-medium">
+                                  <span className="text-[10px] text-emerald-500/80 block uppercase font-mono">Propuesto</span>
+                                  {String(valorNuevo)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Formulario de Rechazo */}
+                      {mostrarRechazoModId === sol.id && (
+                        <div className="mb-4 p-3 rounded-2xl bg-rose-950/20 border border-rose-800/50 space-y-2">
+                          <label className="block text-[11px] font-bold text-rose-300">Motivo del Rechazo:</label>
+                          <input
+                            type="text"
+                            value={motivoRechazoMod[sol.id] || ''}
+                            onChange={(e) =>
+                              setMotivoRechazoMod((prev) => ({ ...prev, [sol.id]: e.target.value }))
+                            }
+                            placeholder="Ej: El teléfono no coincide o los datos son incompletos"
+                            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-rose-500"
+                          />
+                          <div className="flex items-center gap-2 justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setMostrarRechazoModId(null)}
+                              className="px-3 py-1.5 rounded-lg text-xs text-zinc-400 hover:text-white"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRechazarModificacion(sol)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white"
+                            >
+                              Confirmar Rechazo
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Botones de Aprobación */}
+                      {esPendiente && mostrarRechazoModId !== sol.id && (
+                        <div className="flex items-center gap-3 pt-3 border-t border-zinc-800">
+                          <button
+                            type="button"
+                            disabled={procesandoModId === sol.id}
+                            onClick={() => handleAprobarModificacion(sol)}
+                            className="flex-1 py-2.5 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-violet-950/60 cursor-pointer disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                            {procesandoModId === sol.id ? 'Aplicando...' : 'Aprobar y Aplicar Cambios al Comercio'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setMostrarRechazoModId(sol.id)}
+                            className="py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-rose-950/30 border border-zinc-800 hover:border-rose-800/60 text-zinc-400 hover:text-rose-300 text-xs font-semibold transition-all cursor-pointer"
+                          >
+                            Rechazar Modificación
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Metadatos */}
+                      {esAprobada && (
+                        <p className="text-xs text-emerald-400">
+                          Aprobado por {sol.revisado_por || 'Admin'} el {sol.fecha_revision ? new Date(sol.fecha_revision).toLocaleDateString('es-AR') : ''}
+                        </p>
+                      )}
+                      {esRechazada && (
+                        <p className="text-xs text-rose-400">
+                          Rechazado por {sol.revisado_por || 'Admin'}: {sol.motivo_rechazo}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PESTAÑA: DEBATES & RECLAMOS DE CLIENTES */}
+        {pestanaActiva === 'debates' && (
+          <div className="space-y-6">
+            <div className="p-6 rounded-3xl bg-gradient-to-r from-amber-950/40 via-zinc-950 to-zinc-900 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-amber-400" />
+                  <h2 className="text-base font-bold text-white">Debates & Inconvenientes de Clientes</h2>
+                </div>
+                <p className="text-xs text-zinc-300 max-w-2xl mt-1 leading-relaxed">
+                  Registro confidencial de problemas reportados por usuarios registrados. <strong>Sólo visible para el comercio involucrado y para el administrador</strong>. Permite mediar, verificar respuestas del comercio y dar por resuelto el caso.
+                </p>
+              </div>
+
+              {/* Filtro de Debates */}
+              <div className="flex items-center gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-2xl shrink-0">
+                {(['todos', 'abierto', 'en_revision', 'resuelto'] as const).map((filtro) => (
+                  <button
+                    key={filtro}
+                    type="button"
+                    onClick={() => setFiltroEstadoDebate(filtro)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-all cursor-pointer ${
+                      filtroEstadoDebate === filtro
+                        ? 'bg-amber-500 text-black shadow-md'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {filtro.replace('_', ' ')}
+                    {filtro === 'abierto' && debatesAbiertos.length > 0 && (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] bg-black text-amber-400 font-black">
+                        {debatesAbiertos.length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {debatesFiltrados.length === 0 ? (
+              <div className="p-12 text-center rounded-3xl bg-zinc-950 border border-zinc-900 space-y-2">
+                <CheckCircle2 className="w-8 h-8 text-amber-500/40 mx-auto" />
+                <p className="text-sm font-semibold text-zinc-300">No hay debates en esta vista</p>
+                <p className="text-xs text-zinc-500">
+                  {filtroEstadoDebate === 'abierto'
+                    ? 'Excelente: No hay reclamos ni inconvenientes abiertos en la plataforma.'
+                    : 'No se encontraron registros de inconvenientes con el filtro actual.'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {debatesFiltrados.map((deb) => {
+                  const esAbierto = deb.estado === 'abierto';
+                  const esRevision = deb.estado === 'en_revision';
+                  const esResuelto = deb.estado === 'resuelto';
+
+                  return (
+                    <div
+                      key={deb.id}
+                      className={`p-6 rounded-3xl border transition-all ${
+                        esAbierto
+                          ? 'bg-zinc-950 border-amber-500/50 shadow-xl shadow-amber-950/20'
+                          : esRevision
+                          ? 'bg-zinc-950 border-cyan-500/40'
+                          : 'bg-zinc-950/60 border-zinc-800'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white text-base">{deb.comercio_nombre}</span>
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                              {deb.motivo}
+                            </span>
+                          </div>
+                          <p className="text-xs text-zinc-400">
+                            Iniciado por: <strong className="text-white">{deb.usuario_nombre}</strong> ({deb.usuario_email})
+                            {deb.telefono_contacto && ` • Tel: ${deb.telefono_contacto}`}
+                          </p>
+                          <span className="text-[11px] text-zinc-500">
+                            {new Date(deb.fecha_creacion).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} hs
+                          </span>
+                        </div>
+
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                            esAbierto
+                              ? 'bg-amber-500/10 text-amber-300 border-amber-500/30 animate-pulse'
+                              : esRevision
+                              ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                              : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                          }`}
+                        >
+                          {esAbierto && '⚠️ Abierto'}
+                          {esRevision && '🔍 En Revisión'}
+                          {esResuelto && '✅ Resuelto'}
+                        </span>
+                      </div>
+
+                      {/* Descripción del Usuario */}
+                      <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 mb-3 space-y-1">
+                        <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">
+                          Descripción del Inconveniente por el Vecino:
+                        </span>
+                        <p className="text-xs text-zinc-200 leading-relaxed whitespace-pre-wrap">
+                          {deb.descripcion}
+                        </p>
+                      </div>
+
+                      {/* Respuesta del Comercio */}
+                      <div className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800/60 mb-4 space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-cyan-400 uppercase tracking-wider">
+                            Respuesta del Comercio:
+                          </span>
+                          {deb.fecha_respuesta && (
+                            <span className="text-zinc-500">
+                              {new Date(deb.fecha_respuesta).toLocaleDateString('es-AR', { hour: '2-digit', minute: '2-digit' })} hs
+                            </span>
+                          )}
+                        </div>
+                        {deb.respuesta_comercio ? (
+                          <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                            {deb.respuesta_comercio}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-zinc-500 italic">
+                            El comercio aún no ha emitido una respuesta en este registro.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Nota interna del Administrador y Acciones */}
+                      <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={notaAdminDebate[deb.id] || deb.nota_admin || ''}
+                            onChange={(e) =>
+                              setNotaAdminDebate((prev) => ({ ...prev, [deb.id]: e.target.value }))
+                            }
+                            placeholder="Nota interna de mediación (opcional)..."
+                            className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {deb.estado !== 'en_revision' && deb.estado !== 'resuelto' && (
+                            <button
+                              type="button"
+                              disabled={procesandoDebateId === deb.id}
+                              onClick={() => handleActualizarEstadoDebate(deb.id, 'en_revision')}
+                              className="px-3 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-all cursor-pointer"
+                            >
+                              Poner en Revisión
+                            </button>
+                          )}
+
+                          {deb.estado !== 'resuelto' ? (
+                            <button
+                              type="button"
+                              disabled={procesandoDebateId === deb.id}
+                              onClick={() => handleActualizarEstadoDebate(deb.id, 'resuelto')}
+                              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all flex items-center gap-1.5 shadow-md shadow-emerald-950/50 cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Marcar Resuelto
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={procesandoDebateId === deb.id}
+                              onClick={() => handleActualizarEstadoDebate(deb.id, 'abierto')}
+                              className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 text-xs font-semibold transition-all cursor-pointer"
+                            >
+                              Reabrir Debate
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1790,7 +2944,232 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* PESTAÑA: TICKETS DE INACTIVIDAD PROLONGADA (>60 DÍAS) */}
+        {pestanaActiva === 'inactivos' && (
+          <div className="space-y-6">
+            <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-rose-950/40 via-zinc-950 to-zinc-900 border border-rose-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                    <AlertCircle className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                      Tickets de Inactividad Prolongada (&gt; 60 días)
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-rose-500 text-white">
+                        {ticketsInactividad.length}
+                      </span>
+                    </h2>
+                    <p className="text-xs text-zinc-400">
+                      Locales que superaron los 60 días en receso o vacaciones. Han sido ocultados del mapa para proteger la veracidad del directorio barrial.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={recargarDatos}
+                className="py-2 px-3.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold rounded-xl transition-colors shrink-0 flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Actualizar lista
+              </button>
+            </div>
+
+            {/* Protocolo Operativo Informativo */}
+            <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-300 space-y-2">
+              <h4 className="font-bold text-white flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-rose-400" />
+                Protocolo de Moderación para Inactividad Prolongada
+              </h4>
+              <p className="text-zinc-400 leading-relaxed text-[11px]">
+                1. <strong>Contacto directo:</strong> Utiliza el botón de WhatsApp o Llamada para comunicarte con el titular del local y consultar si el negocio sigue activo.<br />
+                2. <strong>Reactivar:</strong> Si el comercio volvió a atender o fue un error, pulsa <em>&quot;Reactivar y Visibilizar Local&quot;</em>. Se removerá el ticket y volverá a aparecer en el mapa.<br />
+                3. <strong>Baja Definitiva:</strong> Si el comercio cerró definitivamente o no contesta, pulsa <em>&quot;Confirmar Baja Definitiva&quot;</em> para archivar el local y dejar registro del motivo.
+              </p>
+            </div>
+
+            {ticketsInactividad.length === 0 ? (
+              <div className="text-center py-16 px-4 rounded-3xl bg-zinc-950 border border-zinc-800/80 space-y-3">
+                <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
+                <h3 className="text-lg font-bold text-white">¡No hay locales con inactividad crítica!</h3>
+                <p className="text-xs text-zinc-400 max-w-md mx-auto">
+                  Ningún comercio ha permanecido más de 60 días continuos en modo vacaciones. Todos los negocios del mapa se encuentran dentro de los plazos comunitarios permitidos.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {ticketsInactividad.map((comercio) => {
+                  const telLimpio = (comercio.whatsapp || comercio.telefono || '').replace(/\D/g, '');
+                  const textoMensaje = encodeURIComponent(
+                    `Hola ${comercio.nombre}, te contactamos desde la administración de Vecinos Cercanos. Vemos que tu local lleva más de 60 días en receso/vacaciones y deseamos saber si continúan en actividad para reactivar tu publicación en el mapa.`
+                  );
+
+                  return (
+                    <div
+                      key={comercio.id}
+                      className="bg-zinc-950 border border-rose-500/40 rounded-3xl p-5 space-y-4 shadow-xl flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 mb-1.5">
+                              <AlertCircle className="w-3 h-3 text-rose-400" />
+                              Oculto por Inactividad (&gt;60 días)
+                            </span>
+                            <h3 className="text-xl font-bold text-white">{comercio.nombre}</h3>
+                            <p className="text-xs text-zinc-400 flex items-center gap-1.5 mt-0.5">
+                              <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                              <span className="truncate">{comercio.direccion}</span>
+                            </p>
+                          </div>
+
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                            {comercio.rubro}
+                          </span>
+                        </div>
+
+                        {/* Motivo e Información de Fechas */}
+                        <div className="p-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-2 text-xs">
+                          <div className="flex items-start gap-2">
+                            <Clock className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                            <div>
+                              <span className="font-semibold text-rose-300">Motivo del Ticket:</span>
+                              <p className="text-zinc-300 text-[11px] mt-0.5">
+                                {comercio.motivo_ticket_baja || 'Superó los 60 días continuos en vacaciones/receso.'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-800/80 text-[11px]">
+                            <div>
+                              <span className="text-zinc-500 block">Inicio de Receso:</span>
+                              <span className="text-zinc-300 font-mono">
+                                {comercio.vacaciones_desde || comercio.fecha_cierre_emergencia || 'No registrado'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block">Fecha Estipulada de Retorno:</span>
+                              <span className="text-zinc-300 font-mono">
+                                {comercio.vacaciones_hasta || 'Sin definir'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {comercio.mensaje_vacaciones && (
+                            <div className="pt-2 border-t border-zinc-800/80 text-[11px]">
+                              <span className="text-zinc-500 block">Mensaje dejado por el comerciante:</span>
+                              <span className="text-zinc-300 italic">
+                                &quot;{comercio.mensaje_vacaciones}&quot;
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Canales de Contacto */}
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          {comercio.whatsapp && (
+                            <a
+                              href={`https://wa.me/${telLimpio}?text=${textoMensaje}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-1.5 px-3 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/60 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                            >
+                              <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                              Contactar WhatsApp ({comercio.whatsapp})
+                            </a>
+                          )}
+
+                          {comercio.telefono && comercio.telefono !== comercio.whatsapp && (
+                            <a
+                              href={`tel:${comercio.telefono}`}
+                              className="py-1.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                            >
+                              <Phone className="w-3.5 h-3.5 text-zinc-400" />
+                              Llamar ({comercio.telefono})
+                            </a>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Botones de Resolución del Ticket */}
+                      <div className="pt-3 border-t border-zinc-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleReactivarComercioInactivo(comercio)}
+                          className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/50 transition-all cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Reactivar y Visibilizar Local
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmarBajaDefinitiva(comercio)}
+                          className="py-2.5 px-4 rounded-xl bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border border-rose-800/80 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-400" />
+                          Confirmar Baja Definitiva
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Modal para Visualizar Comprobante en Alta Resolución */}
+      {imagenModalUrl && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setImagenModalUrl(null)}
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-4xl max-h-[90vh] bg-zinc-950 border border-zinc-800 rounded-3xl p-3 flex flex-col items-center overflow-hidden shadow-2xl"
+          >
+            <div className="w-full flex items-center justify-between pb-3 px-2 border-b border-zinc-800">
+              <span className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-emerald-400" />
+                Comprobante de Transferencia Adjunto
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={imagenModalUrl}
+                  download="comprobante-transferencia.png"
+                  className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-xs text-white border border-zinc-800 flex items-center gap-1.5 transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Descargar
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setImagenModalUrl(null)}
+                  className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-2 overflow-auto max-h-[calc(90vh-70px)] flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imagenModalUrl}
+                alt="Comprobante completo"
+                className="max-w-full max-h-[80vh] object-contain rounded-xl"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -101,14 +101,68 @@ export interface Comercio {
   // Farmacia de Turno (solo farmacias)
   esta_de_turno?: boolean;
   fecha_turno?: string;
-  // Cierre momentáneo por inconveniente
+  // Cierre momentáneo por emergencia con caducidad automática
   cerrado_momentaneo?: boolean;
   motivo_cierre_momentaneo?: string;
-  // Modo Vacaciones
+  fecha_cierre_emergencia?: string;
+  reapertura_emergencia_programada?: string;
+  // Modo Vacaciones programadas obligatorias
   en_vacaciones?: boolean;
   vacaciones_desde?: string;
   vacaciones_hasta?: string;
   mensaje_vacaciones?: string;
+  // Control de inactividad prolongada (+60 días) y tickets de baja
+  oculto_por_inactividad?: boolean;
+  ticket_baja_definitiva?: boolean;
+  fecha_ticket_baja?: string;
+  motivo_ticket_baja?: string;
+  // Cuarentena preventiva por reportes comunitarios (3 strikes en 15 días)
+  en_cuarentena?: boolean;
+  fecha_cuarentena?: string;
+  motivo_cuarentena?: string;
+  strikes_reportes?: number;
+}
+
+export type MotivoReporte =
+  | 'cerro_definitivamente'
+  | 'ubicacion_incorrecta'
+  | 'telefono_no_existe'
+  | 'horarios_incorrectos'
+  | 'otro_problema';
+
+export const MOTIVOS_REPORTE_CONFIG: Record<
+  MotivoReporte,
+  { label: string; descripcion: string }
+> = {
+  cerro_definitivamente: {
+    label: 'Cerró definitivamente',
+    descripcion: 'El local físico ya no existe o cesó sus actividades de forma permanente.',
+  },
+  ubicacion_incorrecta: {
+    label: 'Ubicación incorrecta en el mapa',
+    descripcion: 'El marcador o la dirección indicada no coinciden con el lugar real.',
+  },
+  telefono_no_existe: {
+    label: 'El teléfono no existe',
+    descripcion: 'El número no atiende, se encuentra dado de baja o es equivocado.',
+  },
+  horarios_incorrectos: {
+    label: 'Horarios de atención falsos',
+    descripcion: 'Figura como abierto pero el local está cerrado de forma recurrente.',
+  },
+  otro_problema: {
+    label: 'Información desactualizada o engañosa',
+    descripcion: 'Datos del comercio desvirtuados, rubro incorrecto o atención simulada.',
+  },
+};
+
+export interface ReporteComercio {
+  id: string;
+  comercio_id: string;
+  motivo: MotivoReporte;
+  ip_usuario: string;
+  fingerprint: string;
+  fecha: string; // ISO 8601
 }
 
 export interface Categoria {
@@ -149,7 +203,15 @@ export type TipoEvento =
   | 'busqueda_realizada'
   | 'solicitud_comercio'
   | 'comercio_aprobado'
-  | 'comercio_rechazado';
+  | 'comercio_rechazado'
+  | 'comprobante_transferencia_enviado'
+  | 'comprobante_aprobado'
+  | 'comprobante_rechazado'
+  | 'solicitud_modificacion_comercio'
+  | 'modificacion_comercio_aprobada'
+  | 'debate_iniciado'
+  | 'debate_respondido'
+  | 'debate_resuelto';
 
 export interface EventoAnalytics {
   id: string;
@@ -173,3 +235,76 @@ export type Rubro =
   | 'Gastronomía'
   | 'Reparto de Agua y Bebidas'
   | string;
+
+// Comprobantes de transferencias para renovación de membresías Premium y Gold
+export interface ComprobanteTransferencia {
+  id: string;
+  comercio_id: string;
+  comercio_nombre: string;
+  categoria_solicitada: NivelComercio; // 'premium' | 'gold'
+  monto?: number;
+  fecha_envio: string;
+  fecha_creacion?: string;
+  comprobante_url: string; // Base64 data URL o URL de archivo
+  comprobante_nombre?: string;
+  numero_operacion?: string;
+  banco_origen?: string;
+  notas?: string;
+  estado: 'pendiente' | 'aprobado' | 'rechazado';
+  motivo_rechazo?: string;
+  aprobado_por?: string;
+  revisado_por?: string;
+  fecha_aprobacion?: string;
+  fecha_revision?: string;
+  meses_acreditados?: number;
+}
+
+// Debates e inconvenientes entre usuarios registrados y comercios
+export type EstadoDebate = 'abierto' | 'en_revision' | 'resuelto';
+
+export interface DebateInconveniente {
+  id: string;
+  comercio_id: string;
+  comercio_nombre: string;
+  usuario_id: string;
+  usuario_nombre: string;
+  usuario_email: string;
+  usuario_telefono?: string;
+  telefono_contacto?: string;
+  motivo: string;
+  descripcion: string;
+  fecha_creacion: string;
+  estado: EstadoDebate;
+  respuesta_comercio?: string;
+  fecha_respuesta?: string;
+  nota_administrador?: string;
+  nota_admin?: string;
+  fecha_resolucion?: string;
+}
+
+// Modificaciones solicitadas por un comercio sujetas a aprobación del administrador
+export interface ModificacionComercio {
+  id: string;
+  comercio_id: string;
+  comercio_nombre: string;
+  usuario_email?: string;
+  fecha_solicitud: string;
+  estado: 'pendiente' | 'aprobado' | 'rechazado';
+  motivo_rechazo?: string;
+  aprobado_por?: string;
+  revisado_por?: string;
+  fecha_aprobacion?: string;
+  fecha_revision?: string;
+  cambios: Partial<Comercio>;
+  cambios_propuestos?: Partial<Comercio>;
+  datos_anteriores?: Partial<Comercio>;
+}
+
+// Tokens de verificación para registro de usuarios
+export interface TokenRegistro {
+  email: string;
+  nombre: string;
+  token: string;
+  expira: number; // Timestamp en ms
+}
+

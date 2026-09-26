@@ -21,16 +21,19 @@ import {
   Palmtree,
   Clock,
   Heart,
+  Flag,
 } from 'lucide-react';
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
+import ContadorMembresia from '@/components/ContadorMembresia';
 
 interface TarjetaComercioProps {
   comercio: Comercio;
   isSelected?: boolean;
   onVerEnMapa: (comercio: Comercio) => void;
   onOpenDetalle: (comercio: Comercio) => void;
+  onReportar?: (comercio: Comercio) => void;
 }
 
 export default function TarjetaComercio({
@@ -38,6 +41,7 @@ export default function TarjetaComercio({
   isSelected = false,
   onVerEnMapa,
   onOpenDetalle,
+  onReportar,
 }: TarjetaComercioProps) {
   const cleanPhone = comercio.telefono ? comercio.telefono.replace(/[^0-9+]/g, '') : '';
   const cleanWhatsapp = comercio.whatsapp ? comercio.whatsapp.replace(/[^0-9+]/g, '') : cleanPhone;
@@ -100,18 +104,13 @@ export default function TarjetaComercio({
               {comercio.rubro}
             </span>
 
-            {/* Insignia Gold / Premium */}
-            {nivel === 'gold' && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-950/40">
-                <Crown className="w-3 h-3 text-amber-400" />
-                Gold
-              </span>
-            )}
-            {nivel === 'premium' && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">
-                <Award className="w-3 h-3 text-purple-400" />
-                Premium
-              </span>
+            {/* Insignia y Contador de tiempo Gold / Premium */}
+            {(nivel === 'gold' || nivel === 'premium') && (
+              <ContadorMembresia
+                fechaVencimiento={comercio.fecha_vencimiento_nivel}
+                nivel={nivel}
+                formato="badge"
+              />
             )}
           </div>
 
@@ -173,24 +172,38 @@ export default function TarjetaComercio({
           </div>
         )}
 
-        {/* Banner: Cerrado momentáneamente */}
+        {/* Banner: Cerrado por Emergencia con Caducidad Automática */}
         {comercio.cerrado_momentaneo && (
-          <div className="mb-2.5 p-2 rounded-xl bg-amber-950/50 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span className="leading-tight">
-              <strong>Cerrado momentáneamente:</strong> {comercio.motivo_cierre_momentaneo || 'Inconveniente imprevisto.'}
-            </span>
+          <div className="mb-2.5 p-2 rounded-xl bg-amber-950/60 border border-amber-500/50 text-amber-200 text-xs space-y-1 shadow-sm">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="leading-tight font-medium">
+                <strong className="text-amber-300">Cierre por Emergencia:</strong> {comercio.motivo_cierre_momentaneo || 'Inconveniente imprevisto.'}
+              </span>
+            </div>
+            {comercio.reapertura_emergencia_programada && (
+              <div className="text-[11px] text-amber-300/90 pl-6 flex items-center gap-1 font-mono">
+                <Clock className="w-3 h-3 text-amber-400" />
+                <span>Reapertura automática: {new Date(comercio.reapertura_emergencia_programada).toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' })} 06:00 AM</span>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Banner: Cerrado por Vacaciones */}
+        {/* Banner: Cerrado por Vacaciones Programadas */}
         {comercio.en_vacaciones && (
-          <div className="mb-2.5 p-2 rounded-xl bg-sky-950/50 border border-sky-500/40 text-sky-200 text-xs flex items-center gap-2">
-            <Palmtree className="w-4 h-4 text-sky-400 shrink-0" />
-            <span className="leading-tight">
-              <strong>De vacaciones</strong> {comercio.vacaciones_hasta ? `hasta el ${comercio.vacaciones_hasta}` : ''}
-              {comercio.mensaje_vacaciones ? ` — "${comercio.mensaje_vacaciones}"` : ''}
-            </span>
+          <div className="mb-2.5 p-2 rounded-xl bg-sky-950/60 border border-sky-500/50 text-sky-200 text-xs space-y-1 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Palmtree className="w-4 h-4 text-sky-400 shrink-0" />
+              <span className="leading-tight font-medium">
+                <strong className="text-sky-300">De Vacaciones:</strong> Regresa el {comercio.vacaciones_hasta ? new Date(comercio.vacaciones_hasta).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }) : 'próximamente'}
+              </span>
+            </div>
+            {comercio.mensaje_vacaciones && (
+              <p className="text-[11px] text-sky-300/80 pl-6 italic">
+                &ldquo;{comercio.mensaje_vacaciones}&rdquo;
+              </p>
+            )}
           </div>
         )}
 
@@ -354,6 +367,24 @@ export default function TarjetaComercio({
             </a>
           )}
         </div>
+
+        {/* Enlace discreto: Sugerir corrección / Reportar problema */}
+        {onReportar && (
+          <div className="pt-0.5 flex items-center justify-end">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onReportar(comercio);
+              }}
+              className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center gap-1 cursor-pointer py-0.5 px-1.5 rounded-lg hover:bg-zinc-800/50"
+              title="Sugerir corrección o reportar problema sobre este comercio"
+            >
+              <Flag className="w-2.5 h-2.5 text-zinc-500" />
+              <span>Sugerir corrección</span>
+            </button>
+          </div>
+        )}
       </div>
     </article>
   );
