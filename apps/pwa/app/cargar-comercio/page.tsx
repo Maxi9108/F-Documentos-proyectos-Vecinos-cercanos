@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Comercio, Producto, NivelComercio, NIVELES_CONFIG } from '@/types/comercio';
+import { Comercio, Producto, NivelComercio, NIVELES_CONFIG, HorariosConfig } from '@/types/comercio';
 import MapaSelectorWrapper from '@/components/MapaSelectorWrapper';
 import { guardarComercio } from '@/lib/supabase';
 import {
@@ -30,9 +30,12 @@ import {
   ShieldCheck,
   Calendar,
   Info,
+  Lock,
 } from 'lucide-react';
 import { getCategorias } from '@/lib/categorias';
 import { registrarEvento } from '@/lib/analytics';
+import SelectorHorariosAvanzados from '@/components/SelectorHorariosAvanzados';
+import { obtenerHorariosConfigPorDefecto } from '@/lib/horarios';
 
 export default function CargarComercioPage() {
   const router = useRouter();
@@ -49,13 +52,15 @@ export default function CargarComercioPage() {
   const [direccion, setDireccion] = useState('Av. San Martín 1500');
   const [telefono, setTelefono] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
-  const [horario, setHorario] = useState('Lunes a Sábados de 8:00 a 20:00');
+
+  // Horarios estructurados con soporte de trasnoche
+  const [horariosConfig, setHorariosConfig] = useState<HorariosConfig>(obtenerHorariosConfigPorDefecto());
+  const [resumenHorarios, setResumenHorarios] = useState('Lun a Vie: 08:30 a 20:30 hs | Sáb: 09:00 a 13:30 hs | Dom: Cerrado');
   const [estaAbierto, setEstaAbierto] = useState(true);
 
-  // Horario Cortado
-  const [tieneHorarioCortado, setTieneHorarioCortado] = useState(false);
-  const [horarioManana, setHorarioManana] = useState('Lunes a Sábados de 8:30 a 13:00');
-  const [horarioTarde, setHorarioTarde] = useState('Lunes a Sábados de 16:30 a 20:30');
+  // Credenciales exclusivas para administrar el comercio en /mi-comercio
+  const [emailComercio, setEmailComercio] = useState('');
+  const [passwordComercio, setPasswordComercio] = useState('');
 
   // Farmacia de Turno (rubro Farmacia)
   const [estaDeTurno, setEstaDeTurno] = useState(false);
@@ -196,6 +201,16 @@ export default function CargarComercioPage() {
       return;
     }
 
+    if (!emailComercio.trim() || !emailComercio.includes('@')) {
+      setErrorMsg('Por favor ingresa un correo electrónico de gestión válido para administrar tu comercio.');
+      return;
+    }
+
+    if (!passwordComercio || passwordComercio.length < 4) {
+      setErrorMsg('La contraseña de administración del comercio debe tener al menos 4 caracteres.');
+      return;
+    }
+
     setGuardando(true);
 
     const comercioId = typeof crypto !== 'undefined' && crypto.randomUUID
@@ -246,10 +261,6 @@ export default function CargarComercioPage() {
       return;
     }
 
-    const horarioCalculado = tieneHorarioCortado
-      ? `Mañana: ${horarioManana.trim()} | Tarde: ${horarioTarde.trim()}`
-      : horario.trim();
-
     const nuevoComercio: Comercio = {
       id: comercioId,
       nombre: nombre.trim(),
@@ -258,7 +269,11 @@ export default function CargarComercioPage() {
       telefono: telefono.trim(),
       whatsapp: whatsapp.trim() || telefono.trim(),
       descripcion: descripcion.trim(),
-      horario: horarioCalculado,
+      horario: resumenHorarios,
+      horarios_config: horariosConfig,
+      email_comercio: emailComercio.trim().toLowerCase(),
+      password_comercio: passwordComercio.trim(),
+      fecha_ultima_modificacion_catalogo: deseaCatalogo && productosValidos.length > 0 ? new Date().toISOString() : undefined,
       esta_abierto: estaAbierto && !cerradoMomentaneo && !enVacaciones,
       latitud,
       longitud,
@@ -274,10 +289,6 @@ export default function CargarComercioPage() {
       // Niveles y membresía
       nivel: 'standar', // Comienza en standar hasta que el administrador acepte la solicitud
       nivel_solicitado: nivelSolicitado,
-      // Horarios cortados
-      tiene_horario_cortado: tieneHorarioCortado,
-      horario_manana: tieneHorarioCortado ? horarioManana.trim() : undefined,
-      horario_tarde: tieneHorarioCortado ? horarioTarde.trim() : undefined,
       // Farmacia de Turno
       esta_de_turno: rubroFinal === 'Farmacia' ? estaDeTurno : false,
       fecha_turno: rubroFinal === 'Farmacia' && estaDeTurno ? new Date().toISOString().split('T')[0] : undefined,
@@ -640,65 +651,68 @@ export default function CargarComercioPage() {
                 </div>
               </div>
 
-              {/* Sección de Horarios de Atención (Corrido o Cortado) */}
+              {/* Sección de Horarios de Atención con Selector Avanzado */}
               <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-zinc-400" />
-                    Horarios de Atención
-                  </label>
+                <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-cyan-400" />
+                  Días y Horarios de Atención (Soporta Bares y Trasnoche)
+                </label>
 
-                  <button
-                    type="button"
-                    onClick={() => setTieneHorarioCortado(!tieneHorarioCortado)}
-                    className={`text-[11px] px-3 py-1 rounded-lg border font-semibold transition-all cursor-pointer ${
-                      tieneHorarioCortado
-                        ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500/50'
-                        : 'bg-zinc-900 text-zinc-400 border-zinc-700'
-                    }`}
-                  >
-                    {tieneHorarioCortado ? '✓ Horario Cortado (Mañana y Tarde)' : 'Cambiar a Horario Cortado'}
-                  </button>
+                <SelectorHorariosAvanzados
+                  value={horariosConfig}
+                  onChange={(nuevoConf, resumen) => {
+                    setHorariosConfig(nuevoConf);
+                    setResumenHorarios(resumen);
+                  }}
+                />
+              </div>
+
+              {/* Credenciales de Acceso para el Comerciante */}
+              <div className="p-4 rounded-2xl bg-zinc-950/90 border border-violet-500/40 space-y-3 shadow-lg shadow-violet-950/20">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-violet-600/20 border border-violet-500/40 flex items-center justify-center text-cyan-400">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-white block">
+                      Credenciales de Gestión (Portal Mi Comercio)
+                    </span>
+                    <span className="text-[11px] text-zinc-400">
+                      Con estos datos podrás iniciar sesión en el portal para modificar tu negocio y ver estadísticas.
+                    </span>
+                  </div>
                 </div>
 
-                {!tieneHorarioCortado ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                   <div>
+                    <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
+                      Correo Electrónico de Gestión *
+                    </label>
                     <input
-                      type="text"
-                      value={horario}
-                      onChange={(e) => setHorario(e.target.value)}
-                      placeholder="Ej. Lunes a Sábados de 8:00 a 20:30"
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white"
+                      type="email"
+                      required
+                      value={emailComercio}
+                      onChange={(e) => setEmailComercio(e.target.value)}
+                      placeholder="tucorreo@comercio.com"
+                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     />
                   </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <div>
-                      <label className="block text-[11px] text-zinc-400 mb-1">
-                        Turno Mañana *
-                      </label>
-                      <input
-                        type="text"
-                        value={horarioManana}
-                        onChange={(e) => setHorarioManana(e.target.value)}
-                        placeholder="Ej. Lun a Sáb de 8:30 a 13:00"
-                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-zinc-400 mb-1">
-                        Turno Tarde *
-                      </label>
-                      <input
-                        type="text"
-                        value={horarioTarde}
-                        onChange={(e) => setHorarioTarde(e.target.value)}
-                        placeholder="Ej. Lun a Sáb de 16:30 a 20:30"
-                        className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs text-white"
-                      />
-                    </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
+                      Contraseña de Acceso al Comercio *
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      minLength={4}
+                      value={passwordComercio}
+                      onChange={(e) => setPasswordComercio(e.target.value)}
+                      placeholder="Mínimo 4 caracteres"
+                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    />
                   </div>
-                )}
+                </div>
               </div>
 
               {/* Casilla especial para Farmacias: ¿Está de Turno? */}

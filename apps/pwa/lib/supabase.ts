@@ -354,6 +354,12 @@ export async function guardarComercio(comercio: Comercio): Promise<{ success: bo
         fecha_cuarentena: comercio.fecha_cuarentena || null,
         motivo_cuarentena: comercio.motivo_cuarentena || null,
         strikes_reportes: comercio.strikes_reportes || 0,
+        // Nuevos campos de configuración avanzada y credenciales
+        horarios_config: comercio.horarios_config || null,
+        email_comercio: comercio.email_comercio || null,
+        password_comercio: comercio.password_comercio || null,
+        fecha_ultima_modificacion_catalogo: comercio.fecha_ultima_modificacion_catalogo || null,
+        productos: comercio.productos || [],
       };
 
       const { error } = await supabase.from('comercios').upsert([payload]);

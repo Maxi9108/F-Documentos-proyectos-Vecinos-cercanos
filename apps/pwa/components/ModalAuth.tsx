@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useUser } from '@/context/user-context';
+import ModalCambiarPassword from './ModalCambiarPassword';
 import {
   X,
   Mail,
@@ -16,7 +17,6 @@ import {
   ArrowRight,
   ArrowLeft,
   Check,
-  Copy,
   RefreshCw,
 } from 'lucide-react';
 
@@ -43,7 +43,6 @@ export default function ModalAuth() {
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [tokenIngresado, setTokenIngresado] = useState('');
-  const [tokenGenerado, setTokenGenerado] = useState<string | null>(null);
   const [password, setPassword] = useState('');
   const [claveConfirmacion, setClaveConfirmacion] = useState('');
 
@@ -51,7 +50,7 @@ export default function ModalAuth() {
   const [cargando, setCargando] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [mensajeError, setMensajeError] = useState<string | null>(null);
-  const [copiado, setCopiado] = useState(false);
+  const [modalPasswordAbierto, setModalPasswordAbierto] = useState(false);
 
   // Sincronizar modo si cambia desde el contexto
   React.useEffect(() => {
@@ -76,9 +75,6 @@ export default function ModalAuth() {
     setCargando(false);
 
     if (res.ok) {
-      if (res.token) {
-        setTokenGenerado(res.token);
-      }
       setMensajeExito(res.mensaje || 'Código de comprobación enviado a tu correo.');
       setPasoRegistro(2);
     } else {
@@ -154,15 +150,6 @@ export default function ModalAuth() {
     }
   };
 
-  const copiarToken = () => {
-    if (tokenGenerado) {
-      navigator.clipboard.writeText(tokenGenerado);
-      setTokenIngresado(tokenGenerado);
-      setCopiado(true);
-      setTimeout(() => setCopiado(false), 2000);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl p-6 sm:p-7 shadow-2xl overflow-hidden text-zinc-100">
@@ -230,16 +217,27 @@ export default function ModalAuth() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                cerrarSesion();
-                cerrarModalAuth();
-              }}
-              className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-rose-400 border border-zinc-800 hover:border-rose-900/50 rounded-xl text-xs font-semibold transition-all cursor-pointer"
-            >
-              Cerrar Sesión
-            </button>
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setModalPasswordAbierto(true)}
+                className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-cyan-300 border border-zinc-800 hover:border-cyan-500/50 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Cambiar Mi Contraseña</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  cerrarSesion();
+                  cerrarModalAuth();
+                }}
+                className="w-full py-2 px-4 bg-zinc-900/60 hover:bg-zinc-800 text-rose-400 border border-zinc-800/80 hover:border-rose-900/50 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+              >
+                Cerrar Sesión
+              </button>
+            </div>
           </div>
         ) : (
           /* Formulario de Registro / Login */
@@ -388,26 +386,15 @@ export default function ModalAuth() {
             {/* MODO REGISTRO - PASO 2: COMPROBAR TOKEN */}
             {modo === 'registro' && pasoRegistro === 2 && (
               <form onSubmit={handlePaso2ValidarToken} className="space-y-3.5">
-                <div className="p-3 bg-zinc-900/80 border border-zinc-800 rounded-2xl text-xs text-zinc-300 space-y-1">
-                  <p className="text-[11px] text-zinc-400">
-                    Comprobación de mail para: <strong className="text-white font-mono">{email}</strong>
+                <div className="p-3.5 bg-zinc-900/90 border border-zinc-800 rounded-2xl text-xs text-zinc-300 space-y-2">
+                  <div className="flex items-center gap-2 text-cyan-400 font-semibold">
+                    <Mail className="w-4 h-4 shrink-0" />
+                    <span>Código de verificación enviado</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Hemos enviado un código PIN de 6 dígitos a <strong className="text-white font-mono">{email}</strong>.
+                    Por favor revisa tu bandeja de entrada o carpeta de correo no deseado (spam) e ingrésalo a continuación para autenticar tu cuenta.
                   </p>
-                  {tokenGenerado && (
-                    <div className="mt-2 pt-2 border-t border-zinc-800 flex items-center justify-between gap-2">
-                      <div>
-                        <span className="text-[10px] text-zinc-500 block uppercase font-bold tracking-wider">Código de comprobación:</span>
-                        <span className="text-base font-mono font-bold text-cyan-300 tracking-widest">{tokenGenerado}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={copiarToken}
-                        className="py-1 px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-300 flex items-center gap-1 cursor-pointer transition-colors"
-                      >
-                        {copiado ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copiado ? 'Autocompletado' : 'Autocompletar'}</span>
-                      </button>
-                    </div>
-                  )}
                 </div>
 
                 <div>
@@ -568,6 +555,13 @@ export default function ModalAuth() {
           </div>
         )}
       </div>
+
+      {/* Modal para cambiar contraseña */}
+      <ModalCambiarPassword
+        abierto={modalPasswordAbierto}
+        onCerrar={() => setModalPasswordAbierto(false)}
+        tipo="usuario"
+      />
     </div>
   );
 }

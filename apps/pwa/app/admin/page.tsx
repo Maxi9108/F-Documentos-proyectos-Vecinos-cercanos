@@ -13,7 +13,15 @@ import {
   DebateInconveniente,
   ModificacionComercio,
   EstadoDebate,
+  UsuarioSistema,
+  EstadoUsuario,
+  RolUsuario,
 } from '@/types/comercio';
+import {
+  getUsuariosSistema,
+  cambiarEstadoUsuario,
+  eliminarUsuarioDefinitivo,
+} from '@/lib/usuarios';
 import {
   getComercios,
   eliminarComercio,
@@ -111,6 +119,8 @@ import {
   MessageSquare,
   ZoomIn,
   ChevronRight,
+  UserX,
+  Ban,
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -132,7 +142,19 @@ export default function AdminPage() {
     | 'categorias'
     | 'equipo'
     | 'perfil'
+    | 'usuarios'
   >('pendientes');
+
+  // Estados de Gestión de Usuarios Registrados
+  const [usuariosSistema, setUsuariosSistema] = useState<UsuarioSistema[]>([]);
+  const [busquedaUsuarios, setBusquedaUsuarios] = useState('');
+  const [filtroEstadoUsuario, setFiltroEstadoUsuario] = useState<'todos' | 'activo' | 'bloqueado' | 'baja'>('todos');
+  const [filtroRolUsuario, setFiltroRolUsuario] = useState<'todos' | 'usuario' | 'comerciante' | 'admin_nivel2' | 'superadmin'>('todos');
+  const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<UsuarioSistema | null>(null);
+  const [tipoModalUsuario, setTipoModalUsuario] = useState<'bloquear' | 'baja' | 'eliminar' | null>(null);
+  const [motivoAccionUsuario, setMotivoAccionUsuario] = useState('');
+  const [procesandoUsuario, setProcesandoUsuario] = useState(false);
+  const [mensajeUsuarioExito, setMensajeUsuarioExito] = useState<string | null>(null);
 
   // Datos
   const [comercios, setComercios] = useState<Comercio[]>([]);
@@ -258,7 +280,87 @@ export default function AdminPage() {
     const debs = await getDebates();
     setDebates(debs);
 
+    const usrs = await getUsuariosSistema();
+    setUsuariosSistema(usrs);
+
     setCargando(false);
+  };
+
+  // Filtrado y Acciones de Usuarios Registrados
+  const usuariosFiltrados = useMemo(() => {
+    return usuariosSistema.filter((u) => {
+      if (busquedaUsuarios) {
+        const query = busquedaUsuarios.toLowerCase();
+        const coincideNombre = u.nombre.toLowerCase().includes(query);
+        const coincideEmail = u.email.toLowerCase().includes(query);
+        const coincideComercio = u.comercio_nombre?.toLowerCase().includes(query);
+        if (!coincideNombre && !coincideEmail && !coincideComercio) return false;
+      }
+      if (filtroEstadoUsuario !== 'todos' && u.estado !== filtroEstadoUsuario) {
+        return false;
+      }
+      if (filtroRolUsuario !== 'todos' && u.rol !== filtroRolUsuario) {
+        return false;
+      }
+      return true;
+    });
+  }, [usuariosSistema, busquedaUsuarios, filtroEstadoUsuario, filtroRolUsuario]);
+
+  const handleEjecutarAccionUsuario = async () => {
+    if (!usuarioSeleccionado || !tipoModalUsuario) return;
+    setProcesandoUsuario(true);
+    setMensajeUsuarioExito(null);
+
+    if (tipoModalUsuario === 'bloquear') {
+      const res = await cambiarEstadoUsuario(
+        usuarioSeleccionado.id,
+        'bloqueado',
+        motivoAccionUsuario.trim() || 'Bloqueado por el Administrador'
+      );
+      if (res.exito) {
+        setMensajeUsuarioExito(`Usuario ${usuarioSeleccionado.nombre} ha sido bloqueado exitosamente.`);
+        setUsuariosSistema(await getUsuariosSistema());
+      } else {
+        alert(res.error || 'Error al bloquear usuario');
+      }
+    } else if (tipoModalUsuario === 'baja') {
+      const res = await cambiarEstadoUsuario(
+        usuarioSeleccionado.id,
+        'baja',
+        motivoAccionUsuario.trim() || 'Baja administrativa'
+      );
+      if (res.exito) {
+        setMensajeUsuarioExito(`Usuario ${usuarioSeleccionado.nombre} fue dado de baja.`);
+        setUsuariosSistema(await getUsuariosSistema());
+      } else {
+        alert(res.error || 'Error al dar de baja al usuario');
+      }
+    } else if (tipoModalUsuario === 'eliminar') {
+      const res = await eliminarUsuarioDefinitivo(usuarioSeleccionado.id);
+      if (res.exito) {
+        setMensajeUsuarioExito(
+          `Usuario ${usuarioSeleccionado.nombre} ha sido eliminado definitivamente. Ahora puede volver a registrarse desde cero.`
+        );
+        setUsuariosSistema(await getUsuariosSistema());
+      } else {
+        alert(res.error || 'Error al eliminar usuario');
+      }
+    }
+
+    setProcesandoUsuario(false);
+    setTipoModalUsuario(null);
+    setUsuarioSeleccionado(null);
+    setMotivoAccionUsuario('');
+  };
+
+  const handleReactivarUsuario = async (u: UsuarioSistema) => {
+    if (confirm(`¿Deseas reactivar al usuario ${u.nombre} (${u.email})? Volverá a tener acceso normal a la red.`)) {
+      const res = await cambiarEstadoUsuario(u.id, 'activo');
+      if (res.exito) {
+        setUsuariosSistema(await getUsuariosSistema());
+        setMensajeUsuarioExito(`Usuario ${u.nombre} reactivado correctamente.`);
+      }
+    }
   };
 
   const handleLogin = (e: React.FormEvent) => {
@@ -1177,6 +1279,19 @@ export default function AdminPage() {
           >
             <Tag className="w-4 h-4 text-indigo-400" />
             Gestión de Categorías ({categorias.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('usuarios')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              pestanaActiva === 'usuarios'
+                ? 'border-indigo-500 text-white'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Users className="w-4 h-4 text-emerald-400" />
+            Usuarios Registrados ({usuariosSistema.length})
           </button>
 
           {esSuperAdmin && (
@@ -3121,7 +3236,370 @@ export default function AdminPage() {
             )}
           </div>
         )}
+
+        {/* ============================================================== */}
+        {/* PESTAÑA: GESTIÓN DE USUARIOS REGISTRADOS                      */}
+        {/* ============================================================== */}
+        {pestanaActiva === 'usuarios' && (
+          <div className="space-y-6">
+            {/* Mensaje de feedback de acciones */}
+            {mensajeUsuarioExito && (
+              <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/50 flex items-center gap-3 text-xs text-emerald-200 animate-in fade-in">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                <span>{mensajeUsuarioExito}</span>
+              </div>
+            )}
+
+            {/* Cabecera y Resumen de Cuentas */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
+                <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Total Registrados</span>
+                <div className="text-2xl font-black text-white">{usuariosSistema.length}</div>
+                <span className="text-[11px] text-zinc-400">En la red comunitaria</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
+                <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Cuentas Activas</span>
+                <div className="text-2xl font-black text-emerald-400">
+                  {usuariosSistema.filter((u) => u.estado === 'activo').length}
+                </div>
+                <span className="text-[11px] text-emerald-500/80">Acceso normal habilitado</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
+                <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">Bloqueados</span>
+                <div className="text-2xl font-black text-rose-400">
+                  {usuariosSistema.filter((u) => u.estado === 'bloqueado').length}
+                </div>
+                <span className="text-[11px] text-rose-400/80">Por moderación o reportes</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
+                <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider">En Baja</span>
+                <div className="text-2xl font-black text-amber-400">
+                  {usuariosSistema.filter((u) => u.estado === 'baja').length}
+                </div>
+                <span className="text-[11px] text-amber-400/80">Desactivados voluntario/admin</span>
+              </div>
+            </div>
+
+            {/* Barra de Búsqueda y Filtros */}
+            <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-3xl space-y-3">
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <div className="relative flex-1 w-full">
+                  <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={busquedaUsuarios}
+                    onChange={(e) => setBusquedaUsuarios(e.target.value)}
+                    placeholder="Buscar por nombre, correo electrónico o comercio asociado..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <select
+                    value={filtroEstadoUsuario}
+                    onChange={(e) => setFiltroEstadoUsuario(e.target.value as any)}
+                    className="flex-1 sm:flex-initial px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                  >
+                    <option value="todos">Todos los Estados</option>
+                    <option value="activo">Solo Activos</option>
+                    <option value="bloqueado">Solo Bloqueados</option>
+                    <option value="baja">Solo en Baja</option>
+                  </select>
+
+                  <select
+                    value={filtroRolUsuario}
+                    onChange={(e) => setFiltroRolUsuario(e.target.value as any)}
+                    className="flex-1 sm:flex-initial px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                  >
+                    <option value="todos">Todos los Roles</option>
+                    <option value="usuario">Vecinos / Clientes</option>
+                    <option value="comerciante">Comerciantes</option>
+                    <option value="admin_nivel2">Administradores (Nivel 2)</option>
+                    <option value="superadmin">SuperAdmin</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Tabla de Usuarios Registrados */}
+            <div className="bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
+              {usuariosFiltrados.length === 0 ? (
+                <div className="p-12 text-center space-y-2">
+                  <Users className="w-10 h-10 text-zinc-600 mx-auto" />
+                  <h4 className="text-sm font-bold text-white">No se encontraron usuarios</h4>
+                  <p className="text-xs text-zinc-400">Intenta modificando los términos de búsqueda o filtros.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto no-scrollbar">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-zinc-800 bg-zinc-900/60 text-zinc-400 font-semibold uppercase tracking-wider text-[10px]">
+                        <th className="py-3 px-4">Usuario</th>
+                        <th className="py-3 px-4">Rol</th>
+                        <th className="py-3 px-4">Estado</th>
+                        <th className="py-3 px-4">Registro / Acceso</th>
+                        <th className="py-3 px-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/80">
+                      {usuariosFiltrados.map((u) => {
+                        const esSuperAdminTarget = u.rol === 'superadmin';
+                        return (
+                          <tr key={u.id} className="hover:bg-zinc-900/40 transition-colors">
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-violet-600 flex items-center justify-center text-white font-bold text-xs shrink-0">
+                                  {u.nombre.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <span className="font-bold text-white block">{u.nombre}</span>
+                                  <span className="text-[11px] text-zinc-400 font-mono block">{u.email}</span>
+                                  {u.comercio_nombre && (
+                                    <span className="text-[10px] text-cyan-400 flex items-center gap-1 mt-0.5">
+                                      <Store className="w-3 h-3" />
+                                      {u.comercio_nombre}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                                  u.rol === 'superadmin'
+                                    ? 'bg-amber-950/80 text-amber-300 border-amber-600/50'
+                                    : u.rol === 'admin_nivel2'
+                                    ? 'bg-indigo-950/80 text-indigo-300 border-indigo-600/50'
+                                    : u.rol === 'comerciante'
+                                    ? 'bg-cyan-950/80 text-cyan-300 border-cyan-600/50'
+                                    : 'bg-zinc-900 text-zinc-300 border-zinc-800'
+                                }`}
+                              >
+                                {u.rol}
+                              </span>
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <div>
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border inline-flex items-center gap-1 ${
+                                    u.estado === 'activo'
+                                      ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
+                                      : u.estado === 'bloqueado'
+                                      ? 'bg-rose-950/80 text-rose-300 border-rose-600/60'
+                                      : 'bg-amber-950/60 text-amber-300 border-amber-800/60'
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full ${
+                                      u.estado === 'activo'
+                                        ? 'bg-emerald-400'
+                                        : u.estado === 'bloqueado'
+                                        ? 'bg-rose-400'
+                                        : 'bg-amber-400'
+                                    }`}
+                                  />
+                                  <span>{u.estado.toUpperCase()}</span>
+                                </span>
+                                {u.motivo_estado && (
+                                  <span className="block text-[10.5px] text-zinc-400 mt-1 max-w-xs italic line-clamp-1">
+                                    {u.motivo_estado}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-zinc-400 text-[11px]">
+                              <div>
+                                <span>Alta: {new Date(u.fecha_registro).toLocaleDateString('es-AR')}</span>
+                                {u.ultimo_acceso && (
+                                  <span className="block text-[10px] text-zinc-500 font-mono">
+                                    Último: {new Date(u.ultimo_acceso).toLocaleDateString('es-AR')}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right">
+                              {esSuperAdminTarget ? (
+                                <span className="text-[11px] text-zinc-500 italic">Cuenta Protegida</span>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {u.estado !== 'activo' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleReactivarUsuario(u)}
+                                      className="py-1 px-2.5 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800/60 text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                                      title="Reactivar cuenta de usuario"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                      <span>Reactivar</span>
+                                    </button>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setUsuarioSeleccionado(u);
+                                          setTipoModalUsuario('bloquear');
+                                          setMotivoAccionUsuario('');
+                                        }}
+                                        className="py-1 px-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-800/60 text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                                        title="Bloquear acceso"
+                                      >
+                                        <Ban className="w-3.5 h-3.5 text-rose-400" />
+                                        <span>Bloquear</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setUsuarioSeleccionado(u);
+                                          setTipoModalUsuario('baja');
+                                          setMotivoAccionUsuario('');
+                                        }}
+                                        className="py-1 px-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-amber-300 border border-zinc-800 text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                                        title="Dar de baja de la plataforma"
+                                      >
+                                        <UserX className="w-3.5 h-3.5 text-amber-400" />
+                                        <span>Baja</span>
+                                      </button>
+                                    </>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setUsuarioSeleccionado(u);
+                                      setTipoModalUsuario('eliminar');
+                                    }}
+                                    className="p-1.5 rounded-xl bg-zinc-900 hover:bg-rose-950 text-zinc-500 hover:text-rose-400 border border-zinc-800 text-[11px] font-semibold cursor-pointer transition-colors"
+                                    title="Borrado definitivo para permitir nuevo registro desde cero"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Modal de Acción sobre Usuario (Bloquear / Dar de Baja / Borrado Definitivo) */}
+      {tipoModalUsuario && usuarioSeleccionado && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-3xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                {tipoModalUsuario === 'bloquear' && <Ban className="w-4 h-4 text-rose-400" />}
+                {tipoModalUsuario === 'baja' && <UserX className="w-4 h-4 text-amber-400" />}
+                {tipoModalUsuario === 'eliminar' && <Trash2 className="w-4 h-4 text-rose-500" />}
+                <span>
+                  {tipoModalUsuario === 'bloquear' && 'Bloquear Usuario'}
+                  {tipoModalUsuario === 'baja' && 'Dar de Baja Usuario'}
+                  {tipoModalUsuario === 'eliminar' && 'Borrado Definitivo de Usuario'}
+                </span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setTipoModalUsuario(null);
+                  setUsuarioSeleccionado(null);
+                }}
+                className="p-1 text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-zinc-900/80 rounded-2xl border border-zinc-800 text-xs text-zinc-300 space-y-1">
+              <span className="text-[10px] text-zinc-500 uppercase font-bold block">Usuario Objetivo:</span>
+              <strong className="text-white block font-semibold">{usuarioSeleccionado.nombre}</strong>
+              <span className="font-mono text-zinc-400 text-[11px]">{usuarioSeleccionado.email}</span>
+            </div>
+
+            {tipoModalUsuario === 'eliminar' ? (
+              <div className="p-3.5 rounded-2xl bg-rose-950/60 border border-rose-600/50 text-xs text-rose-200 space-y-2">
+                <strong className="block font-bold">⚠️ Atención: Borrado Definitivo</strong>
+                <p className="text-[11px] leading-relaxed">
+                  Esta acción eliminará completamente la cuenta y liberará el correo electrónico{' '}
+                  <strong className="text-white font-mono">{usuarioSeleccionado.email}</strong>, permitiendo que la persona pueda volver a registrarse desde cero y verificar su cuenta nuevamente si lo desea.
+                </p>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                  Motivo de la acción:
+                </label>
+                <input
+                  type="text"
+                  value={motivoAccionUsuario}
+                  onChange={(e) => setMotivoAccionUsuario(e.target.value)}
+                  placeholder={
+                    tipoModalUsuario === 'bloquear'
+                      ? 'Ej: Conducta indebida, reportes falsos reiterados'
+                      : 'Ej: Desactivación por solicitud o inactividad'
+                  }
+                  className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+            )}
+
+            <div className="pt-2 flex justify-end gap-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setTipoModalUsuario(null);
+                  setUsuarioSeleccionado(null);
+                }}
+                className="py-2 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                disabled={procesandoUsuario}
+                onClick={handleEjecutarAccionUsuario}
+                className={`py-2 px-4 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                  tipoModalUsuario === 'eliminar'
+                    ? 'bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-950/50'
+                    : tipoModalUsuario === 'bloquear'
+                    ? 'bg-rose-700 hover:bg-rose-600'
+                    : 'bg-amber-600 hover:bg-amber-500'
+                }`}
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>
+                  {procesandoUsuario
+                    ? 'Procesando...'
+                    : tipoModalUsuario === 'eliminar'
+                    ? 'Confirmar Borrado Definitivo'
+                    : tipoModalUsuario === 'bloquear'
+                    ? 'Confirmar Bloqueo'
+                    : 'Confirmar Baja'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal para Visualizar Comprobante en Alta Resolución */}
       {imagenModalUrl && (

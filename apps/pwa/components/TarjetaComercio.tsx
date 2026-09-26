@@ -23,6 +23,7 @@ import {
   Heart,
   Flag,
 } from 'lucide-react';
+import { verificarComercioAbierto } from '@/lib/horarios';
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
@@ -77,10 +78,14 @@ export default function TarjetaComercio({
     bordeClases = 'border-purple-500/40 hover:border-purple-500 shadow-md shadow-purple-950/20';
   }
 
-  // Estado operativo legible
-  let estadoBadgeTexto = comercio.esta_abierto ? 'Abierto' : 'Cerrado';
-  let estadoBadgeClases = comercio.esta_abierto
-    ? 'bg-emerald-950/50 text-emerald-400 border-emerald-800/50'
+  // Estado operativo en tiempo real con soporte de días específicos y trasnoche
+  const infoHorario = verificarComercioAbierto(comercio);
+
+  let estadoBadgeTexto = infoHorario.badgeTexto;
+  let estadoBadgeClases = infoHorario.estaAbierto
+    ? infoHorario.esTrasnoche
+      ? 'bg-violet-950/80 text-violet-300 border-violet-500/50 shadow-sm shadow-violet-950/50'
+      : 'bg-emerald-950/50 text-emerald-400 border-emerald-800/50'
     : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/60';
 
   if (comercio.cerrado_momentaneo) {
@@ -239,9 +244,14 @@ export default function TarjetaComercio({
           </p>
         )}
 
-        {/* Horarios (Cortados o Continuos) */}
-        <div className="mb-3 p-2 rounded-xl bg-zinc-950/60 border border-zinc-800/60 text-xs text-zinc-300">
-          {comercio.tiene_horario_cortado ? (
+        {/* Horarios (Estructurados, Cortados o Continuos) */}
+        <div className="mb-3 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/60 text-xs text-zinc-300">
+          {comercio.horarios_config?.resumenFormateado ? (
+            <p className="flex items-start gap-1.5 text-[11px] text-zinc-300 leading-snug">
+              <Clock className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+              <span>{comercio.horarios_config.resumenFormateado}</span>
+            </p>
+          ) : comercio.tiene_horario_cortado ? (
             <div className="space-y-1">
               <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Horario Cortado:</span>
               <div className="flex items-center justify-between text-[11px] text-zinc-300">
@@ -350,7 +360,7 @@ export default function TarjetaComercio({
               rel="noopener noreferrer"
               onClick={() => registrarEvento('clic_whatsapp', comercio.id, comercio.nombre, { canal: 'tarjeta_directa' })}
               title="Pedir por WhatsApp"
-              className="p-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white transition-colors flex items-center justify-center cursor-pointer no-underline shadow-md shadow-emerald-950/40"
+              className="p-2 sm:p-2 min-w-[38px] min-h-[38px] rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center justify-center cursor-pointer no-underline shadow-md shadow-emerald-950/50"
             >
               <MessageSquare className="w-4 h-4" />
             </a>
@@ -361,7 +371,7 @@ export default function TarjetaComercio({
               href={`tel:${cleanPhone}`}
               onClick={() => registrarEvento('clic_llamada', comercio.id, comercio.nombre)}
               title="Llamar al local"
-              className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors flex items-center justify-center no-underline"
+              className="p-2 sm:p-2 min-w-[38px] min-h-[38px] rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all flex items-center justify-center no-underline border border-zinc-700/60"
             >
               <Phone className="w-4 h-4" />
             </a>

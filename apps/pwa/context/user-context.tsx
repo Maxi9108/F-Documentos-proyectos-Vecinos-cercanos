@@ -5,6 +5,7 @@ import { obtenerUbicacionGpsActual, PosicionSatelital } from '@/lib/geolocation'
 import { supabase } from '@/lib/supabase';
 import { Administrador } from '@/types/comercio';
 import { obtenerAdminPorEmail, guardarSesion, cerrarSesionAdmin } from '@/lib/auth-admin';
+import { getUsuariosSistema, registrarOActualizarUsuario } from '@/lib/usuarios';
 
 export interface Usuario {
   id: string;
@@ -13,6 +14,8 @@ export interface Usuario {
   creado_en: string;
   esAdmin?: boolean;
   rol?: 'superadmin' | 'admin_nivel2' | 'usuario';
+  estado?: 'activo' | 'bloqueado' | 'baja';
+  motivo_estado?: string;
 }
 
 export interface UbicacionFavorita {
@@ -231,6 +234,19 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
       setUsuario(nuevoUsuario);
       localStorage.setItem(STORAGE_KEYS.USUARIO, JSON.stringify(nuevoUsuario));
+
+      // Registrar en la lista del sistema para que el administrador pueda auditar
+      registrarOActualizarUsuario({
+        id: nuevoUsuario.id,
+        email: cleanEmail,
+        nombre: nuevoUsuario.nombre || cleanEmail.split('@')[0],
+        password_hash: password,
+        rol: admin ? admin.rol : 'usuario',
+        estado: 'activo',
+        fecha_registro: nuevoUsuario.creado_en,
+        ultimo_acceso: new Date().toISOString(),
+      }).catch(() => {});
+
       setModalAuthAbierto(false);
       return { ok: true, mensaje: '¡Cuenta creada con éxito! Bienvenido/a a Vecin@s Conectad@s.' };
     } catch (err: any) {
@@ -264,10 +280,17 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         Promise.resolve(supabase.from('tokens_registro').upsert(datosToken)).catch(() => {});
       }
 
+      // Disparar envío de correo mediante la ruta de API segura
+      fetch('/api/enviar-codigo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, nombre: cleanNombre, token }),
+      }).catch((e) => console.warn('[UserContext] Error al invocar envío de correo:', e));
+
+      // NO devolvemos el token a la UI para mantener la verificación segura
       return {
         ok: true,
-        token,
-        mensaje: `Código de comprobación generado para ${cleanEmail}. Ingrésalo para verificar tu correo.`,
+        mensaje: `Código de comprobación enviado a ${cleanEmail}. Ingrésalo para verificar tu correo.`,
       };
     } catch (e: any) {
       return { ok: false, mensaje: 'Error al generar el código de verificación.' };
@@ -346,6 +369,27 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
+      // Verificar si el usuario ha sido bloqueado o dado de baja por un administrador
+      const todosUsuarios = await getUsuariosSistema();
+      const registrado = todosUsuarios.find((u) => u.email.toLowerCase() === cleanEmail);
+
+      if (registrado) {
+        if (registrado.estado === 'bloqueado') {
+          return {
+            ok: false,
+            mensaje: `Tu cuenta ha sido bloqueada por un administrador.${
+              registrado.motivo_estado ? ` Motivo: ${registrado.motivo_estado}` : ''
+            }`,
+          };
+        }
+        if (registrado.estado === 'baja') {
+          return {
+            ok: false,
+            mensaje: 'Esta cuenta ha sido dada de baja en el sistema.',
+          };
+        }
+      }
+
       if (supabase) {
         try {
           await supabase.auth.signInWithPassword({

@@ -121,6 +121,13 @@ export interface Comercio {
   fecha_cuarentena?: string;
   motivo_cuarentena?: string;
   strikes_reportes?: number;
+  // Configuración avanzada de días y horarios (con soporte trasnoche)
+  horarios_config?: HorariosConfig;
+  // Credenciales exclusivas del comercio para portal mi-comercio
+  email_comercio?: string;
+  password_comercio?: string;
+  // Control de modificación de catálogo (1 vez por mes / 30 días)
+  fecha_ultima_modificacion_catalogo?: string;
 }
 
 export type MotivoReporte =
@@ -211,7 +218,8 @@ export type TipoEvento =
   | 'modificacion_comercio_aprobada'
   | 'debate_iniciado'
   | 'debate_respondido'
-  | 'debate_resuelto';
+  | 'debate_resuelto'
+  | 'catalogo_actualizado_mensual';
 
 export interface EventoAnalytics {
   id: string;
@@ -307,4 +315,69 @@ export interface TokenRegistro {
   token: string;
   expira: number; // Timestamp en ms
 }
+
+// ==============================================================================
+// 15. ESTRUCTURA AVANZADA DE HORARIOS Y TRASNOCHE (Bares, Restoranes, Locales)
+// ==============================================================================
+export interface HorarioTurno {
+  abre: string;   // Formato "HH:mm", ej: "20:00"
+  cierra: string; // Formato "HH:mm", ej: "03:00"
+  esTrasnoche?: boolean; // Verdadero si cierra al día siguiente (ej. 20:00 a 03:00)
+}
+
+export interface HorarioDia {
+  abierto: boolean;
+  turnos: HorarioTurno[]; // 1 turno = corrido, 2 turnos = mañana y tarde
+}
+
+export type DiaSemana =
+  | 'lunes'
+  | 'martes'
+  | 'miercoles'
+  | 'jueves'
+  | 'viernes'
+  | 'sabado'
+  | 'domingo';
+
+export interface HorariosConfig {
+  modo: 'bloques' | 'personalizado';
+  // Modo Bloques: Lun a Vie, Sábados y Domingos
+  bloques?: {
+    lunesViernes: HorarioDia;
+    sabado: HorarioDia;
+    domingoFeriados: HorarioDia;
+  };
+  // Modo Personalizado: Día por día específico
+  dias?: {
+    lunes: HorarioDia;
+    martes: HorarioDia;
+    miercoles: HorarioDia;
+    jueves: HorarioDia;
+    viernes: HorarioDia;
+    sabado: HorarioDia;
+    domingo: HorarioDia;
+  };
+  resumenFormateado?: string;
+}
+
+// ==============================================================================
+// 16. GESTIÓN Y MODERACIÓN DE USUARIOS DEL SISTEMA
+// ==============================================================================
+export type RolUsuario = 'usuario' | 'comerciante' | 'admin_nivel2' | 'superadmin';
+export type EstadoUsuario = 'activo' | 'bloqueado' | 'baja';
+
+export interface UsuarioSistema {
+  id: string;
+  email: string;
+  nombre: string;
+  password_hash?: string;
+  rol: RolUsuario;
+  estado: EstadoUsuario;
+  motivo_estado?: string;
+  comercio_id?: string;
+  comercio_nombre?: string;
+  fecha_registro: string;
+  ultimo_acceso?: string;
+}
+
 

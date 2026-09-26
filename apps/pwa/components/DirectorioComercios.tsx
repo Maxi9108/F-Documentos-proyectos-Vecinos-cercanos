@@ -8,11 +8,13 @@ import TarjetaComercio from './TarjetaComercio';
 import ModalDetalleComercio from './ModalDetalleComercio';
 import ModalReportarComercio from './ModalReportarComercio';
 import PaletaOfertas from './PaletaOfertas';
-import { Map, List, Store, Sparkles, Navigation } from 'lucide-react';
+import Link from 'next/link';
+import { Map, List, Store, Sparkles, Navigation, User } from 'lucide-react';
 
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm } from '@/lib/geolocation';
+import { verificarComercioAbierto } from '@/lib/horarios';
 
 interface DirectorioComerciosProps {
   initialComercios: Comercio[];
@@ -63,7 +65,8 @@ export default function DirectorioComercios({
   const [comercioSeleccionado, setComercioSeleccionado] = useState<Comercio | null>(null);
   const [comercioModal, setComercioModal] = useState<Comercio | null>(null);
   const [comercioAReportar, setComercioAReportar] = useState<Comercio | null>(null);
-  const [vistaMovil, setVistaMovil] = useState<'ambos' | 'mapa' | 'lista'>('ambos');
+  // En móviles inicia por defecto en 'lista' para mayor rapidez y prolijidad visual
+  const [vistaMovil, setVistaMovil] = useState<'ambos' | 'mapa' | 'lista'>('lista');
 
   const {
     favoritosIds,
@@ -71,6 +74,8 @@ export default function DirectorioComercios({
     ubicacionReferencia,
     gpsActivo,
     activarGps,
+    estaAutenticado,
+    abrirModalAuth,
   } = useUser();
 
   const [soloFavoritos, setSoloFavoritos] = useState(false);
@@ -183,7 +188,8 @@ export default function DirectorioComercios({
 
       const coincideBusqueda = coincideComercio || coincideProductos;
       const coincideRubro = rubroSeleccionado === 'Todos' || comercio.rubro === rubroSeleccionado;
-      const coincideAbierto = !soloAbiertos || (comercio.esta_abierto && !comercio.cerrado_momentaneo && !comercio.en_vacaciones);
+      // Compatibilidad inteligente con trasnoche y horarios estructurados
+      const coincideAbierto = !soloAbiertos || verificarComercioAbierto(comercio).estaAbierto;
       const coincideTurno = !soloTurno || Boolean(comercio.esta_de_turno);
       const coincideFavorito = !soloFavoritos || esFavorito(comercio.id);
 
@@ -368,42 +374,42 @@ export default function DirectorioComercios({
             />
           </section>
 
-          {/* Selector de vista para móviles */}
-          <div className="flex lg:hidden items-center justify-between bg-zinc-900 p-1.5 rounded-2xl border border-zinc-800">
+          {/* Selector de vista para móviles mejorado */}
+          <div className="flex lg:hidden items-center justify-between bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 shadow-sm">
             <button
               type="button"
-              onClick={() => setVistaMovil('ambos')}
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                vistaMovil === 'ambos'
-                  ? 'bg-zinc-800 text-white shadow-sm'
-                  : 'text-zinc-400'
+              onClick={() => setVistaMovil('lista')}
+              className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                vistaMovil === 'lista'
+                  ? 'bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md'
+                  : 'text-zinc-400 hover:text-white'
               }`}
             >
-              Vista Dividida
+              <List className="w-3.5 h-3.5" />
+              <span>Lista de Locales</span>
             </button>
             <button
               type="button"
               onClick={() => setVistaMovil('mapa')}
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+              className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 vistaMovil === 'mapa'
-                  ? 'bg-zinc-800 text-white shadow-sm'
-                  : 'text-zinc-400'
+                  ? 'bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md'
+                  : 'text-zinc-400 hover:text-white'
               }`}
             >
               <Map className="w-3.5 h-3.5" />
-              Solo Mapa
+              <span>Solo Mapa</span>
             </button>
             <button
               type="button"
-              onClick={() => setVistaMovil('lista')}
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                vistaMovil === 'lista'
+              onClick={() => setVistaMovil('ambos')}
+              className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                vistaMovil === 'ambos'
                   ? 'bg-zinc-800 text-white shadow-sm'
-                  : 'text-zinc-400'
+                  : 'text-zinc-400 hover:text-white'
               }`}
             >
-              <List className="w-3.5 h-3.5" />
-              Solo Lista
+              <span>Dividida</span>
             </button>
           </div>
 
@@ -520,6 +526,104 @@ export default function DirectorioComercios({
         comercio={comercioAReportar}
         onReporteEnviado={handleReporteEnviado}
       />
+
+      {/* Botón Flotante para Alternar Rápido Lista y Mapa en Celulares */}
+      {seccionActiva === 'directorio' && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 lg:hidden pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => setVistaMovil((prev) => (prev === 'mapa' ? 'lista' : 'mapa'))}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-zinc-950/95 hover:bg-black text-white border border-cyan-500/50 shadow-2xl shadow-cyan-950/90 backdrop-blur-md text-xs font-bold transition-all active:scale-95 cursor-pointer hover:border-cyan-400 ring-2 ring-violet-500/20"
+          >
+            {vistaMovil === 'mapa' ? (
+              <>
+                <List className="w-4 h-4 text-cyan-400" />
+                <span>Ver Lista de Locales</span>
+              </>
+            ) : (
+              <>
+                <Map className="w-4 h-4 text-violet-400" />
+                <span>Ver en el Mapa</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Barra de Navegación Inferior Fija para Móviles (Bottom Dock Ergonomic) */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800/90 px-3 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.8)]">
+        <div className="flex items-center justify-around max-w-md mx-auto">
+          {/* 1. Locales / Directorio */}
+          <button
+            type="button"
+            onClick={() => {
+              setSeccionActiva('directorio');
+              setVistaMovil('lista');
+            }}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+              seccionActiva === 'directorio' && vistaMovil === 'lista'
+                ? 'text-cyan-400 font-bold'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            <List className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Locales</span>
+          </button>
+
+          {/* 2. Mapa */}
+          <button
+            type="button"
+            onClick={() => {
+              setSeccionActiva('directorio');
+              setVistaMovil('mapa');
+            }}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all cursor-pointer ${
+              seccionActiva === 'directorio' && vistaMovil === 'mapa'
+                ? 'text-violet-400 font-bold'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            <Map className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Mapa</span>
+          </button>
+
+          {/* 3. Ofertas Barriales */}
+          <button
+            type="button"
+            onClick={() => setSeccionActiva('ofertas')}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-all relative cursor-pointer ${
+              seccionActiva === 'ofertas'
+                ? 'text-amber-400 font-bold'
+                : 'text-zinc-500 hover:text-amber-300'
+            }`}
+          >
+            <Sparkles className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Ofertas</span>
+            {totalOfertas > 0 && (
+              <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            )}
+          </button>
+
+          {/* 4. Mi Comercio */}
+          <Link
+            href="/mi-comercio"
+            className="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-zinc-500 hover:text-cyan-400 transition-all cursor-pointer"
+          >
+            <Store className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">Comercio</span>
+          </Link>
+
+          {/* 5. Mi Cuenta / Login */}
+          <button
+            type="button"
+            onClick={() => abrirModalAuth()}
+            className="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-zinc-500 hover:text-white transition-all cursor-pointer"
+          >
+            <User className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px]">{estaAutenticado ? 'Perfil' : 'Ingresar'}</span>
+          </button>
+        </div>
+      </nav>
     </div>
   );
 }

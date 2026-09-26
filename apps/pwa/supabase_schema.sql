@@ -90,6 +90,11 @@ ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS en_cuarentena BOOLEAN DEFA
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS fecha_cuarentena TIMESTAMP WITH TIME ZONE;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS motivo_cuarentena TEXT;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS strikes_reportes INTEGER DEFAULT 0;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS horarios_config JSONB;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS email_comercio TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS password_comercio TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS fecha_ultima_modificacion_catalogo TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS catalogo JSONB;
 
 -- 3. Tabla Secundaria: productos (catálogo y ofertas)
 CREATE TABLE IF NOT EXISTS public.productos (
@@ -340,5 +345,43 @@ CREATE TRIGGER trg_verificar_reportes_cuarentena
 AFTER INSERT ON public.reportes
 FOR EACH ROW
 EXECUTE FUNCTION public.fn_verificar_reportes_cuarentena();
+
+-- ==============================================================================
+-- 9. Tabla de Usuarios Registrados del Sistema
+-- Administrada desde el panel con soporte para bloqueo, baja y borrado definitivo.
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.usuarios (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    nombre TEXT NOT NULL,
+    rol TEXT NOT NULL DEFAULT 'usuario', -- 'usuario', 'comerciante', 'admin', 'superadmin'
+    estado TEXT NOT NULL DEFAULT 'activo', -- 'activo', 'bloqueado', 'baja'
+    motivo_estado TEXT,
+    comercio_id TEXT,
+    comercio_nombre TEXT,
+    fecha_registro TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    ultimo_acceso TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Habilitar RLS en usuarios
+ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Lectura pública de usuarios" ON public.usuarios FOR SELECT USING (true);
+CREATE POLICY "Gestión completa de usuarios" ON public.usuarios FOR ALL USING (true);
+
+-- ==============================================================================
+-- 10. Tabla de Tokens de Registro y Verificación por Email
+-- Los tokens nunca se muestran en pantalla, viajan por correo para autenticar.
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.tokens_registro (
+    email TEXT PRIMARY KEY,
+    token TEXT NOT NULL,
+    expira_en BIGINT NOT NULL,
+    intentos INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.tokens_registro ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Gestión de tokens" ON public.tokens_registro FOR ALL USING (true);
+
 
 

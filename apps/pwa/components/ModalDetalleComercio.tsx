@@ -28,6 +28,7 @@ import {
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
+import { verificarComercioAbierto } from '@/lib/horarios';
 import ContadorMembresia from '@/components/ContadorMembresia';
 import ModalCrearDebate from '@/components/ModalCrearDebate';
 
@@ -96,10 +97,14 @@ export default function ModalDetalleComercio({
     return `https://wa.me/${cleanWhatsapp.replace('+', '')}?text=${encodeURIComponent(mensaje)}`;
   };
 
-  // Badge de Estado Operativo
-  let estadoBadgeTexto = comercio.esta_abierto ? 'Abierto ahora' : 'Cerrado';
-  let estadoBadgeClases = comercio.esta_abierto
-    ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/60'
+  // Badge de Estado Operativo en tiempo real con soporte de trasnoche
+  const infoHorario = verificarComercioAbierto(comercio);
+
+  let estadoBadgeTexto = infoHorario.badgeTexto;
+  let estadoBadgeClases = infoHorario.estaAbierto
+    ? infoHorario.esTrasnoche
+      ? 'bg-violet-950/80 text-violet-300 border-violet-500/50 shadow-sm shadow-violet-950/50'
+      : 'bg-emerald-950/60 text-emerald-400 border-emerald-800/60'
     : 'bg-zinc-900 text-zinc-400 border-zinc-800';
 
   if (comercio.cerrado_momentaneo) {
@@ -294,13 +299,22 @@ export default function ModalDetalleComercio({
               )}
             </div>
 
-            {/* Tarjeta de Horarios (Continuo o Cortado) */}
+            {/* Tarjeta de Horarios (Estructurados, Cortados o Continuos) */}
             <div className="p-3.5 rounded-2xl bg-zinc-900/70 border border-zinc-800 text-xs">
               <span className="text-zinc-400 font-semibold flex items-center gap-1.5 mb-2">
                 <Clock className="w-4 h-4 text-emerald-400" />
                 Horarios de Atención:
               </span>
-              {comercio.tiene_horario_cortado ? (
+              {comercio.horarios_config?.resumenFormateado ? (
+                <div className="space-y-1.5 pl-1">
+                  <p className="text-zinc-200 text-xs font-medium leading-relaxed">
+                    {comercio.horarios_config.resumenFormateado}
+                  </p>
+                  <p className="text-[10px] text-cyan-400/80">
+                    * Estado actual verificado en tiempo real con soporte de días especiales y trasnoche.
+                  </p>
+                </div>
+              ) : comercio.tiene_horario_cortado ? (
                 <div className="grid grid-cols-2 gap-2">
                   <div className="p-2 rounded-xl bg-zinc-950/80 border border-zinc-800/80">
                     <span className="text-[10px] text-zinc-500 font-bold uppercase flex items-center gap-1">
