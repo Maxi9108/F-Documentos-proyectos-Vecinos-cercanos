@@ -247,8 +247,8 @@ export default function MiComercioPage() {
     cargarRelacionados();
   }, [comercioSeleccionadoId]);
 
-  // Manejar login de comercio
-  const handleLoginComercio = (e: React.FormEvent) => {
+  // Manejar login de comercio seguro (sin backdoors y validado en servidor)
+  const handleLoginComercio = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
@@ -263,19 +263,33 @@ export default function MiComercioPage() {
       return;
     }
 
-    const passEsperada = com.password_comercio || 'comercio123';
-    // Acepta password configurada, 'comercio123' de demo inicial, o 'admin'
-    if (loginPassword === passEsperada || loginPassword === 'comercio123' || loginPassword === 'admin') {
-      setComercioAutenticadoId(com.id);
-      setComercioSeleccionadoId(com.id);
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('vecinos_comercio_auth_id', com.id);
+    try {
+      const res = await fetch('/api/auth-comercio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          comercioId: com.id,
+          email: loginEmail || undefined,
+          password: loginPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.ok && data.comercio) {
+        setComercioAutenticadoId(data.comercio.id);
+        setComercioSeleccionadoId(data.comercio.id);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('vecinos_comercio_auth_id', data.comercio.id);
+        }
+        cargarDatosFormulario(data.comercio);
+        setLoginPassword('');
+        setLoginError(null);
+      } else {
+        setLoginError(data.error || 'Contraseña incorrecta. Por favor verifica tus credenciales.');
       }
-      cargarDatosFormulario(com);
-      setLoginPassword('');
-      setLoginError(null);
-    } else {
-      setLoginError('Contraseña incorrecta. Por favor ingresa la clave de tu comercio.');
+    } catch (err) {
+      setLoginError('Error de conexión al verificar credenciales.');
     }
   };
 

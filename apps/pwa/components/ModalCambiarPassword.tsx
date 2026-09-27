@@ -5,6 +5,7 @@ import { Lock, CheckCircle2, AlertCircle, Eye, EyeOff, ShieldCheck, X } from 'lu
 import { useUser } from '@/context/user-context';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { getAdminActual, getAdministradores, actualizarAdmin } from '@/lib/auth-admin';
+import { hashPassword, verifyPassword } from '@/lib/crypto';
 
 interface ModalCambiarPasswordProps {
   abierto: boolean;
@@ -73,16 +74,22 @@ export default function ModalCambiarPassword({
         const admins = getAdministradores();
         const registro = admins.find((a) => a.id === adminActual.id || a.email === adminActual.email);
 
-        if (!registro || (registro.password !== passwordActual && passwordActual !== 'admin' && passwordActual !== 'admin123')) {
+        if (!registro) {
+          throw new Error('No se encontró el registro del administrador.');
+        }
+
+        const passValida = await verifyPassword(passwordActual, registro.password);
+        if (!passValida) {
           throw new Error('La contraseña actual es incorrecta.');
         }
 
-        actualizarAdmin(adminActual.id, { password: nuevaPassword });
+        const nuevaHash = await hashPassword(nuevaPassword);
+        actualizarAdmin(adminActual.id, { password: nuevaHash });
 
         if (isSupabaseConfigured) {
           await supabase
             .from('administradores')
-            .update({ password_hash: nuevaPassword })
+            .update({ password_hash: nuevaHash })
             .eq('email', adminActual.email);
         }
 
@@ -102,15 +109,23 @@ export default function ModalCambiarPassword({
           comercioEncontrado = listaLocales[idx];
         }
 
+        if (isSupabaseConfigured && !comercioEncontrado) {
+          const { data } = await supabase.from('comercios').select('id, password_comercio').eq('id', comercioId).single();
+          if (data) comercioEncontrado = data;
+        }
+
         if (comercioEncontrado && comercioEncontrado.password_comercio) {
-          if (comercioEncontrado.password_comercio !== passwordActual) {
+          const esValida = await verifyPassword(passwordActual, comercioEncontrado.password_comercio);
+          if (!esValida) {
             throw new Error('La contraseña actual del comercio es incorrecta.');
           }
         }
 
+        const nuevaHash = await hashPassword(nuevaPassword);
+
         // Actualizar en localStorage
         if (idx >= 0) {
-          listaLocales[idx].password_comercio = nuevaPassword;
+          listaLocales[idx].password_comercio = nuevaHash;
           localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(listaLocales));
         }
 
@@ -118,7 +133,7 @@ export default function ModalCambiarPassword({
         if (isSupabaseConfigured) {
           await supabase
             .from('comercios')
-            .update({ password_comercio: nuevaPassword })
+            .update({ password_comercio: nuevaHash })
             .eq('id', comercioId);
         }
 
@@ -139,14 +154,15 @@ export default function ModalCambiarPassword({
           }
         }
 
-        // Actualizar en registro local de usuarios
+        // Actualizar en registro local de usuarios con hash
         try {
+          const passHash = await hashPassword(nuevaPassword);
           const rawUsers = localStorage.getItem('vecinos_usuarios_registrados');
           if (rawUsers) {
             const users = JSON.parse(rawUsers);
             const userIdx = users.findIndex((u: any) => u.email === usuario.email);
             if (userIdx >= 0) {
-              users[userIdx].password_hash = nuevaPassword;
+              users[userIdx].password_hash = passHash;
               localStorage.setItem('vecinos_usuarios_registrados', JSON.stringify(users));
             }
           }

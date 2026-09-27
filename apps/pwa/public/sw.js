@@ -1,7 +1,13 @@
-const CACHE_NAME = 'vecinos-conectados-v1';
+const CACHE_NAME = 'vecinos-conectados-v3';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-maskable.png',
+  '/screenshot-mobile.png',
+  '/screenshot-desktop.png',
+  '/apple-touch-icon.png',
   '/icon-192.svg',
   '/icon-512.svg',
 ];

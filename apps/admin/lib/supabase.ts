@@ -36,7 +36,12 @@ export async function getComercios(): Promise<Comercio[]> {
       return [...memoryStore];
     }
 
-    return (data as Comercio[]) || [];
+    const sanitized = ((data as Comercio[]) || []).map((c) => {
+      const copy = { ...c };
+      delete (copy as Record<string, unknown>).password_comercio;
+      return copy;
+    });
+    return sanitized;
   } catch (err) {
     console.error('[Supabase Admin] Error inesperado:', err);
     return [...memoryStore];

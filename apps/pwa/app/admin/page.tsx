@@ -363,11 +363,11 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
-    const res = autenticarAdmin(emailInput, passwordInput);
+    const res = await autenticarAdmin(emailInput, passwordInput);
     if (res.exito && res.admin) {
       setAdminActual(res.admin);
       setPerfilEmail(res.admin.email);
@@ -860,7 +860,7 @@ export default function AdminPage() {
   };
 
   // Guardar Cambios de Perfil SuperAdmin
-  const handleActualizarPerfil = (e: React.FormEvent) => {
+  const handleActualizarPerfil = async (e: React.FormEvent) => {
     e.preventDefault();
     setPerfilMensaje(null);
 
@@ -874,7 +874,7 @@ export default function AdminPage() {
       return;
     }
 
-    const res = actualizarPerfilSuperAdmin(
+    const res = await actualizarPerfilSuperAdmin(
       perfilEmail,
       perfilPassNuevo || undefined,
       perfilNombre
@@ -892,7 +892,7 @@ export default function AdminPage() {
   };
 
   // Crear Administrador Nivel 2
-  const handleCrearAdminNivel2 = (e: React.FormEvent) => {
+  const handleCrearAdminNivel2 = async (e: React.FormEvent) => {
     e.preventDefault();
     setN2Mensaje(null);
 
@@ -902,7 +902,7 @@ export default function AdminPage() {
       asignar_categorias: n2PermisoCategorias,
     };
 
-    const res = crearAdminNivel2({
+    const res = await crearAdminNivel2({
       email: n2Email,
       nombre: n2Nombre,
       password: n2Pass,

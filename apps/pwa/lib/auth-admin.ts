@@ -1,4 +1,5 @@
 import { Administrador, PermisosAdmin, RolAdmin } from '@/types/comercio';
+import { hashPassword, verifyPassword } from './crypto';
 
 const STORAGE_KEY_ADMINS = 'vecinos_administradores_sistema';
 const STORAGE_KEY_SESION = 'vecinos_admin_sesion_usuario';
@@ -77,27 +78,29 @@ export function getAdminActual(): Administrador | null {
 /**
  * Inicia sesión de administrador con Email y Contraseña
  */
-export function autenticarAdmin(
+export async function autenticarAdmin(
   emailInput: string,
   passInput: string
-): { exito: boolean; admin?: Administrador; error?: string } {
+): Promise<{ exito: boolean; admin?: Administrador; error?: string }> {
   const cleanEmail = emailInput.trim().toLowerCase();
   const cleanPass = passInput.trim();
 
-  const admins = getAdministradores();
-
-  // Compatibilidad con login rápido usando palabra clave passkey
-  if (cleanPass === 'admin123' || cleanPass === 'admin') {
-    const adminMaxi = admins.find((a) => a.rol === 'superadmin') || SUPERADMIN_POR_DEFECTO;
-    guardarSesion(adminMaxi);
-    return { exito: true, admin: adminMaxi };
+  if (!cleanEmail || !cleanPass) {
+    return { exito: false, error: 'Por favor ingresa tu correo y contraseña.' };
   }
 
+  const admins = getAdministradores();
+
   const encontrado = admins.find(
-    (a) => a.email.toLowerCase() === cleanEmail && a.password === cleanPass
+    (a) => a.email.toLowerCase() === cleanEmail
   );
 
   if (!encontrado) {
+    return { exito: false, error: 'Credenciales inválidas. Verifica tu correo y contraseña.' };
+  }
+
+  const esValida = await verifyPassword(cleanPass, encontrado.password);
+  if (!esValida) {
     return { exito: false, error: 'Credenciales inválidas. Verifica tu correo y contraseña.' };
   }
 
@@ -162,11 +165,11 @@ export function cerrarSesionAdmin(): void {
 /**
  * Actualiza el perfil y contraseña del SuperAdmin (Maxi)
  */
-export function actualizarPerfilSuperAdmin(
+export async function actualizarPerfilSuperAdmin(
   nuevoEmail: string,
   nuevoPassword?: string,
   nuevoNombre?: string
-): { exito: boolean; admin?: Administrador; error?: string } {
+): Promise<{ exito: boolean; admin?: Administrador; error?: string }> {
   const admins = getAdministradores();
   const index = admins.findIndex((a) => a.rol === 'superadmin');
 
@@ -175,12 +178,16 @@ export function actualizarPerfilSuperAdmin(
   }
 
   const adminActual = admins[index];
+  let passFinal = adminActual.password;
+  if (nuevoPassword && nuevoPassword.trim()) {
+    passFinal = await hashPassword(nuevoPassword.trim());
+  }
 
   const actualizado: Administrador = {
     ...adminActual,
     email: nuevoEmail.trim().toLowerCase() || adminActual.email,
     nombre: nuevoNombre ? nuevoNombre.trim() : adminActual.nombre,
-    password: nuevoPassword && nuevoPassword.trim() ? nuevoPassword.trim() : adminActual.password,
+    password: passFinal,
   };
 
   admins[index] = actualizado;
@@ -193,12 +200,12 @@ export function actualizarPerfilSuperAdmin(
 /**
  * Da de alta un nuevo Administrador Nivel 2 con permisos granulares
  */
-export function crearAdminNivel2(datos: {
+export async function crearAdminNivel2(datos: {
   email: string;
   password: string;
   nombre: string;
   permisos: PermisosAdmin;
-}): { exito: boolean; admin?: Administrador; error?: string } {
+}): Promise<{ exito: boolean; admin?: Administrador; error?: string }> {
   const cleanEmail = datos.email.trim().toLowerCase();
 
   if (!cleanEmail || !cleanEmail.includes('@')) {
@@ -215,10 +222,12 @@ export function crearAdminNivel2(datos: {
     return { exito: false, error: 'Ya existe un administrador con este correo electrónico.' };
   }
 
+  const hashedPass = await hashPassword(datos.password.trim());
+
   const nuevo: Administrador = {
     id: 'admin-n2-' + Date.now(),
     email: cleanEmail,
-    password: datos.password.trim(),
+    password: hashedPass,
     nombre: datos.nombre.trim() || 'Moderador Nivel 2',
     rol: 'admin_nivel2',
     permisos: datos.permisos,

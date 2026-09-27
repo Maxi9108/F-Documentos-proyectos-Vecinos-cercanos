@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { Administrador } from '@/types/comercio';
 import { obtenerAdminPorEmail, guardarSesion, cerrarSesionAdmin } from '@/lib/auth-admin';
 import { getUsuariosSistema, registrarOActualizarUsuario } from '@/lib/usuarios';
+import { hashPassword, verifyPassword } from '@/lib/crypto';
 
 export interface Usuario {
   id: string;
@@ -235,12 +236,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       setUsuario(nuevoUsuario);
       localStorage.setItem(STORAGE_KEYS.USUARIO, JSON.stringify(nuevoUsuario));
 
-      // Registrar en la lista del sistema para que el administrador pueda auditar
+      // Registrar en la lista del sistema con hash seguro
+      const hashedPass = await hashPassword(password);
       registrarOActualizarUsuario({
         id: nuevoUsuario.id,
         email: cleanEmail,
         nombre: nuevoUsuario.nombre || cleanEmail.split('@')[0],
-        password_hash: password,
+        password_hash: hashedPass,
         rol: admin ? admin.rol : 'usuario',
         estado: 'activo',
         fecha_registro: nuevoUsuario.creado_en,
@@ -402,6 +404,18 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       }
 
       const admin = obtenerAdminPorEmail(cleanEmail);
+      if (admin) {
+        const adminPassOk = await verifyPassword(password, admin.password);
+        if (!adminPassOk) {
+          return { ok: false, mensaje: 'Contraseña de administrador incorrecta.' };
+        }
+      } else if (registrado?.password_hash) {
+        const userPassOk = await verifyPassword(password, registrado.password_hash);
+        if (!userPassOk) {
+          return { ok: false, mensaje: 'Contraseña incorrecta. Por favor verifica tus datos.' };
+        }
+      }
+
       const usuarioSesion: Usuario = {
         id: admin ? admin.id : 'usr_' + Date.now(),
         email: cleanEmail,

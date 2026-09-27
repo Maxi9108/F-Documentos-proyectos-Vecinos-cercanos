@@ -10,11 +10,12 @@ import {
   toggleComercioEstado,
   levantarCuarentena,
 } from '@/lib/supabase';
+import { loginAdmin, getSesionAdmin, cerrarSesionAdmin, AdminSesion } from '@/lib/auth';
 import AdminHeader from '@/components/AdminHeader';
 import ComerciosTable from '@/components/ComerciosTable';
 import ComercioModal from '@/components/ComercioModal';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
-import { CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { CheckCircle2, AlertCircle, X, ShieldCheck, Mail, Lock } from 'lucide-react';
 
 interface NotificationState {
   type: 'success' | 'error';
@@ -22,9 +23,24 @@ interface NotificationState {
 }
 
 export default function AdminDashboard() {
+  // Autenticación de Administrador
+  const [adminSesion, setAdminSesion] = useState<AdminSesion | null>(null);
+  const [isVerificandoSesion, setIsVerificandoSesion] = useState(true);
+  const [emailInput, setEmailInput] = useState('maxi0802@gmail.com');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const [comercios, setComercios] = useState<Comercio[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notification, setNotification] = useState<NotificationState | null>(null);
+
+  // Verificar sesión existente al montar
+  useEffect(() => {
+    const sesion = getSesionAdmin();
+    setAdminSesion(sesion);
+    setIsVerificandoSesion(false);
+  }, []);
 
   // Modales
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -37,7 +53,7 @@ export default function AdminDashboard() {
   // Estado de actualización inline
   const [isUpdatingEstadoId, setIsUpdatingEstadoId] = useState<string | null>(null);
 
-  // Carga inicial de datos
+  // Carga de comercios solo si está autenticado
   const cargarComercios = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -54,8 +70,34 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    cargarComercios();
-  }, [cargarComercios]);
+    if (adminSesion) {
+      cargarComercios();
+    }
+  }, [adminSesion, cargarComercios]);
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setIsLoggingIn(true);
+    try {
+      const res = await loginAdmin(emailInput, passwordInput);
+      if (res.ok && res.admin) {
+        setAdminSesion(res.admin);
+        setPasswordInput('');
+      } else {
+        setAuthError(res.error || 'Credenciales inválidas.');
+      }
+    } catch {
+      setAuthError('Error de conexión al autenticar.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    cerrarSesionAdmin();
+    setAdminSesion(null);
+  };
 
   // Temporizador para auto-ocultar notificaciones
   useEffect(() => {
@@ -209,6 +251,81 @@ export default function AdminDashboard() {
     }
   };
 
+  if (isVerificandoSesion) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
+      </div>
+    );
+  }
+
+  if (!adminSesion) {
+    return (
+      <div className="min-h-screen flex flex-col justify-center items-center bg-slate-950 px-4 text-white">
+        <div className="w-full max-w-md bg-zinc-900/90 border border-zinc-800 rounded-3xl p-8 shadow-2xl space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shadow-lg shadow-indigo-950/60">
+              <ShieldCheck className="w-8 h-8" />
+            </div>
+            <h1 className="text-2xl font-black tracking-tight text-white">
+              Directorio Savio
+            </h1>
+            <p className="text-xs text-zinc-400">
+              Acceso restringido para administradores del sistema
+            </p>
+          </div>
+
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                Correo Electrónico
+              </label>
+              <input
+                type="email"
+                required
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                placeholder="maxi0802@gmail.com"
+                className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                Contraseña
+              </label>
+              <input
+                type="password"
+                required
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="Ingresa tu contraseña de administrador"
+                className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+              />
+            </div>
+
+            {authError && (
+              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-50 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/25 transition-all cursor-pointer"
+            >
+              {isLoggingIn ? 'Iniciando sesión...' : 'Ingresar al Panel'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100">
       {/* Header superior y métricas */}
@@ -221,6 +338,7 @@ export default function AdminDashboard() {
         onNuevoComercio={handleNuevoComercio}
         onRefresh={cargarComercios}
         isLoading={isLoading}
+        onLogout={handleLogout}
       />
 
       {/* Contenedor de notificación Toast flotante */}

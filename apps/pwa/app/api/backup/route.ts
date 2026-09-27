@@ -12,15 +12,49 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const shouldDownload = searchParams.get('download') === 'true';
 
+    // 0. Verificación estricta de seguridad y autorización
+    const configuredSecret = process.env.BACKUP_SECRET_KEY || process.env.CRON_SECRET;
+    const authHeader = request.headers.get('authorization');
+    const customHeader = request.headers.get('x-backup-key');
+    const urlKey = searchParams.get('key');
+
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+    const providedKey = bearerToken || customHeader?.trim() || urlKey?.trim();
+
+    if (!configuredSecret) {
+      console.error('[Backup API] BACKUP_SECRET_KEY no está configurada en las variables de entorno.');
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Acceso bloqueado: configure BACKUP_SECRET_KEY en las variables de entorno del servidor.',
+        },
+        { status: 503 }
+      );
+    }
+
+    if (!providedKey || providedKey !== configuredSecret) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Acceso no autorizado. Debe proporcionar una clave válida en la cabecera Authorization o parámetro key.',
+        },
+        { status: 401 }
+      );
+    }
+
     const timestamp = new Date().toISOString();
     const formattedDate = timestamp.replace(/[:.]/g, '-');
 
-    // 1. Recolectar datos de comercios
+    // 1. Recolectar datos de comercios (sanitizados sin contraseñas)
     let comerciosData: unknown[] = [];
     if (isSupabaseConfigured) {
       const { data, error } = await supabase.from('comercios').select('*');
       if (!error && data) {
-        comerciosData = data;
+        comerciosData = data.map((c: Record<string, unknown>) => {
+          const sanitized = { ...c };
+          delete sanitized.password_comercio;
+          return sanitized;
+        });
       } else {
         comerciosData = await getComercios();
       }

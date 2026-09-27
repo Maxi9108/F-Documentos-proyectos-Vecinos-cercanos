@@ -1,15 +1,40 @@
 {
-  "name": "NeoFaro",
+  "name": "NeoFaro | Vecinos Cercanos",
   "short_name": "NeoFaro",
-  "description": "Descubrí tu barrio, cerca y sin vueltas.",
+  "description": "Descubrí comercios, ofertas y servicios cerca tuyo en tu barrio sin vueltas.",
   "start_url": "/",
   "id": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#09090b",
   "theme_color": "#06b6d4",
-  "categories": ["shopping", "local", "navigation"],
+  "lang": "es",
+  "categories": [
+    "shopping",
+    "food",
+    "navigation",
+    "business"
+  ],
   "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "/icon-192.svg",
       "sizes": "192x192",
@@ -20,7 +45,23 @@
       "src": "/icon-512.svg",
       "sizes": "512x512",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshot-mobile.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Mapa satelital GPS con comercios y ofertas en tu barrio"
+    },
+    {
+      "src": "/screenshot-desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Directorio barrial y catálogo interactivo de comercios"
     }
   ]
 }

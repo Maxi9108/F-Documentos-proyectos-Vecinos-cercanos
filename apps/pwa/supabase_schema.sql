@@ -185,17 +185,24 @@ ALTER TABLE public.categorias ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.administradores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.eventos_analytics ENABLE ROW LEVEL SECURITY;
 
--- Políticas de acceso público para lectura y escritura
-CREATE POLICY "Lectura comercios" ON public.comercios FOR SELECT USING (true);
-CREATE POLICY "Escritura comercios" ON public.comercios FOR ALL USING (true);
+-- Políticas de acceso seguro
+CREATE POLICY "Lectura pública comercios" ON public.comercios FOR SELECT USING (true);
+CREATE POLICY "Registro nuevo comercio" ON public.comercios FOR INSERT WITH CHECK (true);
+CREATE POLICY "Actualizar comercio" ON public.comercios FOR UPDATE USING (true);
+CREATE POLICY "Bloqueo borrado anonimo comercios" ON public.comercios FOR DELETE TO anon USING (false);
+
 CREATE POLICY "Lectura productos" ON public.productos FOR SELECT USING (true);
 CREATE POLICY "Escritura productos" ON public.productos FOR ALL USING (true);
 CREATE POLICY "Lectura categorias" ON public.categorias FOR SELECT USING (true);
 CREATE POLICY "Escritura categorias" ON public.categorias FOR ALL USING (true);
-CREATE POLICY "Lectura admins" ON public.administradores FOR SELECT USING (true);
-CREATE POLICY "Escritura admins" ON public.administradores FOR ALL USING (true);
+
+-- Protección de Administradores
+REVOKE ALL ON public.administradores FROM anon;
+CREATE POLICY "Bloqueo acceso anonimo administradores" ON public.administradores FOR ALL TO anon USING (false);
+CREATE POLICY "Acceso service_role administradores" ON public.administradores FOR ALL TO service_role USING (true);
+
 CREATE POLICY "Lectura eventos" ON public.eventos_analytics FOR SELECT USING (true);
-CREATE POLICY "Escritura eventos" ON public.eventos_analytics FOR ALL USING (true);
+CREATE POLICY "Escritura eventos" ON public.eventos_analytics FOR INSERT WITH CHECK (true);
 
 -- 9. Tabla de Comprobantes de Transferencias (Pagos de Membresías)
 CREATE TABLE IF NOT EXISTS public.comprobantes_transferencia (

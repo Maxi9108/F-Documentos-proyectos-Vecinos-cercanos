@@ -10,6 +10,7 @@ import {
   MotivoReporte,
 } from '@/types/comercio';
 import { MOCK_COMERCIOS } from './mock-comercios';
+import { hashPassword } from './crypto';
 
 const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
@@ -254,21 +255,33 @@ export async function getComercios(): Promise<Comercio[]> {
 
     // Combinar los 20 comercios de prueba con los registros de Supabase evitando duplicados
     const mapa = new Map<string, Comercio>();
-    MOCK_COMERCIOS.forEach((c) => mapa.set(c.id, c));
+    MOCK_COMERCIOS.forEach((c) => {
+      const safeMock = { ...c };
+      delete safeMock.password_comercio;
+      mapa.set(safeMock.id, safeMock);
+    });
 
     (data as Comercio[]).forEach((dbItem) => {
-      const existePorId = mapa.has(dbItem.id);
+      // Seguridad: eliminar password_comercio para que nunca viaje al cliente
+      const safeDb = { ...dbItem };
+      delete safeDb.password_comercio;
+
+      const existePorId = mapa.has(safeDb.id);
       const existePorNombre = Array.from(mapa.values()).find(
-        (c) => c.nombre.trim().toLowerCase() === dbItem.nombre.trim().toLowerCase()
+        (c) => c.nombre.trim().toLowerCase() === safeDb.nombre.trim().toLowerCase()
       );
       if (existePorId) {
-        mapa.set(dbItem.id, { ...mapa.get(dbItem.id)!, ...dbItem });
+        mapa.set(safeDb.id, { ...mapa.get(safeDb.id)!, ...safeDb });
       } else if (!existePorNombre) {
-        mapa.set(dbItem.id, dbItem);
+        mapa.set(safeDb.id, safeDb);
       }
     });
 
-    return verificarYRestaurarEstados(verificarYDegradarVencidos(Array.from(mapa.values())));
+    const resultado = verificarYRestaurarEstados(verificarYDegradarVencidos(Array.from(mapa.values())));
+    resultado.forEach((c) => {
+      delete c.password_comercio;
+    });
+    return resultado;
   } catch (err) {
     console.error('[Supabase] Error inesperado en la consulta:', err);
     return verificarYRestaurarEstados(verificarYDegradarVencidos(MOCK_COMERCIOS));
@@ -299,6 +312,11 @@ export async function guardarComercio(comercio: Comercio): Promise<{ success: bo
   // 2. Sincronizar en Supabase si está configurado
   if (isSupabaseConfigured) {
     try {
+      let passwordSegura = comercio.password_comercio || null;
+      if (passwordSegura && passwordSegura.length < 60) {
+        passwordSegura = await hashPassword(passwordSegura);
+      }
+
       const payload: Record<string, unknown> = {
         id: comercio.id,
         nombre: comercio.nombre,
@@ -357,7 +375,7 @@ export async function guardarComercio(comercio: Comercio): Promise<{ success: bo
         // Nuevos campos de configuración avanzada y credenciales
         horarios_config: comercio.horarios_config || null,
         email_comercio: comercio.email_comercio || null,
-        password_comercio: comercio.password_comercio || null,
+        password_comercio: passwordSegura,
         fecha_ultima_modificacion_catalogo: comercio.fecha_ultima_modificacion_catalogo || null,
         productos: comercio.productos || [],
       };

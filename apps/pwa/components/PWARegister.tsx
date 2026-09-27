@@ -4,8 +4,8 @@ import { useEffect } from 'react';
 
 export default function PWARegister() {
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
-      window.addEventListener('load', () => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      const registerSW = () => {
         navigator.serviceWorker
           .register('/sw.js')
           .then((registration) => {
@@ -14,7 +14,14 @@ export default function PWARegister() {
           .catch((error) => {
             console.warn('[PWA] Falló el registro del Service Worker:', error);
           });
-      });
+      };
+
+      if (document.readyState === 'complete') {
+        registerSW();
+      } else {
+        window.addEventListener('load', registerSW);
+        return () => window.removeEventListener('load', registerSW);
+      }
     }
   }, []);
 

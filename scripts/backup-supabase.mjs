@@ -53,12 +53,17 @@ async function ejecutarRespaldo() {
         'Content-Type': 'application/json',
       };
 
-      // 1. Obtener comercios
+      // 1. Obtener comercios (sanitizando campos de contraseña)
       try {
         const res = await fetch(`${supabaseUrl}/rest/v1/comercios?select=*`, { headers });
         if (res.ok) {
-          comercios = await res.json();
-          console.log(`[Backup NeoFaro] ✔ ${comercios.length} comercios respaldados de Supabase.`);
+          const rawComercios = await res.json();
+          comercios = rawComercios.map((c) => {
+            const copia = { ...c };
+            delete copia.password_comercio;
+            return copia;
+          });
+          console.log(`[Backup NeoFaro] ✔ ${comercios.length} comercios respaldados de Supabase (sanitizados).`);
         } else {
           console.warn(`[Backup NeoFaro] ⚠ No se pudo consultar tabla comercios (${res.status}): ${await res.text()}`);
         }
