@@ -57,6 +57,16 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://server.arcgisonline.com" />
         <link rel="dns-prefetch" href="https://services.arcgisonline.com" />
         <link rel="dns-prefetch" href="https://a.basemaps.cartocdn.com" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                  .catch(function(err) { console.warn('[PWA] SW error:', err); });
+              }
+            `,
+          }}
+        />
       </head>
       <body className="min-h-full flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
         <PWARegister />

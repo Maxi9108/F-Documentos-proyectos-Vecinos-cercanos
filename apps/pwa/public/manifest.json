@@ -17,8 +17,23 @@
   "theme_color": "#06b6d4",
   "lang": "es",
   "prefer_related_applications": false,
+  "related_applications": [],
   "launch_handler": {
     "client_mode": "focus-existing"
+  },
+  "serviceworker": {
+    "src": "/sw.js",
+    "scope": "/",
+    "type": "classic"
+  },
+  "share_target": {
+    "action": "/?source=share_target",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
   },
   "categories": [
     "shopping",
