@@ -155,7 +155,7 @@ export default function ModalCrearDebate({ comercio, onClose }: ModalCrearDebate
             </div>
             <h3 className="text-lg font-bold text-white">¡Debate Registrado con Éxito!</h3>
             <p className="text-xs text-zinc-300 leading-relaxed max-w-sm mx-auto">
-              Tu inconveniente ha sido enviado confidencialmente a <strong>{comercio.nombre}</strong> y el administrador de Vecin@s Conectad@s ha recibido una notificación prioritaria para mediar en la solución.
+              Tu inconveniente ha sido enviado confidencialmente a <strong>{comercio.nombre}</strong> y el equipo de moderación de NeoFaro ha recibido una notificación prioritaria para mediar en la solución.
             </p>
             <div className="p-3 bg-zinc-900 rounded-2xl text-[11px] text-zinc-400 border border-zinc-800 inline-block">
               Solo tú, el comercio y el administrador pueden acceder a este expediente.

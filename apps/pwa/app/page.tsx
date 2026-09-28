@@ -76,6 +76,15 @@ export default async function HomePage() {
           <p className="text-[11px] text-zinc-500">
             Red comercial comunitaria con geolocalización satelital y promociones locales.
           </p>
+          <div className="pt-2 flex items-center justify-center gap-4 text-[11px]">
+            <Link href="/terminos-y-condiciones" className="text-zinc-400 hover:text-cyan-400 transition-colors">
+              Términos y Condiciones (Deslinde)
+            </Link>
+            <span className="text-zinc-700">•</span>
+            <Link href="/politica-de-privacidad" className="text-zinc-400 hover:text-cyan-400 transition-colors">
+              Política de Privacidad
+            </Link>
+          </div>
         </div>
       </footer>
     </main>

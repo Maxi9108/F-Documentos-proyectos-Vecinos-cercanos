@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Panel Administrativo — Directorio Savio',
-  description: 'Gestión y administración del catálogo de comercios barriales',
+  title: 'Panel Administrativo — NeoFaro',
+  description: 'Gestión y administración del catálogo de comercios barriales — NeoFaro',
 };
 
 export default function RootLayout({

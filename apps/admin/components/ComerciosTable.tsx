@@ -14,6 +14,13 @@ import {
   ExternalLink,
   Store,
   X,
+  AlertTriangle,
+  Palmtree,
+  Clock,
+  Bike,
+  ShieldAlert,
+  Activity,
+  Sparkles,
 } from 'lucide-react';
 
 interface ComerciosTableProps {
@@ -35,7 +42,9 @@ export default function ComerciosTable({
 }: ComerciosTableProps) {
   const [busqueda, setBusqueda] = useState('');
   const [rubroFiltro, setRubroFiltro] = useState('Todos');
-  const [estadoFiltro, setEstadoFiltro] = useState<'todos' | 'abiertos' | 'cerrados' | 'cuarentena'>('todos');
+  const [estadoFiltro, setEstadoFiltro] = useState<
+    'todos' | 'abiertos' | 'cerrados' | 'cuarentena' | 'emergencia' | 'inactivos' | 'pulso_pendiente'
+  >('todos');
 
   // Obtener rubros únicos disponibles
   const rubrosDisponibles = useMemo(() => {
@@ -44,10 +53,35 @@ export default function ComerciosTable({
     return ['Todos', ...Array.from(rubros).sort()];
   }, [comercios]);
 
+  // Métricas operativas de certeza barrial
   const totalCuarentena = useMemo(
     () => comercios.filter((c) => Boolean(c.en_cuarentena)).length,
     [comercios]
   );
+  const totalEmergencia = useMemo(
+    () => comercios.filter((c) => Boolean(c.cerrado_momentaneo)).length,
+    [comercios]
+  );
+  const totalInactivos = useMemo(
+    () =>
+      comercios.filter(
+        (c) =>
+          Boolean(c.oculto_por_inactividad) ||
+          Boolean(c.ticket_baja_definitiva) ||
+          (Boolean(c.en_vacaciones) && c.modalidad_vacaciones === 'descanso_total')
+      ).length,
+    [comercios]
+  );
+  const totalPulsoPendiente = useMemo(
+    () =>
+      comercios.filter(
+        (c) => c.pulso_semanal_estado === 'alerta' || c.pulso_semanal_estado === 'pendiente'
+      ).length,
+    [comercios]
+  );
+
+  const tieneAlertasOperativas =
+    totalCuarentena > 0 || totalEmergencia > 0 || totalInactivos > 0 || totalPulsoPendiente > 0;
 
   // Filtrado reactivo
   const comerciosFiltrados = useMemo(() => {
@@ -64,16 +98,115 @@ export default function ComerciosTable({
 
       const coincideEstado =
         estadoFiltro === 'todos' ||
-        (estadoFiltro === 'abiertos' && c.esta_abierto && !c.en_cuarentena) ||
+        (estadoFiltro === 'abiertos' && c.esta_abierto && !c.en_cuarentena && !c.cerrado_momentaneo) ||
         (estadoFiltro === 'cerrados' && !c.esta_abierto && !c.en_cuarentena) ||
-        (estadoFiltro === 'cuarentena' && c.en_cuarentena);
+        (estadoFiltro === 'cuarentena' && Boolean(c.en_cuarentena)) ||
+        (estadoFiltro === 'emergencia' && Boolean(c.cerrado_momentaneo)) ||
+        (estadoFiltro === 'inactivos' &&
+          (Boolean(c.oculto_por_inactividad) ||
+            Boolean(c.ticket_baja_definitiva) ||
+            (Boolean(c.en_vacaciones) && c.modalidad_vacaciones === 'descanso_total'))) ||
+        (estadoFiltro === 'pulso_pendiente' &&
+          (c.pulso_semanal_estado === 'alerta' || c.pulso_semanal_estado === 'pendiente'));
 
       return coincideBusqueda && coincideRubro && coincideEstado;
     });
   }, [comercios, busqueda, rubroFiltro, estadoFiltro]);
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden">
+    <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm overflow-hidden space-y-0">
+      {/* BANDEJA DE CERTEZA BARRIAL Y ALERTAS OPERATIVAS */}
+      {tieneAlertasOperativas && (
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 border-b border-zinc-800 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                <ShieldAlert className="w-4 h-4" />
+              </span>
+              <div>
+                <h3 className="text-xs sm:text-sm font-black text-white tracking-wide">
+                  Bandeja de Certeza Barrial & Alertas Operativas
+                </h3>
+                <p className="text-[11px] text-zinc-400">
+                  Eventos en tiempo real que requieren atención de moderación o soporte
+                </p>
+              </div>
+            </div>
+            {estadoFiltro !== 'todos' && (
+              <button
+                type="button"
+                onClick={() => setEstadoFiltro('todos')}
+                className="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium cursor-pointer"
+              >
+                Ver todos
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {totalCuarentena > 0 && (
+              <button
+                type="button"
+                onClick={() => setEstadoFiltro('cuarentena')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                  estadoFiltro === 'cuarentena'
+                    ? 'bg-rose-600 text-white ring-2 ring-rose-400'
+                    : 'bg-rose-950/70 hover:bg-rose-900/80 text-rose-200 border border-rose-600/60'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                <span>{totalCuarentena} en Cuarentena Preventiva</span>
+              </button>
+            )}
+
+            {totalEmergencia > 0 && (
+              <button
+                type="button"
+                onClick={() => setEstadoFiltro('emergencia')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                  estadoFiltro === 'emergencia'
+                    ? 'bg-amber-600 text-white ring-2 ring-amber-400'
+                    : 'bg-amber-950/70 hover:bg-amber-900/80 text-amber-200 border border-amber-600/60'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                <span>{totalEmergencia} Cierres por Emergencia</span>
+              </button>
+            )}
+
+            {totalInactivos > 0 && (
+              <button
+                type="button"
+                onClick={() => setEstadoFiltro('inactivos')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                  estadoFiltro === 'inactivos'
+                    ? 'bg-sky-600 text-white ring-2 ring-sky-400'
+                    : 'bg-sky-950/70 hover:bg-sky-900/80 text-sky-200 border border-sky-600/60'
+                }`}
+              >
+                <Palmtree className="w-3.5 h-3.5 text-sky-400" />
+                <span>{totalInactivos} Inactivos / Descanso total</span>
+              </button>
+            )}
+
+            {totalPulsoPendiente > 0 && (
+              <button
+                type="button"
+                onClick={() => setEstadoFiltro('pulso_pendiente')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                  estadoFiltro === 'pulso_pendiente'
+                    ? 'bg-violet-600 text-white ring-2 ring-violet-400'
+                    : 'bg-violet-950/70 hover:bg-violet-900/80 text-violet-200 border border-violet-600/60'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5 text-violet-400" />
+                <span>{totalPulsoPendiente} Pulso semanal pendiente</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Barra de Filtros y Búsqueda */}
       <div className="p-4 sm:p-5 border-b border-zinc-100 dark:border-zinc-800/80 space-y-3">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
@@ -98,7 +231,7 @@ export default function ComerciosTable({
             )}
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             {/* Filtro por Rubro */}
             <div className="relative">
               <select
@@ -115,7 +248,7 @@ export default function ComerciosTable({
             </div>
 
             {/* Filtro por Estado */}
-            <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200 dark:border-zinc-700">
+            <div className="flex flex-wrap bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl border border-zinc-200 dark:border-zinc-700">
               <button
                 type="button"
                 onClick={() => setEstadoFiltro('todos')}
@@ -167,6 +300,24 @@ export default function ComerciosTable({
                   </span>
                 )}
               </button>
+              <button
+                type="button"
+                onClick={() => setEstadoFiltro('emergencia')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  estadoFiltro === 'emergencia'
+                    ? 'bg-amber-600 text-white shadow-xs font-bold'
+                    : totalEmergencia > 0
+                    ? 'text-amber-500 font-bold'
+                    : 'text-zinc-500 dark:text-zinc-400'
+                }`}
+              >
+                <span>Emergencia</span>
+                {totalEmergencia > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-500 text-black">
+                    {totalEmergencia}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -215,8 +366,13 @@ export default function ComerciosTable({
                   >
                     {/* Nombre e ID */}
                     <td className="py-3.5 px-4 sm:px-6">
-                      <div className="font-semibold text-zinc-900 dark:text-white group-hover:text-indigo-600 transition-colors">
-                        {comercio.nombre}
+                      <div className="font-semibold text-zinc-900 dark:text-white group-hover:text-indigo-600 transition-colors flex items-center gap-1.5">
+                        <span>{comercio.nombre}</span>
+                        {comercio.onboarding_verificado && (
+                          <span className="text-emerald-500" title="Verificado presencialmente">
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] text-zinc-400 font-mono truncate max-w-[140px] sm:max-w-xs" title={comercio.id}>
                         {comercio.id}
@@ -235,13 +391,67 @@ export default function ComerciosTable({
                           )}
                         </div>
                       )}
+
+                      {/* Cierre de Emergencia */}
+                      {comercio.cerrado_momentaneo && (
+                        <div className="mt-1 space-y-0.5">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-600 text-white">
+                            <AlertTriangle className="w-3 h-3 text-amber-200" />
+                            <span>CIERRE EMERGENCIA ({comercio.contador_urgencias_mes || 1}/3 este mes)</span>
+                          </span>
+                          {comercio.motivo_cierre_momentaneo && (
+                            <p className="text-[10px] text-amber-700 dark:text-amber-300 font-medium leading-tight">
+                              {comercio.motivo_cierre_momentaneo}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Vacaciones */}
+                      {comercio.en_vacaciones && (
+                        <div className="mt-1">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              comercio.modalidad_vacaciones === 'descanso_total'
+                                ? 'bg-sky-800 text-white'
+                                : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                            }`}
+                          >
+                            <Palmtree className="w-3 h-3" />
+                            <span>
+                              Vacaciones {comercio.modalidad_vacaciones === 'descanso_total' ? '(Descanso Total)' : '(Con aviso)'}
+                            </span>
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Inactividad prolongada */}
+                      {comercio.oculto_por_inactividad && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-950 text-rose-300 border border-rose-800">
+                            <AlertTriangle className="w-3 h-3 text-rose-400" />
+                            <span>Inactivo (+60 días)</span>
+                          </span>
+                        </div>
+                      )}
                     </td>
 
                     {/* Rubro */}
                     <td className="py-3.5 px-4 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
-                        {comercio.rubro}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60">
+                          {comercio.rubro}
+                        </span>
+                        {comercio.tipo_atencion === 'solo_envio' && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800"
+                            title="Modalidad exclusiva de envíos a domicilio"
+                          >
+                            <Bike className="w-3 h-3" />
+                            <span>Envíos</span>
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Dirección y Contacto */}
@@ -249,7 +459,11 @@ export default function ComerciosTable({
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300">
                           <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                          <span>{comercio.direccion}</span>
+                          <span>
+                            {comercio.tipo_atencion === 'solo_envio'
+                              ? 'Zona de entrega barrial (Dirección privada)'
+                              : comercio.direccion}
+                          </span>
                         </div>
                         {comercio.telefono && (
                           <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
@@ -271,29 +485,46 @@ export default function ComerciosTable({
                           En Cuarentena
                         </span>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => onToggleEstado(comercio.id, !comercio.esta_abierto)}
-                          disabled={isChanging}
-                          title="Haz clic para alternar estado"
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ${
-                            comercio.esta_abierto
-                              ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                              : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700'
-                          } ${isChanging ? 'opacity-50 cursor-wait' : ''}`}
-                        >
-                          {comercio.esta_abierto ? (
-                            <>
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                              Abierto
-                            </>
-                          ) : (
-                            <>
-                              <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
-                              Cerrado
-                            </>
+                        <div className="space-y-1">
+                          <button
+                            type="button"
+                            onClick={() => onToggleEstado(comercio.id, !comercio.esta_abierto)}
+                            disabled={isChanging}
+                            title="Haz clic para alternar estado"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ${
+                              comercio.esta_abierto
+                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700'
+                            } ${isChanging ? 'opacity-50 cursor-wait' : ''}`}
+                          >
+                            {comercio.esta_abierto ? (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                Abierto
+                              </>
+                            ) : (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+                                Cerrado
+                              </>
+                            )}
+                          </button>
+
+                          {comercio.pulso_semanal_estado && comercio.pulso_semanal_estado !== 'normal' && (
+                            <div>
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  comercio.pulso_semanal_estado === 'alerta'
+                                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
+                                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                }`}
+                              >
+                                <Clock className="w-2.5 h-2.5" />
+                                <span>Pulso {comercio.pulso_semanal_estado}</span>
+                              </span>
+                            </div>
                           )}
-                        </button>
+                        </div>
                       )}
                     </td>
 

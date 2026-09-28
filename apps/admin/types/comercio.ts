@@ -74,6 +74,29 @@ export interface Comercio {
   fecha_cuarentena?: string;
   motivo_cuarentena?: string;
   strikes_reportes?: number;
+  oculto_por_inactividad?: boolean;
+  ticket_baja_definitiva?: boolean;
+  motivo_ticket_baja?: string;
+  // Tratamiento de delivery
+  tipo_atencion?: 'local_fisico' | 'solo_envio' | 'ambos';
+  tarifa_envio_base?: number;
+  // Reglas de urgencia y strikes disciplinarios
+  contador_urgencias_mes?: number;
+  strikes_urgencia?: number;
+  // Modalidades de vacaciones
+  modalidad_vacaciones?: 'descanso_total' | 'mostrar_con_aviso';
+  dias_vacaciones_acumulados?: number;
+  // Desahogo / confirmación de operatividad ante cuarentena
+  confirmado_operativo_cuarentena?: boolean;
+  fecha_confirmacion_operativo?: string;
+  // Pulso semanal de certeza
+  pulso_semanal_estado?: 'normal' | 'especial' | 'pausado' | 'pendiente' | 'alerta';
+  fecha_ultimo_pulso?: string;
+  // Reputación dinámica y Onboarding antifraude
+  reputacion_categoria?: 'oro' | 'plata' | 'bronce' | 'observacion';
+  onboarding_verificado?: boolean;
+  fecha_verificacion_presencial?: string;
+  verificado_por_admin?: string;
 }
 
 export type MotivoReporte =

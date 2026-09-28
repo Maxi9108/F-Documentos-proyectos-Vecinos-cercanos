@@ -24,13 +24,18 @@ import {
   Heart,
   Navigation,
   Flag,
+  Plus,
+  Minus,
+  ShoppingCart,
+  Send,
+  Flame,
 } from 'lucide-react';
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
 import { verificarComercioAbierto } from '@/lib/horarios';
-import ContadorMembresia from '@/components/ContadorMembresia';
 import ModalCrearDebate from '@/components/ModalCrearDebate';
+import OfertaCountdown from '@/components/OfertaCountdown';
 
 interface ModalDetalleComercioProps {
   comercio: Comercio | null;
@@ -51,7 +56,25 @@ export default function ModalDetalleComercio({
   const [pestanaActiva, setPestanaActiva] = useState<'ofertas' | 'catalogo' | 'info'>('catalogo');
   const [modalDebateAbierto, setModalDebateAbierto] = useState(false);
 
+  // Estado para el Pedido en 1 Clic por WhatsApp
+  const [pedidoItems, setPedidoItems] = useState<Record<string, number>>({});
+  const [modalidadPedido, setModalidadPedido] = useState<'mostrador' | 'envio'>('mostrador');
+
+  const cambiarCantidad = (prodId: string, delta: number) => {
+    setPedidoItems((prev) => {
+      const actual = prev[prodId] || 0;
+      const nueva = Math.max(0, actual + delta);
+      if (nueva === 0) {
+        const copia = { ...prev };
+        delete copia[prodId];
+        return copia;
+      }
+      return { ...prev, [prodId]: nueva };
+    });
+  };
+
   React.useEffect(() => {
+    setPedidoItems({});
     if (comercio?.productos?.some((p) => p.es_oferta)) {
       setPestanaActiva('ofertas');
     } else {
@@ -95,6 +118,40 @@ export default function ModalDetalleComercio({
 
     const mensaje = `¡Hola ${comercio.nombre}! Vi en NeoFaro el producto "${producto.nombre}" (${precioTxt}) y quisiera consultar stock / disponibilidad.`;
     return `https://wa.me/${cleanWhatsapp.replace('+', '')}?text=${encodeURIComponent(mensaje)}`;
+  };
+
+  // Cálculo de totales del pedido estructurado
+  const totalItemsEnPedido = Object.values(pedidoItems).reduce((sum, c) => sum + c, 0);
+  const totalMontoPedido = Object.entries(pedidoItems).reduce((sum, [id, cant]) => {
+    const prod = comercio.productos?.find((p) => p.id === id);
+    if (!prod) return sum;
+    const precio = prod.es_oferta && prod.precio_oferta ? prod.precio_oferta : prod.precio;
+    return sum + precio * cant;
+  }, 0);
+
+  const generarMensajePedidoWp = () => {
+    const lineas: string[] = [];
+    lineas.push(`¡Hola ${comercio.nombre}! 👋 Quiero realizar un pedido desde la app NeoFaro:\n`);
+
+    Object.entries(pedidoItems).forEach(([id, cant]) => {
+      const prod = comercio.productos?.find((p) => p.id === id);
+      if (prod) {
+        const precio = prod.es_oferta && prod.precio_oferta ? prod.precio_oferta : prod.precio;
+        lineas.push(`• ${cant}x ${prod.nombre} - $${(precio * cant).toLocaleString('es-AR')}`);
+      }
+    });
+
+    lineas.push(
+      `\n📌 Modalidad: ${
+        modalidadPedido === 'mostrador'
+          ? 'Retiro por mostrador'
+          : 'Envío a domicilio (a coordinar entrega)'
+      }`
+    );
+    lineas.push(`💰 Total estimado: $${totalMontoPedido.toLocaleString('es-AR')} (Precios de referencia)`);
+    lineas.push(`\n¿Tienen disponibilidad para prepararlo? ¡Muchas gracias!`);
+
+    return `https://wa.me/${cleanWhatsapp.replace('+', '')}?text=${encodeURIComponent(lineas.join('\n'))}`;
   };
 
   // Badge de Estado Operativo en tiempo real con soporte de trasnoche
@@ -190,14 +247,24 @@ export default function ModalDetalleComercio({
               </button>
             </div>
 
-            {/* Contador de tiempo para comercios Premium y Gold (1 mes) */}
+            {/* Distinción de Nivel (Prestigio barrial público, sin exponer el vencimiento del plan) */}
             {(comercio.nivel === 'gold' || comercio.nivel === 'premium') && (
-              <ContadorMembresia
-                fechaVencimiento={comercio.fecha_vencimiento_nivel}
-                nivel={comercio.nivel}
-                formato="tarjeta"
-                className="mt-1 mb-2"
-              />
+              <div className="mt-1 mb-2">
+                <span
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+                    comercio.nivel === 'gold'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      : 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                  }`}
+                >
+                  {comercio.nivel === 'gold' ? (
+                    <Crown className="w-3.5 h-3.5 text-amber-400" />
+                  ) : (
+                    <Award className="w-3.5 h-3.5 text-purple-400" />
+                  )}
+                  <span>Comercio Destacado {comercio.nivel === 'gold' ? 'Gold' : 'Premium'}</span>
+                </span>
+              </div>
             )}
 
             {/* Nombre del Comercio */}
@@ -271,22 +338,32 @@ export default function ModalDetalleComercio({
             {/* Tarjeta de Ubicación y Delivery */}
             <div className="p-3.5 rounded-2xl bg-zinc-900/70 border border-zinc-800 space-y-2 text-xs">
               <div className="flex items-start gap-2 text-zinc-300">
-                <MapPin className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <span className="font-semibold block">{comercio.direccion}</span>
-                  {comercio.tipo_atencion === 'solo_envio' ? (
-                    <span className="text-[11px] text-cyan-400 italic">Venta y despacho exclusivo a domicilio</span>
-                  ) : (
-                    <a
-                      href={`https://www.google.com/maps/dir/?api=1&destination=${comercio.latitud},${comercio.longitud}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] text-cyan-400 hover:text-cyan-300 underline inline-flex items-center gap-1 mt-0.5"
-                    >
-                      <ExternalLink className="w-3 h-3" /> Cómo llegar con Google Maps
-                    </a>
-                  )}
-                </div>
+                {comercio.tipo_atencion === 'solo_envio' ? (
+                  <>
+                    <Bike className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <span className="font-semibold text-cyan-300 block">
+                        {comercio.zona_envio_descripcion ? `Zona de entrega: ${comercio.zona_envio_descripcion}` : 'Servicio a domicilio sin atención al público'}
+                      </span>
+                      <span className="text-[11px] text-zinc-400">Dirección particular reservada por seguridad</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <MapPin className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <span className="font-semibold block">{comercio.direccion}</span>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${comercio.latitud},${comercio.longitud}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] text-cyan-400 hover:text-cyan-300 underline inline-flex items-center gap-1 mt-0.5"
+                      >
+                        <ExternalLink className="w-3 h-3" /> Cómo llegar con Google Maps
+                      </a>
+                    </div>
+                  </>
+                )}
               </div>
 
               {Boolean(comercio.radio_entrega_metros && comercio.radio_entrega_metros > 0) && (
@@ -344,16 +421,23 @@ export default function ModalDetalleComercio({
           {/* Botones de Acción (Llamar, WhatsApp, Mapa) */}
           <div className="pt-4 border-t border-zinc-800/80 space-y-2 mt-4">
             {cleanWhatsapp && (
-              <a
-                href={whatsappGeneralUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => registrarEvento('clic_whatsapp', comercio.id, comercio.nombre, { canal: 'modal_lateral' })}
-                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 cursor-pointer no-underline"
-              >
-                <MessageSquare className="w-4 h-4" />
-                Consultar o Pedir por WhatsApp
-              </a>
+              comercio.en_vacaciones && comercio.modalidad_vacaciones === 'descanso_total' ? (
+                <div className="w-full py-2.5 px-4 bg-zinc-800 text-zinc-400 font-bold text-xs rounded-xl border border-zinc-700 flex items-center justify-center gap-2 cursor-not-allowed text-center">
+                  <Palmtree className="w-4 h-4 text-sky-400" />
+                  Contacto en Pausa (Descanso Total)
+                </div>
+              ) : (
+                <a
+                  href={whatsappGeneralUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => registrarEvento('clic_whatsapp', comercio.id, comercio.nombre, { canal: 'modal_lateral' })}
+                  className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 cursor-pointer no-underline"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Consultar o Pedir por WhatsApp
+                </a>
+              )
             )}
 
             <div className="flex items-center gap-2">
@@ -514,6 +598,9 @@ export default function ModalDetalleComercio({
                           <Tag className="w-3.5 h-3.5" />
                           {producto.descuento_porcentaje ? `${producto.descuento_porcentaje}% OFF` : 'OFERTA'}
                         </div>
+                        <div className="absolute top-3 right-3 shadow-md">
+                          <OfertaCountdown horaVencimiento={producto.hora_vencimiento_oferta} compact />
+                        </div>
                         {producto.categoria && (
                           <span className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-sm text-[10px] font-semibold text-zinc-300 border border-white/10">
                             {producto.categoria}
@@ -528,10 +615,19 @@ export default function ModalDetalleComercio({
                             {producto.nombre}
                           </h4>
                           {producto.descripcion && (
-                            <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed mb-3">
+                            <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed mb-2">
                               {producto.descripcion}
                             </p>
                           )}
+                        </div>
+
+                        {/* Indicador en vivo de tiempo restante de la oferta */}
+                        <div className="my-2 p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-2 shadow-xs">
+                          <span className="text-[11px] font-semibold text-amber-300 flex items-center gap-1.5">
+                            <Flame className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                            <span>Vence en:</span>
+                          </span>
+                          <OfertaCountdown horaVencimiento={producto.hora_vencimiento_oferta} compact />
                         </div>
 
                         <div className="pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-2">
@@ -546,17 +642,33 @@ export default function ModalDetalleComercio({
                             </span>
                           </div>
 
-                          {cleanWhatsapp && (
-                            <a
-                              href={getWhatsappProductoUrl(producto)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors flex items-center gap-1.5 no-underline shadow-md shadow-emerald-950/40"
-                              title="Pedir esta oferta por WhatsApp"
-                            >
-                              <MessageSquare className="w-3.5 h-3.5" />
-                              Pedir
-                            </a>
+                          {producto.agotado ? (
+                            <span className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-500 font-bold text-xs border border-zinc-700">
+                              Agotado
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+                              <button
+                                type="button"
+                                onClick={() => cambiarCantidad(producto.id, -1)}
+                                disabled={!pedidoItems[producto.id]}
+                                className="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-20 text-white flex items-center justify-center cursor-pointer transition-colors"
+                                title="Quitar unidad"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="w-6 text-center font-mono font-bold text-xs text-white">
+                                {pedidoItems[producto.id] || 0}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => cambiarCantidad(producto.id, 1)}
+                                className="w-7 h-7 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold flex items-center justify-center cursor-pointer transition-colors"
+                                title="Agregar al pedido"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -599,16 +711,20 @@ export default function ModalDetalleComercio({
                           Catálogo de Artículos y Precios
                         </h3>
                         <p className="text-xs text-zinc-400">
-                          {comercio.productos?.length} artículos publicados
+                          {comercio.productos?.length} artículos publicados — Precios de referencia
                         </p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {comercio.productos?.map((producto) => (
+                      {[...(comercio.productos || [])]
+                        .sort((a, b) => (a.agotado ? 1 : 0) - (b.agotado ? 1 : 0))
+                        .map((producto) => (
                         <article
                           key={producto.id}
-                          className="group bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 rounded-2xl overflow-hidden transition-all flex flex-col justify-between"
+                          className={`group bg-zinc-900/90 border rounded-2xl overflow-hidden transition-all flex flex-col justify-between ${
+                            producto.agotado ? 'border-zinc-800/50 opacity-60' : 'border-zinc-800 hover:border-zinc-700'
+                          }`}
                         >
                           {/* Foto de Producto */}
                           {producto.imagen_url && (
@@ -620,10 +736,15 @@ export default function ModalDetalleComercio({
                                 loading="lazy"
                               />
                               {producto.es_oferta && (
-                                <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-amber-500 text-black font-black text-[11px] shadow-lg flex items-center gap-1">
-                                  <Tag className="w-3 h-3" />
-                                  OFERTA
-                                </div>
+                                <>
+                                  <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-amber-500 text-black font-black text-[11px] shadow-lg flex items-center gap-1">
+                                    <Tag className="w-3 h-3" />
+                                    OFERTA
+                                  </div>
+                                  <div className="absolute top-2.5 right-2.5 shadow-md">
+                                    <OfertaCountdown horaVencimiento={producto.hora_vencimiento_oferta} compact />
+                                  </div>
+                                </>
                               )}
                               {producto.categoria && (
                                 <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-[10px] font-semibold text-zinc-300">
@@ -639,11 +760,22 @@ export default function ModalDetalleComercio({
                                 {producto.nombre}
                               </h4>
                               {producto.descripcion && (
-                                <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed mb-3">
+                                <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed mb-2">
                                   {producto.descripcion}
                                 </p>
                               )}
                             </div>
+
+                            {/* Indicador en vivo si el artículo tiene oferta activa */}
+                            {producto.es_oferta && (
+                              <div className="my-2 p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-2 shadow-xs">
+                                <span className="text-[11px] font-semibold text-amber-300 flex items-center gap-1.5">
+                                  <Flame className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                                  <span>Oferta disponible:</span>
+                                </span>
+                                <OfertaCountdown horaVencimiento={producto.hora_vencimiento_oferta} compact />
+                              </div>
+                            )}
 
                             <div className="pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-2">
                               <div>
@@ -663,17 +795,33 @@ export default function ModalDetalleComercio({
                                 )}
                               </div>
 
-                              {cleanWhatsapp && (
-                                <a
-                                  href={getWhatsappProductoUrl(producto)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="py-1.5 px-3 rounded-xl bg-zinc-800 hover:bg-emerald-600 text-zinc-200 hover:text-white font-semibold text-xs transition-colors flex items-center gap-1.5 no-underline cursor-pointer"
-                                  title="Consultar por este artículo"
-                                >
-                                  <MessageSquare className="w-3.5 h-3.5" />
-                                  Consultar
-                                </a>
+                              {producto.agotado ? (
+                                <span className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-500 font-bold text-xs border border-zinc-700">
+                                  Agotado
+                                </span>
+                              ) : (
+                                <div className="flex items-center gap-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+                                  <button
+                                    type="button"
+                                    onClick={() => cambiarCantidad(producto.id, -1)}
+                                    disabled={!pedidoItems[producto.id]}
+                                    className="w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-20 text-white flex items-center justify-center cursor-pointer transition-colors"
+                                    title="Quitar unidad"
+                                  >
+                                    <Minus className="w-3 h-3" />
+                                  </button>
+                                  <span className="w-6 text-center font-mono font-bold text-xs text-white">
+                                    {pedidoItems[producto.id] || 0}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => cambiarCantidad(producto.id, 1)}
+                                    className="w-7 h-7 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black font-bold flex items-center justify-center cursor-pointer transition-colors"
+                                    title="Agregar al pedido"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -734,6 +882,60 @@ export default function ModalDetalleComercio({
               </div>
             )}
           </div>
+
+          {/* Barra de Pedido en 1 Clic por WhatsApp */}
+          {totalItemsEnPedido > 0 && (
+            <div className="p-3.5 sm:p-4 bg-zinc-950/95 backdrop-blur-md border-t border-cyan-500/30 rounded-b-3xl shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-fadeIn">
+              <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                <div className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-300 font-black flex items-center justify-center text-xs border border-cyan-500/30 shadow-sm">
+                    {totalItemsEnPedido}
+                  </span>
+                  <div>
+                    <span className="text-sm font-black text-white block font-mono">
+                      ${totalMontoPedido.toLocaleString('es-AR')}
+                    </span>
+                    <span className="text-[10px] text-zinc-400">Precios de referencia</span>
+                  </div>
+                </div>
+
+                <div className="flex bg-zinc-900 p-1 rounded-xl border border-zinc-800 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setModalidadPedido('mostrador')}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                      modalidadPedido === 'mostrador' ? 'bg-cyan-500 text-black shadow-sm' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    Mostrador
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalidadPedido('envio')}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                      modalidadPedido === 'envio' ? 'bg-cyan-500 text-black shadow-sm' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    Envío
+                  </button>
+                </div>
+              </div>
+
+              {cleanWhatsapp ? (
+                <a
+                  href={generarMensajePedidoWp()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 transition-all no-underline"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Pedir por WhatsApp en 1 Clic</span>
+                </a>
+              ) : (
+                <span className="text-xs text-zinc-400 italic">WhatsApp no disponible</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

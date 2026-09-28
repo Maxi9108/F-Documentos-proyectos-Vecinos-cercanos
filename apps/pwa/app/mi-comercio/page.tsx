@@ -119,6 +119,7 @@ export default function MiComercioPage() {
   const [mensajeVacaciones, setMensajeVacaciones] = useState('');
   const [cerradoMomentaneo, setCerradoMomentaneo] = useState(false);
   const [motivoCierreMomentaneo, setMotivoCierreMomentaneo] = useState('');
+  const [modalidadVacaciones, setModalidadVacaciones] = useState<'descanso_total' | 'mostrar_con_aviso'>('mostrar_con_aviso');
   const [estaDeTurno, setEstaDeTurno] = useState(false);
 
   // Horarios avanzados con soporte para trasnoche y día por día
@@ -141,6 +142,9 @@ export default function MiComercioPage() {
   const [prodCategoria, setProdCategoria] = useState('');
   const [prodEsOferta, setProdEsOferta] = useState(false);
   const [prodPrecioOferta, setProdPrecioOferta] = useState('');
+  const [prodAgotado, setProdAgotado] = useState(false);
+  const [prodHoraVencimiento, setProdHoraVencimiento] = useState('');
+  const [prodUnidadesLimitadas, setProdUnidadesLimitadas] = useState('');
 
   // Estados de Carga de Comprobante
   const [categoriaAbonada, setCategoriaAbonada] = useState<NivelComercio>('gold');
@@ -207,6 +211,7 @@ export default function MiComercioPage() {
     setVacacionesDesde(comercio.vacaciones_desde || '');
     setVacacionesHasta(comercio.vacaciones_hasta || '');
     setMensajeVacaciones(comercio.mensaje_vacaciones || '');
+    setModalidadVacaciones(comercio.modalidad_vacaciones || 'mostrar_con_aviso');
     setCerradoMomentaneo(Boolean(comercio.cerrado_momentaneo));
     setMotivoCierreMomentaneo(comercio.motivo_cierre_momentaneo || '');
     setEstaDeTurno(Boolean(comercio.esta_de_turno));
@@ -348,6 +353,9 @@ export default function MiComercioPage() {
       setProdCategoria(producto.categoria || '');
       setProdEsOferta(Boolean(producto.es_oferta));
       setProdPrecioOferta(producto.precio_oferta ? String(producto.precio_oferta) : '');
+      setProdAgotado(Boolean(producto.agotado));
+      setProdHoraVencimiento(producto.hora_vencimiento_oferta || '');
+      setProdUnidadesLimitadas(producto.unidades_limitadas ? String(producto.unidades_limitadas) : '');
     } else {
       if (productos.length >= limiteProductos) {
         alert(`Has alcanzado el límite máximo de ${limiteProductos} productos para tu plan ${nivelActual.toUpperCase()}. Mejora tu plan a Premium o Gold para ampliar el catálogo.`);
@@ -360,6 +368,9 @@ export default function MiComercioPage() {
       setProdCategoria(comercioActual?.rubro || '');
       setProdEsOferta(false);
       setProdPrecioOferta('');
+      setProdAgotado(false);
+      setProdHoraVencimiento('');
+      setProdUnidadesLimitadas('');
     }
     setModalProductoAbierto(true);
   };
@@ -384,6 +395,10 @@ export default function MiComercioPage() {
                 categoria: prodCategoria.trim() || undefined,
                 es_oferta: prodEsOferta,
                 precio_oferta: numOferta,
+                agotado: prodAgotado,
+                fecha_agotado: prodAgotado ? (p.fecha_agotado || new Date().toISOString()) : undefined,
+                hora_vencimiento_oferta: prodEsOferta && prodHoraVencimiento ? prodHoraVencimiento : undefined,
+                unidades_limitadas: prodEsOferta && prodUnidadesLimitadas ? Number(prodUnidadesLimitadas) : undefined,
               }
             : p
         )
@@ -398,6 +413,10 @@ export default function MiComercioPage() {
         categoria: prodCategoria.trim() || undefined,
         es_oferta: prodEsOferta,
         precio_oferta: numOferta,
+        agotado: prodAgotado,
+        fecha_agotado: prodAgotado ? new Date().toISOString() : undefined,
+        hora_vencimiento_oferta: prodEsOferta && prodHoraVencimiento ? prodHoraVencimiento : undefined,
+        unidades_limitadas: prodEsOferta && prodUnidadesLimitadas ? Number(prodUnidadesLimitadas) : undefined,
       };
       setProductos((prev) => [...prev, nuevo]);
     }
@@ -501,6 +520,8 @@ export default function MiComercioPage() {
       radio_entrega_metros: tipoAtencion !== 'local_fisico' ? Math.round(radioKm * 1000) : 0,
       zona_envio_descripcion: tipoAtencion !== 'local_fisico' ? zonaEnvioDescripcion.trim() : '',
       en_vacaciones: enVacaciones,
+      modalidad_vacaciones: enVacaciones ? modalidadVacaciones : undefined,
+      dias_vacaciones_acumulados: enVacaciones ? diasTotalesVac : 0,
       vacaciones_desde: enVacaciones ? (vacacionesDesde || new Date().toISOString().split('T')[0]) : undefined,
       vacaciones_hasta: enVacaciones ? vacacionesHasta : undefined,
       mensaje_vacaciones: enVacaciones ? mensajeVacaciones.trim() : undefined,
@@ -512,6 +533,9 @@ export default function MiComercioPage() {
         : undefined,
       cerrado_momentaneo: cerradoMomentaneo,
       motivo_cierre_momentaneo: cerradoMomentaneo ? motivoCierreMomentaneo.trim() : undefined,
+      contador_urgencias_mes: cerradoMomentaneo
+        ? (comercioActual.contador_urgencias_mes || 0) + (comercioActual.cerrado_momentaneo ? 0 : 1)
+        : comercioActual.contador_urgencias_mes,
       fecha_cierre_emergencia: cerradoMomentaneo ? (comercioActual.fecha_cierre_emergencia || new Date().toISOString()) : undefined,
       reapertura_emergencia_programada: fechaReapertura,
       esta_de_turno: rubro.toLowerCase().includes('farmacia') ? estaDeTurno : false,
@@ -1527,27 +1551,29 @@ export default function MiComercioPage() {
                           </div>
 
                           <div className="p-2.5 rounded-xl bg-amber-900/30 border border-amber-600/40 text-[11px] text-amber-200 space-y-1">
-                            <span className="font-bold flex items-center gap-1.5 text-amber-300">
-                              <Clock className="w-3.5 h-3.5" />
-                              Caducidad y Restablecimiento Automático:
-                            </span>
+                            <div className="flex items-center justify-between font-bold text-amber-300">
+                              <span className="flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5" />
+                                Caducidad y Restablecimiento Automático:
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-amber-950 border border-amber-600/60 font-mono text-[10px]">
+                                Uso {(comercioActual?.contador_urgencias_mes || 0) + (comercioActual?.cerrado_momentaneo ? 0 : 1)}/3 este mes
+                              </span>
+                            </div>
                             <p className="leading-relaxed text-amber-200/90">
-                              El estado cambia inmediatamente a cerrado. El sistema lo restablecerá automáticamente a los horarios habituales el{' '}
-                              <strong>
-                                {calcularSiguienteDiaHabil6AM().toLocaleDateString('es-AR', {
-                                  weekday: 'long',
-                                  day: '2-digit',
-                                  month: 'long',
-                                })}{' '}
-                                a las 06:00 AM
-                              </strong>
-                              , eliminando el error humano del olvido.
+                              El estado cambia inmediatamente a cerrado. El sistema lo restablecerá automáticamente a los horarios habituales a las{' '}
+                              <strong>05:00 AM del siguiente día</strong>, garantizando la certeza del mapa para los vecinos.
                             </p>
+                            {(comercioActual?.contador_urgencias_mes || 0) >= 2 && !comercioActual?.cerrado_momentaneo && (
+                              <p className="text-[10px] text-rose-300 font-semibold pt-1">
+                                ⚠️ Atención: Al alcanzar el 3er uso en el mes, el sistema computará 1 strike disciplinario por reiteración de cierres imprevistos.
+                              </p>
+                            )}
                           </div>
                         </div>
                       ) : (
                         <p className="text-[11px] text-zinc-500 leading-tight">
-                          Al activarlo, se cierra de inmediato y se reactiva solo al inicio del siguiente día hábil a las 06:00 AM.
+                          Al activarlo, se cierra de inmediato y se reactiva solo al inicio del siguiente día a las 05:00 AM. Hasta 3 usos por mes sin penalización.
                         </p>
                       )}
                     </div>
@@ -1577,6 +1603,39 @@ export default function MiComercioPage() {
 
                       {enVacaciones ? (
                         <div className="space-y-2.5 pt-2 border-t border-sky-800/40">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-zinc-300 mb-1.5">
+                              Modalidad de Atención durante Vacaciones:
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setModalidadVacaciones('mostrar_con_aviso')}
+                                className={`p-2 rounded-xl text-left border text-xs transition-all cursor-pointer ${
+                                  modalidadVacaciones === 'mostrar_con_aviso'
+                                    ? 'bg-sky-950/80 border-sky-400 text-white font-bold'
+                                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                                }`}
+                              >
+                                <span className="block text-[11px]">Mostrar con Aviso</span>
+                                <span className="text-[9.5px] text-zinc-400 font-normal">Ficha visible con fecha de regreso previa al contacto</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setModalidadVacaciones('descanso_total')}
+                                className={`p-2 rounded-xl text-left border text-xs transition-all cursor-pointer ${
+                                  modalidadVacaciones === 'descanso_total'
+                                    ? 'bg-sky-950/80 border-sky-400 text-white font-bold'
+                                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                                }`}
+                              >
+                                <span className="block text-[11px]">Descanso Total</span>
+                                <span className="text-[9.5px] text-zinc-400 font-normal">Desactiva contacto por WhatsApp temporalmente</span>
+                              </button>
+                            </div>
+                          </div>
+
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
@@ -1879,6 +1938,30 @@ export default function MiComercioPage() {
           {/* ============================================================== */}
           {pestana === 'comprobantes' && (
             <div className="space-y-6">
+              {/* Estado actual de la membresía del comercio y tiempo restante */}
+              {comercioActual && (comercioActual.nivel === 'gold' || comercioActual.nivel === 'premium') && (
+                <div className="p-5 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-3 shadow-xl">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                    <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      {comercioActual.nivel === 'gold' ? (
+                        <Crown className="w-4 h-4 text-amber-400" />
+                      ) : (
+                        <Award className="w-4 h-4 text-purple-400" />
+                      )}
+                      <span>Tiempo restante de tu Membresía {comercioActual.nivel.toUpperCase()}</span>
+                    </span>
+                    <span className="text-xs text-zinc-400">
+                      Fecha límite: {comercioActual.fecha_vencimiento_nivel ? new Date(comercioActual.fecha_vencimiento_nivel).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }) : '30 días'}
+                    </span>
+                  </div>
+                  <ContadorMembresia
+                    fechaVencimiento={comercioActual.fecha_vencimiento_nivel}
+                    nivel={comercioActual.nivel}
+                    formato="reloj_digital"
+                  />
+                </div>
+              )}
+
               {/* Comparativa de Categorías y Planes */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Standar */}
@@ -1946,7 +2029,7 @@ export default function MiComercioPage() {
                   </div>
                   <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800/80">
                     <span className="text-[10px] text-zinc-500 block uppercase font-bold">Titular:</span>
-                    <span className="text-white font-semibold">Vecin@s Conectad@s</span>
+                    <span className="text-white font-semibold">NeoFaro Plataforma</span>
                   </div>
                 </div>
               </div>
@@ -2339,7 +2422,22 @@ export default function MiComercioPage() {
                 />
               </div>
 
-              <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2">
+              <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-1">
+                <label className="flex items-center gap-2 text-xs font-bold text-zinc-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={prodAgotado}
+                    onChange={(e) => setProdAgotado(e.target.checked)}
+                    className="accent-rose-500 rounded"
+                  />
+                  <span>📦 Marcar como Agotado (Sin Stock)</span>
+                </label>
+                <p className="text-[10px] text-zinc-500 pl-6 leading-tight">
+                  Se mostrará al final del catálogo y no podrá ser pedido por los vecinos hasta su reposición.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
                 <label className="flex items-center gap-2 text-xs font-bold text-amber-300 cursor-pointer">
                   <input
                     type="checkbox"
@@ -2347,22 +2445,55 @@ export default function MiComercioPage() {
                     onChange={(e) => setProdEsOferta(e.target.checked)}
                     className="accent-amber-500 rounded"
                   />
-                  <span>🔥 Marcar como Oferta Destacada</span>
+                  <span>🔥 Marcar como Oferta Destacada (Con Cuenta Regresiva)</span>
                 </label>
 
                 {prodEsOferta && (
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
-                      Precio de Oferta Especial ($):
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={prodPrecioOferta}
-                      onChange={(e) => setProdPrecioOferta(e.target.value)}
-                      placeholder="990"
-                      className="w-full px-3 py-1.5 bg-zinc-950 border border-amber-600/60 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
-                    />
+                  <div className="space-y-3 pt-2 border-t border-zinc-800">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
+                        Precio de Oferta Especial ($) *:
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        required={prodEsOferta}
+                        value={prodPrecioOferta}
+                        onChange={(e) => setProdPrecioOferta(e.target.value)}
+                        placeholder="990"
+                        className="w-full px-3 py-1.5 bg-zinc-950 border border-amber-600/60 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-zinc-300 mb-1">
+                          Vencimiento (Opcional):
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={prodHoraVencimiento}
+                          onChange={(e) => setProdHoraVencimiento(e.target.value)}
+                          className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-700 rounded-xl text-[11px] text-white focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-zinc-300 mb-1">
+                          Cupo Unidades (Relámpago):
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={prodUnidadesLimitadas}
+                          onChange={(e) => setProdUnidadesLimitadas(e.target.value)}
+                          placeholder="Ilimitado"
+                          className="w-full px-2.5 py-1.5 bg-zinc-950 border border-zinc-700 rounded-xl text-[11px] text-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-amber-300/80">
+                      * Por defecto, las ofertas activas caducan en el reseteo automático diario de las 05:00 AM.
+                    </p>
                   </div>
                 )}
               </div>

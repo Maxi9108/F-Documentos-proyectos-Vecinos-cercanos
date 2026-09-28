@@ -39,7 +39,7 @@ export default function AdminHeader({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-zinc-900 dark:text-white">
-                  Directorio Savio
+                  NeoFaro
                 </h1>
                 <span className="px-2 py-0.5 text-[11px] font-bold rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 uppercase tracking-wider">
                   Admin Panel

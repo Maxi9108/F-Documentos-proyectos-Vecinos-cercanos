@@ -791,6 +791,57 @@ export default function MapaComercios({
           const pinIcon = createCustomPin(comercio, isSelected);
           const pinConfig = getRubroPinConfig(comercio.rubro, comercio.tipo_atencion);
           const tieneEnvios = Boolean(comercio.radio_entrega_metros && comercio.radio_entrega_metros > 0);
+          const esSoloEnvio = comercio.tipo_atencion === 'solo_envio';
+
+          if (esSoloEnvio) {
+            const radioMetros = comercio.radio_entrega_metros || 2500;
+            return (
+              <React.Fragment key={comercio.id}>
+                <Circle
+                  center={[comercio.latitud, comercio.longitud]}
+                  radius={radioMetros}
+                  pathOptions={{
+                    color: '#06b6d4',
+                    fillColor: '#8b5cf6',
+                    fillOpacity: isSelected ? 0.35 : 0.15,
+                    weight: isSelected ? 3 : 1.5,
+                    dashArray: '6, 6',
+                  }}
+                  eventHandlers={{
+                    click: () => onSelectComercio(comercio),
+                  }}
+                >
+                  <Popup className="custom-popup">
+                    <div className="p-1 min-w-[240px] text-zinc-100 font-sans">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[11px] font-bold uppercase px-2.5 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-700/60 text-cyan-300 flex items-center gap-1">
+                          <Bike className="w-3.5 h-3.5" />
+                          <span>Zona de Reparto / Dark Store</span>
+                        </span>
+                      </div>
+                      <h3 className="font-bold text-base text-white">{comercio.nombre}</h3>
+                      <p className="text-xs text-zinc-300 mt-1">
+                        {comercio.zona_envio_descripcion || `Radio de cobertura: ${(radioMetros / 1000).toFixed(1)} km`}
+                      </p>
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
+                        Sin mostrador al público. Envíos directos a domicilio.
+                      </p>
+                      {onOpenDetalle && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenDetalle(comercio)}
+                          className="mt-3 w-full py-1.5 px-3 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                        >
+                          <ShoppingBag className="w-3.5 h-3.5" />
+                          <span>Ver Catálogo y Pedir</span>
+                        </button>
+                      )}
+                    </div>
+                  </Popup>
+                </Circle>
+              </React.Fragment>
+            );
+          }
 
           return (
             <Marker

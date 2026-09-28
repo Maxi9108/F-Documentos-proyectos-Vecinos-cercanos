@@ -10,6 +10,13 @@ export interface Producto {
   imagen_url?: string;
   categoria?: string;
   fecha_oferta?: string;
+  // Gestión ágil de stock (Disponible / Agotado con reordenamiento y auto-archivo a 30 días)
+  agotado?: boolean;
+  fecha_agotado?: string;
+  // Ofertas dinámicas con cuenta regresiva en vivo
+  hora_vencimiento_oferta?: string;
+  duracion_horas_oferta?: number;
+  unidades_limitadas?: number;
 }
 
 export type NivelComercio = 'standar' | 'premium' | 'gold';
@@ -128,6 +135,27 @@ export interface Comercio {
   password_comercio?: string;
   // Control de modificación de catálogo (1 vez por mes / 30 días)
   fecha_ultima_modificacion_catalogo?: string;
+  // Tratamiento diferencial de delivery / dark store (zona de cobertura y tarifas)
+  cobertura_poligono?: [number, number][];
+  tarifa_envio_base?: number;
+  // Reglas de urgencia y strikes disciplinarios (3 urgencias/mes = 1 strike)
+  contador_urgencias_mes?: number;
+  mes_contador_urgencias?: string; // Formato "YYYY-MM"
+  strikes_urgencia?: number;
+  // Modalidades de vacaciones (descanso total vs mostrar con aviso)
+  modalidad_vacaciones?: 'descanso_total' | 'mostrar_con_aviso';
+  dias_vacaciones_acumulados?: number;
+  // Desahogo / confirmación de operatividad ante cuarentena
+  confirmado_operativo_cuarentena?: boolean;
+  fecha_confirmacion_operativo?: string;
+  // Pulso semanal de certeza
+  pulso_semanal_estado?: 'normal' | 'especial' | 'pausado' | 'pendiente' | 'alerta';
+  fecha_ultimo_pulso?: string;
+  // Reputación dinámica (Oro, Plata, Bronce, Observación) y Onboarding antifraude
+  reputacion_categoria?: 'oro' | 'plata' | 'bronce' | 'observacion';
+  onboarding_verificado?: boolean;
+  fecha_verificacion_presencial?: string;
+  verificado_por_admin?: string;
 }
 
 export type MotivoReporte =

@@ -9,7 +9,7 @@ import ModalDetalleComercio from './ModalDetalleComercio';
 import ModalReportarComercio from './ModalReportarComercio';
 import PaletaOfertas from './PaletaOfertas';
 import Link from 'next/link';
-import { Map, List, Store, Sparkles, Navigation, User } from 'lucide-react';
+import { Map, List, Store, Sparkles, Navigation, User, Compass, Radar } from 'lucide-react';
 
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
@@ -162,6 +162,55 @@ export default function DirectorioComercios({
     return [{ rubro: 'Todos', cantidad: comerciosAprobados.length }, ...lista];
   }, [comerciosAprobados]);
 
+  // Algoritmo de Smart Fallback Automático (1 km -> 2 km -> 3 km)
+  // Si en el radio caminable (1 km) hay menos de 3 locales abiertos, se amplía proactivamente
+  const { radioEfectivo, mensajeSmartFallback } = useMemo(() => {
+    if (!cercaDeMi || !ubicacionReferencia) {
+      return { radioEfectivo: radioKm, mensajeSmartFallback: null };
+    }
+    // Si el usuario fijó manualmente un radio específico, se respeta estrictamente
+    if (radioKm !== null) {
+      return { radioEfectivo: radioKm, mensajeSmartFallback: null };
+    }
+
+    const query = busqueda.trim().toLowerCase();
+    const candidatos = comerciosAprobados.filter((comercio) => {
+      const coincideComercio =
+        query === '' ||
+        comercio.nombre.toLowerCase().includes(query) ||
+        comercio.rubro.toLowerCase().includes(query);
+      const coincideRubro = rubroSeleccionado === 'Todos' || comercio.rubro === rubroSeleccionado;
+      const coincideAbierto = !soloAbiertos || verificarComercioAbierto(comercio).estaAbierto;
+      return coincideComercio && coincideRubro && coincideAbierto;
+    });
+
+    const en1km = candidatos.filter((c) => {
+      const d = calcularDistanciaKm(ubicacionReferencia.latitud, ubicacionReferencia.longitud, c.latitud, c.longitud);
+      return d <= 1;
+    });
+
+    if (en1km.length >= 3) {
+      return { radioEfectivo: 1, mensajeSmartFallback: null };
+    }
+
+    const en2km = candidatos.filter((c) => {
+      const d = calcularDistanciaKm(ubicacionReferencia.latitud, ubicacionReferencia.longitud, c.latitud, c.longitud);
+      return d <= 2;
+    });
+
+    if (en2km.length >= 3) {
+      return {
+        radioEfectivo: 2,
+        mensajeSmartFallback: 'Ampliamos automáticamente la búsqueda a 2 km para mostrarte más opciones disponibles en tu barrio.',
+      };
+    }
+
+    return {
+      radioEfectivo: 3,
+      mensajeSmartFallback: 'Ampliamos la búsqueda a 3 km para asegurar locales y servicios abiertos disponibles.',
+    };
+  }, [cercaDeMi, ubicacionReferencia, radioKm, busqueda, comerciosAprobados, rubroSeleccionado, soloAbiertos]);
+
   // Filtrado inteligente sobre comercios aprobados
   const comerciosFiltrados = useMemo(() => {
     const query = busqueda.trim().toLowerCase();
@@ -193,16 +242,16 @@ export default function DirectorioComercios({
       const coincideTurno = !soloTurno || Boolean(comercio.esta_de_turno);
       const coincideFavorito = !soloFavoritos || esFavorito(comercio.id);
 
-      // Filtro por radio de cercanía satelital
+      // Filtro por radio de cercanía satelital (aplicando Smart Fallback o selección manual)
       let coincideRadio = true;
-      if (cercaDeMi && ubicacionReferencia && radioKm) {
+      if (cercaDeMi && ubicacionReferencia && radioEfectivo) {
         const d = calcularDistanciaKm(
           ubicacionReferencia.latitud,
           ubicacionReferencia.longitud,
           comercio.latitud,
           comercio.longitud
         );
-        coincideRadio = d <= radioKm;
+        coincideRadio = d <= radioEfectivo;
       }
 
       return (
@@ -373,6 +422,26 @@ export default function DirectorioComercios({
               totalResultados={comerciosFiltrados.length}
             />
           </section>
+
+          {/* Banner de Radio Inteligente (Smart Fallback 1km -> 2km -> 3km) */}
+          {mensajeSmartFallback && (
+            <div className="flex items-center gap-3 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-cyan-950/70 via-zinc-900 to-violet-950/70 border border-cyan-500/30 text-cyan-200 text-xs shadow-lg animate-fadeIn">
+              <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center shrink-0 text-cyan-300">
+                <Radar className="w-4 h-4 animate-spin-slow" />
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-white flex items-center gap-1.5">
+                  <span>Smart Radius Activo ({radioEfectivo} km)</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono">
+                    Fallback Automático
+                  </span>
+                </p>
+                <p className="text-zinc-300 text-[11px] mt-0.5">
+                  {mensajeSmartFallback}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Selector de vista para móviles mejorado */}
           <div className="flex lg:hidden items-center justify-between bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 shadow-sm">

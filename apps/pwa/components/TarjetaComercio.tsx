@@ -27,7 +27,7 @@ import { verificarComercioAbierto } from '@/lib/horarios';
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
-import ContadorMembresia from '@/components/ContadorMembresia';
+import OfertaCountdown from '@/components/OfertaCountdown';
 
 interface TarjetaComercioProps {
   comercio: Comercio;
@@ -109,13 +109,18 @@ export default function TarjetaComercio({
               {comercio.rubro}
             </span>
 
-            {/* Insignia y Contador de tiempo Gold / Premium */}
-            {(nivel === 'gold' || nivel === 'premium') && (
-              <ContadorMembresia
-                fechaVencimiento={comercio.fecha_vencimiento_nivel}
-                nivel={nivel}
-                formato="badge"
-              />
+            {/* Insignia de Nivel Destacado (Sin exponer el vencimiento del plan al público) */}
+            {nivel === 'gold' && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                <Crown className="w-3 h-3 text-amber-400" />
+                <span>Gold</span>
+              </span>
+            )}
+            {nivel === 'premium' && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                <Award className="w-3 h-3 text-purple-400" />
+                <span>Premium</span>
+              </span>
             )}
           </div>
 
@@ -237,6 +242,34 @@ export default function TarjetaComercio({
           {comercio.nombre}
         </h3>
 
+        {/* Oferta Barrial Activa con Cuenta Regresiva en Vivo */}
+        {ofertas.length > 0 && (
+          <div
+            onClick={() => onOpenDetalle(comercio)}
+            className="mb-3 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 border border-amber-500/30 flex items-center justify-between gap-2 shadow-xs cursor-pointer hover:border-amber-500/50 transition-colors"
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
+              <div className="truncate">
+                <span className="text-[11px] font-bold text-amber-300 block truncate">
+                  {ofertas[0].nombre}
+                </span>
+                {ofertas[0].precio_oferta ? (
+                  <span className="text-[11px] font-mono font-black text-white">
+                    ${ofertas[0].precio_oferta.toLocaleString('es-AR')}
+                    {ofertas[0].descuento_porcentaje ? (
+                      <span className="ml-1 text-[10px] text-amber-400 font-sans font-bold">
+                        ({ofertas[0].descuento_porcentaje}% OFF)
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <OfertaCountdown horaVencimiento={ofertas[0].hora_vencimiento_oferta} compact />
+          </div>
+        )}
+
         {/* Descripción corta si existe */}
         {comercio.descripcion && (
           <p className="text-xs text-zinc-400 line-clamp-2 mb-3 leading-relaxed">
@@ -290,10 +323,19 @@ export default function TarjetaComercio({
 
         {/* Datos de contacto y ubicación */}
         <div className="space-y-1.5 text-xs text-zinc-400 mb-4">
-          <p className="flex items-start gap-2">
-            <MapPin className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
-            <span className="leading-snug text-zinc-300">{comercio.direccion}</span>
-          </p>
+          {comercio.tipo_atencion === 'solo_envio' ? (
+            <p className="flex items-start gap-2 text-cyan-300">
+              <Bike className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+              <span className="leading-snug">
+                {comercio.zona_envio_descripcion ? `Cobertura: ${comercio.zona_envio_descripcion}` : 'Servicio de reparto a domicilio (Sin atención al público)'}
+              </span>
+            </p>
+          ) : (
+            <p className="flex items-start gap-2">
+              <MapPin className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
+              <span className="leading-snug text-zinc-300">{comercio.direccion}</span>
+            </p>
+          )}
 
           {/* Distancia Satelital GPS / Ubicación de Referencia */}
           {distanciaFormateada && tiempoEstimado && (

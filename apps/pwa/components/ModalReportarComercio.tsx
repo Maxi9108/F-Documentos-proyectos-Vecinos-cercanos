@@ -34,19 +34,39 @@ export default function ModalReportarComercio({
   const [motivoSeleccionado, setMotivoSeleccionado] = useState<MotivoReporte | null>(null);
   const [honeypot, setHoneypot] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bloqueadoPor30Dias, setBloqueadoPor30Dias] = useState<number | null>(null);
   const [resultado, setResultado] = useState<{
     tipo: 'exito' | 'error';
     mensaje: string;
     enCuarentena?: boolean;
   } | null>(null);
 
-  // Reset al abrir/cerrar
+  // Reset y comprobación de límite de 30 días al abrir
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && comercio) {
       setMotivoSeleccionado(null);
       setHoneypot('');
       setResultado(null);
       setIsSubmitting(false);
+
+      try {
+        const lastReport = localStorage.getItem(`neofaro_reporte_${comercio.id}`);
+        if (lastReport) {
+          const timestamp = parseInt(lastReport, 10);
+          const msTranscurridos = Date.now() - timestamp;
+          const ms30Dias = 30 * 24 * 60 * 60 * 1000;
+          if (msTranscurridos < ms30Dias) {
+            const diasRestantes = Math.ceil((ms30Dias - msTranscurridos) / (24 * 60 * 60 * 1000));
+            setBloqueadoPor30Dias(diasRestantes);
+          } else {
+            setBloqueadoPor30Dias(null);
+          }
+        } else {
+          setBloqueadoPor30Dias(null);
+        }
+      } catch {
+        setBloqueadoPor30Dias(null);
+      }
     }
   }, [isOpen, comercio]);
 
@@ -54,7 +74,7 @@ export default function ModalReportarComercio({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!motivoSeleccionado) return;
+    if (!motivoSeleccionado || bloqueadoPor30Dias) return;
 
     setIsSubmitting(true);
     setResultado(null);
@@ -83,6 +103,14 @@ export default function ModalReportarComercio({
           mensaje: data.error || 'No se pudo procesar tu reporte. Por favor, reintenta más tarde.',
         });
       } else {
+        // Guardar marca local para regla de 30 días
+        try {
+          localStorage.setItem(`neofaro_reporte_${comercio.id}`, Date.now().toString());
+          setBloqueadoPor30Dias(30);
+        } catch {
+          // Ignorar error de almacenamiento
+        }
+
         setResultado({
           tipo: 'exito',
           mensaje: data.mensaje || '¡Gracias! Tu reporte ha sido registrado.',
@@ -233,6 +261,19 @@ export default function ModalReportarComercio({
               </div>
             </div>
 
+            {/* Aviso de Límite de 30 días alcanzado */}
+            {bloqueadoPor30Dias !== null && (
+              <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/50 text-xs text-amber-200 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-white block">Reporte reciente registrado</span>
+                  <p className="text-[11px] text-amber-200/90 leading-tight">
+                    Ya enviaste una sugerencia sobre este local desde este dispositivo. Para proteger a los comerciantes barriales contra sabotajes, podrás volver a reportar dentro de <strong className="text-white underline">{bloqueadoPor30Dias} {bloqueadoPor30Dias === 1 ? 'día' : 'días'}</strong>.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Mensaje de Error si ocurrió */}
             {resultado?.tipo === 'error' && (
               <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/50 text-xs text-rose-200 flex items-start gap-2">
@@ -274,7 +315,7 @@ export default function ModalReportarComercio({
 
                 <button
                   type="submit"
-                  disabled={!motivoSeleccionado || isSubmitting}
+                  disabled={!motivoSeleccionado || isSubmitting || Boolean(bloqueadoPor30Dias)}
                   className="py-2.5 px-5 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:pointer-events-none text-black font-extrabold text-xs transition-all flex items-center gap-1.5 shadow-md shadow-amber-950/40 cursor-pointer"
                 >
                   {isSubmitting ? (
@@ -282,6 +323,8 @@ export default function ModalReportarComercio({
                       <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
                       <span>Verificando...</span>
                     </>
+                  ) : bloqueadoPor30Dias ? (
+                    <span>Límite de 30 días activo</span>
                   ) : (
                     <>
                       <Send className="w-3.5 h-3.5" />

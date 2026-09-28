@@ -11,19 +11,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Aquí se integra el servicio de correo transaccional (Resend, SendGrid o SMTP)
-    // Ejemplo de integración Resend si existe RESEND_API_KEY:
+    // Integración opcional de Resend para correo de marca personalizado
     const resendApiKey = process.env.RESEND_API_KEY;
     if (resendApiKey) {
       try {
-        await fetch('https://api.resend.com/emails', {
+        const fromAddress = process.env.RESEND_FROM || 'onboarding@resend.dev';
+        const res = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${resendApiKey}`,
           },
           body: JSON.stringify({
-            from: 'Vecinos Conectados <no-reply@vecinosconectados.com.ar>',
+            from: `Vecinos Conectados <${fromAddress}>`,
             to: [email],
             subject: `Tu código de verificación es: ${token} - Vecin@s Conectad@s`,
             html: `
@@ -39,12 +39,13 @@ export async function POST(req: NextRequest) {
             `,
           }),
         });
+        const resData = await res.json();
+        console.log('[API enviar-codigo] Resend resultado:', resData);
       } catch (err) {
         console.warn('[API enviar-codigo] Fallo al invocar Resend:', err);
       }
     } else {
-      // Simulación de envío segura en servidor
-      console.log(`[API enviar-codigo] Código generado para ${email}: ${token} (Modo seguro / Configura RESEND_API_KEY para envío en producción)`);
+      console.log(`[API enviar-codigo] Código generado para ${email}: ${token}. (El envío en tiempo real viaja mediante Supabase Auth OTP)`);
     }
 
     return NextResponse.json({

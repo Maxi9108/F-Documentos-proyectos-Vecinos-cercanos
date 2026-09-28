@@ -268,10 +268,10 @@ export default function AdminDashboard() {
               <ShieldCheck className="w-8 h-8" />
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white">
-              Directorio Savio
+              NeoFaro
             </h1>
             <p className="text-xs text-zinc-400">
-              Acceso restringido para administradores del sistema
+              Panel Administrativo y Control de Certeza Barrial
             </p>
           </div>
 
@@ -304,6 +304,9 @@ export default function AdminDashboard() {
                 placeholder="Ingresa tu contraseña de administrador"
                 className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
               />
+              <p className="text-[11px] text-zinc-400 mt-1.5 flex items-center justify-between">
+                <span>Clave de acceso inicial: <code className="text-indigo-400 font-bold bg-indigo-950/60 px-1.5 py-0.5 rounded">admin</code></span>
+              </p>
             </div>
 
             {authError && (
@@ -404,7 +407,7 @@ export default function AdminDashboard() {
       <footer className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 py-5 text-center text-xs text-zinc-500">
         <div className="max-w-7xl mx-auto px-4">
           <p>
-            Directorio Savio Admin &copy; {new Date().getFullYear()} — Panel de gestión y control
+            NeoFaro Admin &copy; {new Date().getFullYear()} — Plataforma de Infraestructura Hiperlocal
           </p>
         </div>
       </footer>

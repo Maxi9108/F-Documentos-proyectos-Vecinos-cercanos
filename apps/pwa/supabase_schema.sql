@@ -95,6 +95,22 @@ ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS email_comercio TEXT;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS password_comercio TEXT;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS fecha_ultima_modificacion_catalogo TIMESTAMP WITH TIME ZONE;
 ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS catalogo JSONB;
+-- Nuevas columnas de certeza barrial y operaciones NeoFaro
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS cobertura_poligono JSONB;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS tarifa_envio_base NUMERIC(12, 2) DEFAULT 0;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS contador_urgencias_mes INTEGER DEFAULT 0;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS mes_contador_urgencias TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS strikes_urgencia INTEGER DEFAULT 0;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS modalidad_vacaciones TEXT DEFAULT 'mostrar_con_aviso';
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS dias_vacaciones_acumulados INTEGER DEFAULT 0;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS confirmado_operativo_cuarentena BOOLEAN DEFAULT false;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS fecha_confirmacion_operativo TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS pulso_semanal_estado TEXT DEFAULT 'normal';
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS fecha_ultimo_pulso TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS reputacion_categoria TEXT DEFAULT 'plata';
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS onboarding_verificado BOOLEAN DEFAULT false;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS fecha_verificacion_presencial TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS verificado_por_admin TEXT;
 
 -- 3. Tabla Secundaria: productos (catálogo y ofertas)
 CREATE TABLE IF NOT EXISTS public.productos (
@@ -108,8 +124,22 @@ CREATE TABLE IF NOT EXISTS public.productos (
     descuento_porcentaje INTEGER,
     imagen_url TEXT,
     categoria TEXT,
+    agotado BOOLEAN DEFAULT false,
+    fecha_agotado TIMESTAMP WITH TIME ZONE,
+    hora_vencimiento_oferta TIMESTAMP WITH TIME ZONE,
+    duracion_horas_oferta INTEGER,
+    unidades_limitadas INTEGER,
+    fecha_oferta DATE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Columnas añadidas a productos si la tabla ya existía
+ALTER TABLE public.productos ADD COLUMN IF NOT EXISTS agotado BOOLEAN DEFAULT false;
+ALTER TABLE public.productos ADD COLUMN IF NOT EXISTS fecha_agotado TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.productos ADD COLUMN IF NOT EXISTS hora_vencimiento_oferta TIMESTAMP WITH TIME ZONE;
+ALTER TABLE public.productos ADD COLUMN IF NOT EXISTS duracion_horas_oferta INTEGER;
+ALTER TABLE public.productos ADD COLUMN IF NOT EXISTS unidades_limitadas INTEGER;
+ALTER TABLE public.productos ADD COLUMN IF NOT EXISTS fecha_oferta DATE;
 
 -- 4. Tabla de Categorías Oficiales y Homologadas
 CREATE TABLE IF NOT EXISTS public.categorias (

@@ -71,18 +71,22 @@ export async function loginAdmin(
     }
   }
 
-  // 2. Fallback de desarrollo para Maxi SuperAdmin
+  // 2. Fallback de fábrica para Maxi SuperAdmin (Clave predeterminada: admin)
   if (email === 'maxi0802@gmail.com') {
-    const sesion: AdminSesion = {
-      id: 'superadmin-maxi',
-      email: 'maxi0802@gmail.com',
-      nombre: 'Maxi (SuperAdmin)',
-      rol: 'superadmin',
-    };
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(sesion));
+    const esValida = password === 'admin' || (await verifyPassword(password, 'admin'));
+    if (esValida) {
+      const sesion: AdminSesion = {
+        id: 'superadmin-maxi',
+        email: 'maxi0802@gmail.com',
+        nombre: 'Maxi (SuperAdmin)',
+        rol: 'superadmin',
+      };
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(sesion));
+      }
+      return { ok: true, admin: sesion };
     }
-    return { ok: true, admin: sesion };
+    return { ok: false, error: 'Contraseña incorrecta. Recuerda que la clave por defecto es "admin".' };
   }
 
   return { ok: false, error: 'Credenciales inválidas. Verifica tu correo y contraseña.' };
