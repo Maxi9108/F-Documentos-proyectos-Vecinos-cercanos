@@ -121,7 +121,7 @@ export function verificarYRestaurarEstados(comercios: Comercio[]): Comercio[] {
   let huboCambios = false;
 
   const resultado = comercios.map((comercio) => {
-    let modificado = { ...comercio };
+    const modificado = { ...comercio };
     let cambioEsteComercio = false;
 
     // 1. Caducidad automática de Cierre por Emergencia
@@ -420,7 +420,7 @@ export async function aprobarComercio(
   
   // Si se aprueba en Premium o Gold, se otorgan 30 días de vigencia
   let fechaVencimiento: string | null = null;
-  let fechaInicioNivel: string = fechaAprobacion;
+  const fechaInicioNivel: string = fechaAprobacion;
   if (nivelAsignado === 'premium' || nivelAsignado === 'gold') {
     const fv = new Date(ahora.getTime() + 30 * 24 * 60 * 60 * 1000);
     fechaVencimiento = fv.toISOString();

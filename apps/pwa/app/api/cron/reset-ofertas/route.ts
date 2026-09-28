@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getComercios, guardarComercio, isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { getComercios, guardarComercio } from '@/lib/supabase';
 import { Comercio, Producto } from '@/types/comercio';
 
 /**

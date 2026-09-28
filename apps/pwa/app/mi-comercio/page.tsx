@@ -1302,7 +1302,7 @@ export default function MiComercioPage() {
                     <div className="p-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-1">
                       <strong className="text-white block font-semibold">1. Horarios de Trasnoche Claros</strong>
                       <p className="text-zinc-400 text-[11px] leading-relaxed">
-                        Si atiendes de noche o madrugada, configurar tus turnos exactos te mantendrá visible con el cartel "Abierto" en los momentos de mayor demanda.
+                        Si atiendes de noche o madrugada, configurar tus turnos exactos te mantendrá visible con el cartel &quot;Abierto&quot; en los momentos de mayor demanda.
                       </p>
                     </div>
 
@@ -1767,7 +1767,7 @@ export default function MiComercioPage() {
                         </span>
                       </strong>
                       <p className="text-emerald-200/90 text-xs leading-relaxed max-w-2xl">
-                        Puedes agregar, editar o ajustar los precios de tus productos. Al pulsar "Publicar y Fijar Catálogo Mensual", la lista quedará guardada y protegida por los próximos 30 días para brindar previsibilidad a tus clientes.
+                        Puedes agregar, editar o ajustar los precios de tus productos. Al pulsar &quot;Publicar y Fijar Catálogo Mensual&quot;, la lista quedará guardada y protegida por los próximos 30 días para brindar previsibilidad a tus clientes.
                       </p>
                     </div>
                   </div>

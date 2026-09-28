@@ -1,4 +1,4 @@
-import { Comercio, HorariosConfig, HorarioDia, HorarioTurno, DiaSemana } from '@/types/comercio';
+import { Comercio, HorariosConfig, HorarioDia, DiaSemana } from '@/types/comercio';
 
 const DIAS_CLAVES: DiaSemana[] = [
   'domingo',

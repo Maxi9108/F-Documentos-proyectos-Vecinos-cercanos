@@ -1,4 +1,4 @@
-import { Administrador, PermisosAdmin, RolAdmin } from '@/types/comercio';
+import { Administrador, PermisosAdmin } from '@/types/comercio';
 import { hashPassword, verifyPassword } from './crypto';
 
 const STORAGE_KEY_ADMINS = 'vecinos_administradores_sistema';

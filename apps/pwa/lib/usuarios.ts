@@ -1,4 +1,4 @@
-import { UsuarioSistema, EstadoUsuario, RolUsuario } from '@/types/comercio';
+import { UsuarioSistema, EstadoUsuario } from '@/types/comercio';
 import { supabase, isSupabaseConfigured } from './supabase';
 
 const STORAGE_KEY_USUARIOS = 'vecinos_usuarios_registrados';
