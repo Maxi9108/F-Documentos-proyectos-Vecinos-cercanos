@@ -43,7 +43,10 @@ interface UserContextType {
   estaAutenticado: boolean;
   esAdmin: boolean;
   adminData: Administrador | null;
-  iniciarSesion: (email: string, password: string) => Promise<{ ok: boolean; mensaje?: string }>;
+  iniciarSesion: (
+    email: string,
+    password: string
+  ) => Promise<{ ok: boolean; mensaje?: string; esAdmin?: boolean }>;
   solicitarTokenRegistro: (
     email: string,
     nombre: string
@@ -65,6 +68,7 @@ interface UserContextType {
     nombre?: string
   ) => Promise<{ ok: boolean; mensaje?: string }>;
   iniciarSesionOAuth: (provider: 'google' | 'apple') => Promise<{ ok: boolean; mensaje?: string }>;
+  solicitarRecuperacionAdmin: (email: string) => Promise<{ ok: boolean; mensaje: string }>;
   cerrarSesion: () => void;
 
   // Locales Favoritos
@@ -554,7 +558,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const iniciarSesion = async (
     email: string,
     password: string
-  ): Promise<{ ok: boolean; mensaje?: string }> => {
+  ): Promise<{ ok: boolean; mensaje?: string; esAdmin?: boolean }> => {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return { ok: false, mensaje: 'Por favor ingresa un correo electrónico válido.' };
@@ -600,7 +604,20 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       if (admin) {
         const adminPassOk = await verifyPassword(password, admin.password);
         if (!adminPassOk) {
-          return { ok: false, mensaje: 'Contraseña de administrador incorrecta.' };
+          // Despachar notificación de seguridad en segundo plano al correo del administrador
+          if (supabase) {
+            Promise.resolve(
+              supabase.auth.resetPasswordForEmail(cleanEmail, {
+                redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/admin` : undefined,
+              })
+            ).catch(() => {});
+          }
+          return {
+            ok: false,
+            esAdmin: true,
+            mensaje:
+              'Contraseña de administrador incorrecta. Por motivos de seguridad, tus credenciales están protegidas y no se muestran. Puedes solicitar un correo de confirmación para cambiar tu clave.',
+          };
         }
       } else if (registrado?.password_hash) {
         const userPassOk = await verifyPassword(password, registrado.password_hash);
@@ -628,6 +645,29 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       return { ok: true, mensaje: admin ? `¡Bienvenido SuperAdmin ${admin.nombre}!` : '¡Sesión iniciada correctamente!' };
     } catch (err: any) {
       return { ok: false, mensaje: err?.message || 'Error al iniciar sesión.' };
+    }
+  };
+
+  // Solicitar recuperación y confirmación de contraseña para Administrador
+  const solicitarRecuperacionAdmin = async (
+    email: string
+  ): Promise<{ ok: boolean; mensaje: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    try {
+      if (supabase) {
+        await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/admin` : undefined,
+        });
+      }
+      return {
+        ok: true,
+        mensaje: `Se ha enviado un correo a ${cleanEmail} para verificar tu identidad y solicitar el cambio de contraseña.`,
+      };
+    } catch {
+      return {
+        ok: true,
+        mensaje: `Se ha procesado la notificación de seguridad para ${cleanEmail}. Revisa tu correo para cambiar tu clave.`,
+      };
     }
   };
 
@@ -800,6 +840,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         completarRegistroConPassword,
         registrar,
         iniciarSesionOAuth,
+        solicitarRecuperacionAdmin,
         cerrarSesion,
         favoritosIds,
         toggleFavorito,

@@ -24,9 +24,11 @@ export type NivelComercio = 'standar' | 'premium' | 'gold';
 export interface NivelConfig {
   nombre: string;
   limiteProductos: number;
+  limiteOfertasSemanales: number;
   limiteOfertasDiarias: number;
   requiereRenovacion: boolean;
   diasVigencia: number;
+  diasDuracionOferta: number;
   badgeLabel: string;
   badgeColor: string;
   descripcion: string;
@@ -36,9 +38,11 @@ export const NIVELES_CONFIG: Record<NivelComercio, NivelConfig> = {
   standar: {
     nombre: 'Standar',
     limiteProductos: 20,
+    limiteOfertasSemanales: 0,
     limiteOfertasDiarias: 0,
     requiereRenovacion: false,
     diasVigencia: 0,
+    diasDuracionOferta: 0,
     badgeLabel: 'Standar',
     badgeColor: 'zinc',
     descripcion: 'Catálogo de hasta 20 artículos esenciales para tu comercio.',
@@ -46,22 +50,26 @@ export const NIVELES_CONFIG: Record<NivelComercio, NivelConfig> = {
   premium: {
     nombre: 'Premium',
     limiteProductos: 50,
-    limiteOfertasDiarias: 2,
+    limiteOfertasSemanales: 5,
+    limiteOfertasDiarias: 5,
     requiereRenovacion: true,
     diasVigencia: 30,
+    diasDuracionOferta: 7,
     badgeLabel: 'Premium',
     badgeColor: 'purple',
-    descripcion: 'Catálogo de hasta 50 productos y hasta 2 ofertas barriales por día.',
+    descripcion: 'Catálogo de hasta 50 productos y 5 ofertas semanales con duración de 7 días.',
   },
   gold: {
     nombre: 'Gold',
     limiteProductos: 100,
-    limiteOfertasDiarias: 5,
+    limiteOfertasSemanales: 20,
+    limiteOfertasDiarias: 20,
     requiereRenovacion: true,
     diasVigencia: 30,
+    diasDuracionOferta: 7,
     badgeLabel: 'Gold',
     badgeColor: 'amber',
-    descripcion: 'Máxima visibilidad: catálogo de hasta 100 productos y 5 ofertas diarias destacadas.',
+    descripcion: 'Máxima visibilidad: catálogo de hasta 100 productos y 20 ofertas semanales con duración de 7 días.',
   },
 };
 

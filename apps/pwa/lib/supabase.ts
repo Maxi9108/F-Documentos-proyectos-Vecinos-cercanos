@@ -183,6 +183,44 @@ export function verificarYRestaurarEstados(comercios: Comercio[]): Comercio[] {
       }
     }
 
+    // 3. Caducidad automática de ofertas semanales (7 días continuos de vigencia)
+    if (modificado.productos && Array.isArray(modificado.productos)) {
+      let huboCambioProductos = false;
+      const productosSaneados = modificado.productos.map((prod) => {
+        if (!prod.es_oferta) return prod;
+        let vencida = false;
+        if (prod.hora_vencimiento_oferta) {
+          const vtoMs = new Date(prod.hora_vencimiento_oferta).getTime();
+          if (!isNaN(vtoMs) && ahora >= vtoMs) {
+            vencida = true;
+          }
+        } else if (prod.fecha_oferta) {
+          const fechaMs = new Date(prod.fecha_oferta).getTime();
+          if (!isNaN(fechaMs) && ahora - fechaMs >= 7 * 24 * 60 * 60 * 1000) {
+            vencida = true;
+          }
+        }
+        if (vencida) {
+          huboCambioProductos = true;
+          return {
+            ...prod,
+            es_oferta: false,
+            precio_oferta: undefined,
+            descuento_porcentaje: undefined,
+            hora_vencimiento_oferta: undefined,
+            duracion_horas_oferta: undefined,
+            unidades_limitadas: undefined,
+          };
+        }
+        return prod;
+      });
+      if (huboCambioProductos) {
+        modificado.productos = productosSaneados;
+        cambioEsteComercio = true;
+        huboCambios = true;
+      }
+    }
+
     // Si cambió en Supabase, actualizar en background
     if (cambioEsteComercio && isSupabaseConfigured) {
       Promise.resolve(

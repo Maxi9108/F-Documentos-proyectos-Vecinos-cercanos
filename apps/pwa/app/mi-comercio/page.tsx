@@ -375,13 +375,33 @@ export default function MiComercioPage() {
     setModalProductoAbierto(true);
   };
 
-  // Guardar producto en la lista local
+  // Guardar producto en la lista local con validación de ofertas semanales (5 para Premium, 20 para Gold)
   const handleGuardarProductoItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!prodNombre.trim() || !prodPrecio) return;
 
     const numPrecio = Number(prodPrecio);
     const numOferta = prodEsOferta && prodPrecioOferta ? Number(prodPrecioOferta) : undefined;
+
+    // Validación de límites de ofertas por plan
+    if (prodEsOferta) {
+      if (nivelActual === 'standar') {
+        alert('El Plan Standar no incluye ofertas destacadas. Actualiza a Premium (5 ofertas semanales) o Gold (20 ofertas semanales).');
+        return;
+      }
+      const maxOfertas = NIVELES_CONFIG[nivelActual]?.limiteOfertasSemanales || 0;
+      const otrasOfertas = productos.filter((p) => p.es_oferta && p.id !== productoEditandoId);
+      if (otrasOfertas.length >= maxOfertas) {
+        alert(`Has alcanzado el límite máximo de ${maxOfertas} ofertas semanales para el Plan ${nivelActual.toUpperCase()}.\n\nCada oferta dura 7 días. Pasados los 7 días se borran automáticamente dejando lugar libre para nuevas ofertas.`);
+        return;
+      }
+    }
+
+    const fechaOfertaActual = prodEsOferta ? new Date().toISOString() : undefined;
+    // Vigencia semanal: 7 días continuos desde el momento de alta o la fecha especificada
+    const vencimientoSemanal7Dias = prodEsOferta
+      ? (prodHoraVencimiento || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())
+      : undefined;
 
     if (productoEditandoId) {
       setProductos((prev) =>
@@ -395,9 +415,11 @@ export default function MiComercioPage() {
                 categoria: prodCategoria.trim() || undefined,
                 es_oferta: prodEsOferta,
                 precio_oferta: numOferta,
+                fecha_oferta: prodEsOferta ? (p.fecha_oferta || fechaOfertaActual) : undefined,
+                hora_vencimiento_oferta: vencimientoSemanal7Dias,
+                duracion_horas_oferta: prodEsOferta ? 168 : undefined,
                 agotado: prodAgotado,
                 fecha_agotado: prodAgotado ? (p.fecha_agotado || new Date().toISOString()) : undefined,
-                hora_vencimiento_oferta: prodEsOferta && prodHoraVencimiento ? prodHoraVencimiento : undefined,
                 unidades_limitadas: prodEsOferta && prodUnidadesLimitadas ? Number(prodUnidadesLimitadas) : undefined,
               }
             : p
@@ -413,9 +435,11 @@ export default function MiComercioPage() {
         categoria: prodCategoria.trim() || undefined,
         es_oferta: prodEsOferta,
         precio_oferta: numOferta,
+        fecha_oferta: fechaOfertaActual,
+        hora_vencimiento_oferta: vencimientoSemanal7Dias,
+        duracion_horas_oferta: prodEsOferta ? 168 : undefined,
         agotado: prodAgotado,
         fecha_agotado: prodAgotado ? new Date().toISOString() : undefined,
-        hora_vencimiento_oferta: prodEsOferta && prodHoraVencimiento ? prodHoraVencimiento : undefined,
         unidades_limitadas: prodEsOferta && prodUnidadesLimitadas ? Number(prodUnidadesLimitadas) : undefined,
       };
       setProductos((prev) => [...prev, nuevo]);
@@ -1822,9 +1846,16 @@ export default function MiComercioPage() {
                     <Package className="w-4 h-4 text-purple-400" />
                     <span>Productos Publicados ({productos.length} / {limiteProductos})</span>
                   </h3>
-                  <p className="text-xs text-zinc-400 mt-0.5">
-                    Plan {nivelActual.toUpperCase()} permite hasta {limiteProductos} artículos.
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <span className="text-xs text-zinc-400">
+                      Plan {nivelActual.toUpperCase()} permite hasta {limiteProductos} artículos.
+                    </span>
+                    {nivelActual !== 'standar' && (
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold">
+                        🔥 Ofertas Semanales Activas: {productos.filter((p) => p.es_oferta).length} / {NIVELES_CONFIG[nivelActual]?.limiteOfertasSemanales || 0} (Vigencia 7 días)
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {puedeModificarCatalogo && productos.length > 0 && (
@@ -1988,7 +2019,7 @@ export default function MiComercioPage() {
                   <div className="text-2xl font-black text-white">$4.500 <span className="text-xs text-zinc-400 font-normal">/ mes</span></div>
                   <p className="text-[11px] text-zinc-300">Catálogo ampliado y ofertas barriales activas por 30 días.</p>
                   <div className="text-[10px] text-zinc-400 border-t border-purple-800/40 pt-2">
-                    • 50 productos en catálogo<br />• 2 ofertas barriales por día
+                    • 50 productos en catálogo<br />• 5 ofertas semanales (duración 7 días)
                   </div>
                 </div>
 
@@ -2001,9 +2032,9 @@ export default function MiComercioPage() {
                     <span className="text-xs font-bold text-amber-400">Mensual</span>
                   </div>
                   <div className="text-2xl font-black text-white">$7.900 <span className="text-xs text-zinc-400 font-normal">/ mes</span></div>
-                  <p className="text-[11px] text-zinc-300">Máxima visibilidad, catálogo de 100 productos y 5 ofertas diarias.</p>
+                  <p className="text-[11px] text-zinc-300">Máxima visibilidad, catálogo de 100 productos y 20 ofertas semanales.</p>
                   <div className="text-[10px] text-zinc-400 border-t border-amber-800/40 pt-2">
-                    • 100 productos en catálogo<br />• 5 ofertas diarias destacadas<br />• Posicionamiento superior
+                    • 100 productos en catálogo<br />• 20 ofertas semanales (duración 7 días)<br />• Posicionamiento superior
                   </div>
                 </div>
               </div>
@@ -2492,7 +2523,7 @@ export default function MiComercioPage() {
                       </div>
                     </div>
                     <p className="text-[10px] text-amber-300/80">
-                      * Por defecto, las ofertas activas caducan en el reseteo automático diario de las 05:00 AM.
+                      * Vigencia semanal: Las ofertas tienen una duración de 7 días continuos. Pasados los 7 días caducan y se borran automáticamente, liberando cupo para nuevas ofertas (máx. 5 en Premium y 20 en Gold).
                     </p>
                   </div>
                 )}

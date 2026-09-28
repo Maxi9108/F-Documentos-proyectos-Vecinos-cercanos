@@ -27,6 +27,7 @@ export default function ModalAuth() {
     registrar,
     iniciarSesion,
     iniciarSesionOAuth,
+    solicitarRecuperacionAdmin,
     usuario,
     cerrarSesion,
   } = useUser();
@@ -42,6 +43,7 @@ export default function ModalAuth() {
   // Feedback y loaders
   const [cargando, setCargando] = useState(false);
   const [cargandoOAuth, setCargandoOAuth] = useState<'google' | 'apple' | null>(null);
+  const [enviandoRecuperacion, setEnviandoRecuperacion] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
   const [mensajeError, setMensajeError] = useState<string | null>(null);
   const [modalPasswordAbierto, setModalPasswordAbierto] = useState(false);
@@ -339,9 +341,28 @@ export default function ModalAuth() {
 
             {/* Mensajes de Feedback */}
             {mensajeError && (
-              <div className="mb-4 p-3 rounded-xl bg-rose-950/60 border border-rose-800/60 text-rose-200 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                <span>{mensajeError}</span>
+              <div className="mb-4 space-y-2">
+                <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800/60 text-rose-200 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{mensajeError}</span>
+                </div>
+                {email.trim().toLowerCase() === 'maxi0802@gmail.com' && (
+                  <button
+                    type="button"
+                    disabled={enviandoRecuperacion}
+                    onClick={async () => {
+                      setEnviandoRecuperacion(true);
+                      const res = await solicitarRecuperacionAdmin(email);
+                      setEnviandoRecuperacion(false);
+                      setMensajeError(null);
+                      setMensajeExito(res.mensaje);
+                    }}
+                    className="w-full py-2 px-3 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-200 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>{enviandoRecuperacion ? 'Enviando correo...' : 'Enviar correo para confirmar identidad y cambiar clave'}</span>
+                  </button>
+                )}
               </div>
             )}
 
@@ -450,7 +471,7 @@ export default function ModalAuth() {
             {/* PESTAÑA 2: INICIAR SESIÓN */}
             {modo === 'login' && (
               <form onSubmit={handleLogin} className="space-y-3.5">
-                {/* Atajo Rápido para SuperAdmin */}
+                {/* Atajo Rápido para SuperAdmin (Credenciales Protegidas) */}
                 <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-2xl text-xs space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-indigo-300 font-bold flex items-center gap-1.5 text-[11px]">
@@ -461,7 +482,6 @@ export default function ModalAuth() {
                       type="button"
                       onClick={() => {
                         setEmail('maxi0802@gmail.com');
-                        setPassword('admin');
                       }}
                       className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-bold cursor-pointer transition-all shadow-sm"
                     >
@@ -469,7 +489,7 @@ export default function ModalAuth() {
                     </button>
                   </div>
                   <p className="text-[11px] text-zinc-400">
-                    Email: <span className="text-zinc-200 font-mono">maxi0802@gmail.com</span> | Clave: <code className="text-indigo-300 font-bold bg-indigo-900/50 px-1 py-0.5 rounded">admin</code>
+                    Cuenta: <span className="text-zinc-200 font-mono">maxi0802@gmail.com</span> (Credenciales protegidas)
                   </p>
                 </div>
 

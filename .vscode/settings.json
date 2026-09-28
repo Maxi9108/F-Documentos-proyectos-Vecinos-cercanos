@@ -1,0 +1,5 @@
+{
+  "terminal.integrated.environmentChangesIndicator": "off",
+  "terminal.integrated.environmentChangesRelaunch": false,
+  "terminal.integrated.shellIntegration.enabled": true
+}

@@ -10,7 +10,13 @@ import {
   toggleComercioEstado,
   levantarCuarentena,
 } from '@/lib/supabase';
-import { loginAdmin, getSesionAdmin, cerrarSesionAdmin, AdminSesion } from '@/lib/auth';
+import {
+  loginAdmin,
+  getSesionAdmin,
+  cerrarSesionAdmin,
+  solicitarCambioPasswordAdmin,
+  AdminSesion,
+} from '@/lib/auth';
 import AdminHeader from '@/components/AdminHeader';
 import ComerciosTable from '@/components/ComerciosTable';
 import ComercioModal from '@/components/ComercioModal';
@@ -304,15 +310,29 @@ export default function AdminDashboard() {
                 placeholder="Ingresa tu contraseña de administrador"
                 className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
               />
-              <p className="text-[11px] text-zinc-400 mt-1.5 flex items-center justify-between">
-                <span>Clave de acceso inicial: <code className="text-indigo-400 font-bold bg-indigo-950/60 px-1.5 py-0.5 rounded">admin</code></span>
-              </p>
             </div>
 
             {authError && (
-              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-                <span>{authError}</span>
+              <div className="space-y-2">
+                <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{authError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await solicitarCambioPasswordAdmin(emailInput);
+                    setNotification({
+                      type: 'success',
+                      message: res.mensaje,
+                    });
+                    setAuthError(null);
+                  }}
+                  className="w-full py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Enviar correo de confirmación y cambio de clave</span>
+                </button>
               </div>
             )}
 

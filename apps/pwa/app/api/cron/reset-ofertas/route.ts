@@ -71,18 +71,12 @@ async function ejecutarResetDiario(req: NextRequest) {
                 ofertaVencida = true;
               }
             } else if (prodCopia.fecha_oferta) {
-              // Si la fecha de oferta es de un día anterior al actual
-              const fechaOferta = new Date(prodCopia.fecha_oferta);
-              const esMismoDia =
-                fechaOferta.getDate() === ahora.getDate() &&
-                fechaOferta.getMonth() === ahora.getMonth() &&
-                fechaOferta.getFullYear() === ahora.getFullYear();
-
-              if (!esMismoDia) {
+              // Caducidad semanal: 7 días continuos
+              const fechaOfertaMs = new Date(prodCopia.fecha_oferta).getTime();
+              if (!isNaN(fechaOfertaMs) && ahoraMs - fechaOfertaMs >= 7 * 24 * 60 * 60 * 1000) {
                 ofertaVencida = true;
               }
             } else {
-              // Por defecto, las ofertas barriales caducan al ciclo de las 05:00 AM
               ofertaVencida = true;
             }
 
