@@ -8,6 +8,7 @@ import {
   EstadoDebate,
   ReporteComercio,
   MotivoReporte,
+  TicketSoporte,
 } from '@/types/comercio';
 import { MOCK_COMERCIOS } from './mock-comercios';
 import { hashPassword } from './crypto';
@@ -1046,6 +1047,7 @@ const STORAGE_KEYS_EXTRA = {
   DEBATES: 'vecinos_debates_inconvenientes',
   MODIFICACIONES: 'vecinos_solicitudes_modificacion',
   REPORTES: 'vecinos_reportes_ciudadanos',
+  TICKETS_SOPORTE: 'vecinos_tickets_soporte_recomendaciones',
 };
 
 /**
@@ -1867,5 +1869,136 @@ export async function levantarCuarentenaAdmin(
 ): Promise<{ success: boolean; error?: string }> {
   return autoResolverCuarentenaComercio(comercioId);
 }
+
+// ==============================================================================
+// GESTIÓN DE PROBLEMAS (LOCAL/MEMBRESÍA/CUENTA) Y RECOMENDACIONES AL ADMINISTRADOR
+// ==============================================================================
+
+/**
+ * Obtiene todos los tickets de soporte, problemas y recomendaciones registrados
+ */
+export async function getTicketsSoporte(): Promise<TicketSoporte[]> {
+  let resultado: TicketSoporte[] = [];
+
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS_EXTRA.TICKETS_SOPORTE);
+      if (raw) {
+        resultado = JSON.parse(raw);
+      }
+    } catch (e) {
+      console.warn('[LocalStorage] Error al leer tickets de soporte:', e);
+    }
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('solicitudes_soporte')
+        .select('*')
+        .order('fecha_creacion', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        const mapa = new Map<string, TicketSoporte>();
+        resultado.forEach((t) => mapa.set(t.id, t));
+        (data as TicketSoporte[]).forEach((dbItem) => mapa.set(dbItem.id, dbItem));
+        resultado = Array.from(mapa.values());
+      }
+    } catch (err) {
+      console.warn('[Supabase] Error al consultar solicitudes_soporte:', err);
+    }
+  }
+
+  return resultado.sort(
+    (a, b) => new Date(b.fecha_creacion).getTime() - new Date(a.fecha_creacion).getTime()
+  );
+}
+
+/**
+ * Registra un nuevo ticket de problema o recomendación desde usuario o comercio
+ */
+export async function crearTicketSoporte(
+  ticketInput: Omit<TicketSoporte, 'id' | 'fecha_creacion' | 'estado'>
+): Promise<{ ok: boolean; ticket?: TicketSoporte; error?: string }> {
+  const nuevoTicket: TicketSoporte = {
+    ...ticketInput,
+    id: 'ticket_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+    estado: 'pendiente',
+    fecha_creacion: new Date().toISOString(),
+  };
+
+  if (typeof window !== 'undefined') {
+    try {
+      const actuales = await getTicketsSoporte();
+      const actualizados = [nuevoTicket, ...actuales.filter((t) => t.id !== nuevoTicket.id)];
+      localStorage.setItem(STORAGE_KEYS_EXTRA.TICKETS_SOPORTE, JSON.stringify(actualizados));
+    } catch (e) {
+      console.warn('[LocalStorage] Error al guardar ticket de soporte:', e);
+    }
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const { error } = await supabase.from('solicitudes_soporte').upsert({
+        id: nuevoTicket.id,
+        tipo: nuevoTicket.tipo,
+        origen: nuevoTicket.origen,
+        nombre: nuevoTicket.nombre,
+        email: nuevoTicket.email,
+        telefono: nuevoTicket.telefono || null,
+        comercio_nombre: nuevoTicket.comercio_nombre || null,
+        comercio_id: nuevoTicket.comercio_id || null,
+        asunto: nuevoTicket.asunto,
+        mensaje: nuevoTicket.mensaje,
+        estado: nuevoTicket.estado,
+        fecha_creacion: nuevoTicket.fecha_creacion,
+      });
+
+      if (error) {
+        console.warn('[Supabase] Error al guardar en solicitudes_soporte:', error);
+      }
+    } catch (err) {
+      console.warn('[Supabase] Fallo al invocar inserción de ticket de soporte:', err);
+    }
+  }
+
+  return { ok: true, ticket: nuevoTicket };
+}
+
+/**
+ * Actualiza el estado o respuesta de un ticket de soporte por parte del Administrador
+ */
+export async function actualizarTicketSoporte(
+  id: string,
+  cambios: Partial<TicketSoporte>
+): Promise<{ ok: boolean; error?: string }> {
+  if (typeof window !== 'undefined') {
+    try {
+      const actuales = await getTicketsSoporte();
+      const actualizados = actuales.map((t) => (t.id === id ? { ...t, ...cambios } : t));
+      localStorage.setItem(STORAGE_KEYS_EXTRA.TICKETS_SOPORTE, JSON.stringify(actualizados));
+    } catch (e) {
+      console.warn('[LocalStorage] Error al actualizar ticket de soporte:', e);
+    }
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const payload: any = { ...cambios };
+      if (cambios.estado === 'resuelto' && !cambios.fecha_resolucion) {
+        payload.fecha_resolucion = new Date().toISOString();
+      }
+      const { error } = await supabase.from('solicitudes_soporte').update(payload).eq('id', id);
+      if (error) {
+        console.warn('[Supabase] Error al actualizar solicitudes_soporte:', error);
+      }
+    } catch (err) {
+      console.warn('[Supabase] Fallo al actualizar ticket en Supabase:', err);
+    }
+  }
+
+  return { ok: true };
+}
+
 
 

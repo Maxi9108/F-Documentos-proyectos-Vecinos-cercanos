@@ -416,9 +416,54 @@ CREATE TABLE IF NOT EXISTS public.tokens_registro (
     intentos INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
-
 ALTER TABLE public.tokens_registro ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Gestión de tokens" ON public.tokens_registro FOR ALL USING (true);
+
+-- ==============================================================================
+-- 11. Columnas de Contacto Obligatorio, Redes Sociales y Cobertura en Comercios
+-- ==============================================================================
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS localidad TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS sitio_web TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS instagram TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS tiktok TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS facebook TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS otros_links TEXT;
+ALTER TABLE public.comercios ADD COLUMN IF NOT EXISTS cobertura_poligono JSONB;
+
+-- ==============================================================================
+-- 12. Tabla de Solicitudes de Soporte y Problemas (Panel de Administrador)
+-- Recibe:
+--   - Problemas con local o membresía (usuarios o comercios)
+--   - Problemas con tu cuenta (usuarios o comercios)
+--   - Recomendaciones barriales (usuarios o comercios)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.solicitudes_soporte (
+    id TEXT PRIMARY KEY,
+    tipo TEXT NOT NULL, -- 'local_membresia', 'cuenta', 'recomendacion', 'otro'
+    origen TEXT NOT NULL, -- 'usuario', 'comercio'
+    nombre_contacto TEXT NOT NULL,
+    email_contacto TEXT NOT NULL,
+    telefono_contacto TEXT,
+    comercio_id TEXT,
+    comercio_nombre TEXT,
+    usuario_id TEXT,
+    asunto TEXT NOT NULL,
+    mensaje TEXT NOT NULL,
+    estado TEXT NOT NULL DEFAULT 'pendiente', -- 'pendiente', 'en_revision', 'resuelto', 'descartado'
+    notas_admin TEXT,
+    resuelto_por TEXT,
+    fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    fecha_resolucion TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_solicitudes_soporte_tipo ON public.solicitudes_soporte (tipo);
+CREATE INDEX IF NOT EXISTS idx_solicitudes_soporte_estado ON public.solicitudes_soporte (estado);
+CREATE INDEX IF NOT EXISTS idx_solicitudes_soporte_origen ON public.solicitudes_soporte (origen);
+
+ALTER TABLE public.solicitudes_soporte ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Permitir crear tickets a cualquier usuario o comercio" ON public.solicitudes_soporte FOR INSERT WITH CHECK (true);
+CREATE POLICY "Lectura y gestión completa de tickets para administradores" ON public.solicitudes_soporte FOR ALL USING (true);
 
 
 

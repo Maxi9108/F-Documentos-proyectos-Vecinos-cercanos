@@ -80,10 +80,13 @@ import {
   ArrowUpRight,
   Tag,
   RefreshCw,
+  Globe,
+  Mail,
 } from 'lucide-react';
+import SelectorZonaEnvioWrapper from '@/components/SelectorZonaEnvioWrapper';
 
 export default function MiComercioPage() {
-  const { usuario } = useUser();
+  const { usuario, abrirModalSoporte } = useUser();
   const [comercios, setComercios] = useState<Comercio[]>([]);
   const [comercioSeleccionadoId, setComercioSeleccionadoId] = useState<string>('');
   const [cargando, setCargando] = useState(true);
@@ -107,11 +110,20 @@ export default function MiComercioPage() {
   const [nombre, setNombre] = useState('');
   const [rubro, setRubro] = useState('');
   const [direccion, setDireccion] = useState('');
+  const [localidad, setLocalidad] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [email, setEmail] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [descripcion, setDescripcion] = useState('');
+  const [sitioWeb, setSitioWeb] = useState('');
+  const [instagram, setInstagram] = useState('');
+  const [tiktok, setTiktok] = useState('');
+  const [facebook, setFacebook] = useState('');
+  const [otrosLinks, setOtrosLinks] = useState('');
   const [tipoAtencion, setTipoAtencion] = useState<'local_fisico' | 'solo_envio' | 'ambos'>('local_fisico');
   const [radioKm, setRadioKm] = useState(3);
+  const [coberturaPoligono, setCoberturaPoligono] = useState<[number, number][]>([]);
+  const [zonaEnvioConfirmada, setZonaEnvioConfirmada] = useState(true);
   const [zonaEnvioDescripcion, setZonaEnvioDescripcion] = useState('');
   const [enVacaciones, setEnVacaciones] = useState(false);
   const [vacacionesDesde, setVacacionesDesde] = useState('');
@@ -201,11 +213,20 @@ export default function MiComercioPage() {
     setNombre(comercio.nombre || '');
     setRubro(comercio.rubro || 'Almacén');
     setDireccion(comercio.direccion || '');
+    setLocalidad(comercio.localidad || '');
     setTelefono(comercio.telefono || '');
+    setEmail(comercio.email || comercio.email_comercio || '');
     setWhatsapp(comercio.whatsapp || comercio.telefono || '');
     setDescripcion(comercio.descripcion || '');
+    setSitioWeb(comercio.sitio_web || '');
+    setInstagram(comercio.instagram || '');
+    setTiktok(comercio.tiktok || '');
+    setFacebook(comercio.facebook || '');
+    setOtrosLinks(comercio.otros_links || '');
     setTipoAtencion(comercio.tipo_atencion || 'local_fisico');
     setRadioKm(comercio.radio_entrega_metros ? comercio.radio_entrega_metros / 1000 : 3);
+    setCoberturaPoligono(comercio.cobertura_poligono || []);
+    setZonaEnvioConfirmada(true);
     setZonaEnvioDescripcion(comercio.zona_envio_descripcion || '');
     setEnVacaciones(Boolean(comercio.en_vacaciones));
     setVacacionesDesde(comercio.vacaciones_desde || '');
@@ -508,6 +529,21 @@ export default function MiComercioPage() {
     e.preventDefault();
     if (!comercioActual) return;
 
+    if (!telefono.trim()) {
+      alert('El teléfono de contacto es obligatorio.');
+      return;
+    }
+
+    if (!email.trim() || !email.includes('@')) {
+      alert('El correo electrónico es obligatorio y debe tener un formato válido.');
+      return;
+    }
+
+    if (tipoAtencion !== 'local_fisico' && !zonaEnvioConfirmada) {
+      alert('Por favor confirma los límites y alcance de tu zona de envíos en el mapa haciendo clic en "Confirmar Este Paso".');
+      return;
+    }
+
     if (enVacaciones && !vacacionesHasta) {
       alert('Debes indicar obligatoriamente el día de Retorno para programar las vacaciones.');
       setEnviandoMod(false);
@@ -535,13 +571,22 @@ export default function MiComercioPage() {
       nombre: nombre.trim(),
       rubro: rubro.trim(),
       direccion: direccion.trim(),
+      localidad: localidad.trim() || undefined,
       telefono: telefono.trim(),
+      email: email.trim().toLowerCase(),
+      email_comercio: email.trim().toLowerCase(),
+      sitio_web: sitioWeb.trim() || undefined,
+      instagram: instagram.trim() || undefined,
+      tiktok: tiktok.trim() || undefined,
+      facebook: facebook.trim() || undefined,
+      otros_links: otrosLinks.trim() || undefined,
       whatsapp: whatsapp.trim() || telefono.trim(),
       descripcion: descripcion.trim(),
       horario: horarioResumen,
       horarios_config: horariosConfig,
       tipo_atencion: tipoAtencion,
       radio_entrega_metros: tipoAtencion !== 'local_fisico' ? Math.round(radioKm * 1000) : 0,
+      cobertura_poligono: tipoAtencion !== 'local_fisico' && coberturaPoligono.length >= 3 ? coberturaPoligono : undefined,
       zona_envio_descripcion: tipoAtencion !== 'local_fisico' ? zonaEnvioDescripcion.trim() : '',
       en_vacaciones: enVacaciones,
       modalidad_vacaciones: enVacaciones ? modalidadVacaciones : undefined,
@@ -1015,6 +1060,40 @@ export default function MiComercioPage() {
               </div>
             )}
 
+            {/* CENTRO DE SOPORTE PARA COMERCIOS Y RECOMENDACIONES */}
+            {comercioActual && (
+              <div className="p-4 rounded-3xl bg-zinc-950 border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-2xl bg-cyan-950/80 border border-cyan-800/60 flex items-center justify-center text-cyan-400 shrink-0">
+                    <HelpCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-white block">¿Problemas con tu local o membresía?</span>
+                    <span className="text-zinc-400 text-[11px]">
+                      Carga problemas de tu comercio o tu cuenta directamente al panel de administrador.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => abrirModalSoporte('problema_local_membresia', comercioActual.nombre)}
+                    className="flex-1 sm:flex-initial py-2 px-3.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-700/60 text-cyan-300 font-semibold text-xs cursor-pointer transition-colors shadow-sm"
+                  >
+                    Cargar Problema
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => abrirModalSoporte('recomendacion', comercioActual.nombre)}
+                    className="flex-1 sm:flex-initial py-2 px-3.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 font-semibold text-xs cursor-pointer transition-colors"
+                  >
+                    ¿Tenés Recomendaciones?
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* BANNERS OPERATIVOS: EMERGENCIA Y VACACIONES */}
             {comercioActual && (comercioActual.cerrado_momentaneo || comercioActual.en_vacaciones) && (
               <div className="pt-2 space-y-2">
@@ -1438,12 +1517,41 @@ export default function MiComercioPage() {
 
                   <div>
                     <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Teléfono de Llamada
+                      Localidad / Barrio
+                    </label>
+                    <input
+                      type="text"
+                      value={localidad}
+                      onChange={(e) => setLocalidad(e.target.value)}
+                      placeholder="Ej. San Isidro, Palermo, etc."
+                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                      Teléfono de Contacto * <span className="text-[10px] text-cyan-400 font-bold lowercase">(obligatorio)</span>
                     </label>
                     <input
                       type="tel"
+                      required
                       value={telefono}
                       onChange={(e) => setTelefono(e.target.value)}
+                      placeholder="+54 11 4000-0000"
+                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                      Correo Electrónico * <span className="text-[10px] text-cyan-400 font-bold lowercase">(obligatorio)</span>
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="contacto@comercio.com"
                       className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
                     />
                   </div>
@@ -1456,6 +1564,7 @@ export default function MiComercioPage() {
                       type="tel"
                       value={whatsapp}
                       onChange={(e) => setWhatsapp(e.target.value)}
+                      placeholder="+54 9 11 5000-0000"
                       className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
                     />
                   </div>
@@ -1476,6 +1585,81 @@ export default function MiComercioPage() {
                   </div>
                 </div>
 
+                {/* Presencia Digital & Redes Sociales */}
+                <div className="p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-3">
+                  <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                    <Globe className="w-4 h-4 text-cyan-400" />
+                    Presencia Digital & Redes Sociales (Opcionales)
+                  </span>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-medium text-zinc-400 mb-1">
+                        Página Web Oficial
+                      </label>
+                      <input
+                        type="url"
+                        value={sitioWeb}
+                        onChange={(e) => setSitioWeb(e.target.value)}
+                        placeholder="https://www.tucomercio.com"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-zinc-400 mb-1">
+                        Instagram
+                      </label>
+                      <input
+                        type="text"
+                        value={instagram}
+                        onChange={(e) => setInstagram(e.target.value)}
+                        placeholder="@comercio o enlace"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-zinc-400 mb-1">
+                        TikTok
+                      </label>
+                      <input
+                        type="text"
+                        value={tiktok}
+                        onChange={(e) => setTiktok(e.target.value)}
+                        placeholder="@comercio o enlace"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-zinc-400 mb-1">
+                        Facebook
+                      </label>
+                      <input
+                        type="text"
+                        value={facebook}
+                        onChange={(e) => setFacebook(e.target.value)}
+                        placeholder="facebook.com/tucomercio"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-[11px] font-medium text-zinc-400 mb-1">
+                        Otros Enlaces (PedidosYa, Tienda Online, LinkedIn, etc.)
+                      </label>
+                      <input
+                        type="text"
+                        value={otrosLinks}
+                        onChange={(e) => setOtrosLinks(e.target.value)}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
                     Descripción del Local o Mensaje a los Vecinos
@@ -1490,30 +1674,28 @@ export default function MiComercioPage() {
                 </div>
 
                 {tipoAtencion !== 'local_fisico' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
-                    <div>
+                  <div className="pt-2 animate-in fade-in duration-200">
+                    <SelectorZonaEnvioWrapper
+                      latitud={comercioActual?.latitud || -34.6}
+                      longitud={comercioActual?.longitud || -58.4}
+                      radioKm={radioKm}
+                      poligono={coberturaPoligono}
+                      onChange={(nuevoRadio, nuevoPoligono) => {
+                        setRadioKm(nuevoRadio);
+                        setCoberturaPoligono(nuevoPoligono);
+                      }}
+                      confirmado={zonaEnvioConfirmada}
+                      onToggleConfirmado={(nuevoEstado) => setZonaEnvioConfirmada(nuevoEstado)}
+                    />
+                    <div className="mt-2.5">
                       <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                        Radio de Envíos: {radioKm} km
-                      </label>
-                      <input
-                        type="range"
-                        min={1}
-                        max={15}
-                        step={0.5}
-                        value={radioKm}
-                        onChange={(e) => setRadioKm(Number(e.target.value))}
-                        className="w-full accent-cyan-400 cursor-pointer"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                        Descripción de Zona de Reparto
+                        Descripción o Calles Límites de Zona de Reparto (Opcional)
                       </label>
                       <input
                         type="text"
                         value={zonaEnvioDescripcion}
                         onChange={(e) => setZonaEnvioDescripcion(e.target.value)}
-                        placeholder="Ej: Solo dentro de las 4 avenidas principales"
+                        placeholder="Ej: Entre las 4 avenidas principales o zona norte del barrio"
                         className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none"
                       />
                     </div>

@@ -9,7 +9,7 @@ import ModalDetalleComercio from './ModalDetalleComercio';
 import ModalReportarComercio from './ModalReportarComercio';
 import PaletaOfertas from './PaletaOfertas';
 import Link from 'next/link';
-import { Map, List, Store, Sparkles, Navigation, User, Compass, Radar } from 'lucide-react';
+import { Map, List, Store, Sparkles, Navigation, User, Compass, Radar, MapPin } from 'lucide-react';
 
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
@@ -212,7 +212,7 @@ export default function DirectorioComercios({
   }, [cercaDeMi, ubicacionReferencia, radioKm, busqueda, comerciosAprobados, rubroSeleccionado, soloAbiertos]);
 
   // Filtrado inteligente sobre comercios aprobados
-  const comerciosFiltrados = useMemo(() => {
+  const { comerciosFiltrados, esResultadoCercanoFueraDeRadio } = useMemo(() => {
     const query = busqueda.trim().toLowerCase();
 
     let filtrados = comerciosAprobados.filter((comercio) => {
@@ -264,37 +264,55 @@ export default function DirectorioComercios({
       );
     });
 
-    // Si Cerca de Mí o hay ubicación de referencia activa, ordenar los comercios por cercanía satelital
-    if (cercaDeMi && ubicacionReferencia) {
+    let esFueraDeRadio = false;
+
+    // Si buscó algo específico y no hay en el radio: busca lo más cercano aunque esté fuera del radio y se lo da en lista
+    if (query !== '' && filtrados.length === 0) {
+      const candidatosFuera = comerciosAprobados.filter((comercio) => {
+        const coincideComercio =
+          comercio.nombre.toLowerCase().includes(query) ||
+          comercio.rubro.toLowerCase().includes(query) ||
+          comercio.direccion.toLowerCase().includes(query) ||
+          (comercio.descripcion && comercio.descripcion.toLowerCase().includes(query));
+
+        const coincideProductos = Boolean(
+          comercio.productos?.some(
+            (p) =>
+              p.nombre.toLowerCase().includes(query) ||
+              (p.descripcion && p.descripcion.toLowerCase().includes(query)) ||
+              (p.categoria && p.categoria.toLowerCase().includes(query))
+          )
+        );
+
+        const coincideRubro = rubroSeleccionado === 'Todos' || comercio.rubro === rubroSeleccionado;
+        return (coincideComercio || coincideProductos) && coincideRubro;
+      });
+
+      if (candidatosFuera.length > 0) {
+        filtrados = candidatosFuera;
+        esFueraDeRadio = true;
+      }
+    }
+
+    const refLat = ubicacionReferencia?.latitud ?? -34.6037;
+    const refLng = ubicacionReferencia?.longitud ?? -58.4212;
+
+    // Si Cerca de Mí, fuera de radio o hay ubicación activa, ordenar por cercanía
+    if (cercaDeMi || esFueraDeRadio || ubicacionReferencia) {
       filtrados = [...filtrados].sort((a, b) => {
-        const distA = calcularDistanciaKm(
-          ubicacionReferencia.latitud,
-          ubicacionReferencia.longitud,
-          a.latitud,
-          a.longitud
-        );
-        const distB = calcularDistanciaKm(
-          ubicacionReferencia.latitud,
-          ubicacionReferencia.longitud,
-          b.latitud,
-          b.longitud
-        );
+        const distA = calcularDistanciaKm(refLat, refLng, a.latitud, a.longitud);
+        const distB = calcularDistanciaKm(refLat, refLng, b.latitud, b.longitud);
         return distA - distB;
       });
     } else {
-      // Ordenamiento por defecto en la zona de búsqueda (hasta que se pongan restricciones de distancia):
-      // 1° Comercios Favoritos del usuario (❤️)
-      // 2° Comercios Gold (👑 primeros luego de los favoritos)
-      // 3° Comercios Premium (💎)
-      // 4° Comercios Standar
+      // Ordenamiento por defecto en la zona de búsqueda
       filtrados = [...filtrados].sort((a, b) => {
         const favA = esFavorito(a.id) ? 1 : 0;
         const favB = esFavorito(b.id) ? 1 : 0;
         if (favA !== favB) {
-          return favB - favA; // Favoritos primero
+          return favB - favA;
         }
 
-        // Peso jerárquico por nivel de membresía
         const pesoNivel = (nivel?: string) => {
           if (nivel === 'gold') return 3;
           if (nivel === 'premium') return 2;
@@ -304,15 +322,17 @@ export default function DirectorioComercios({
         const pesoA = pesoNivel(a.nivel);
         const pesoB = pesoNivel(b.nivel);
         if (pesoA !== pesoB) {
-          return pesoB - pesoA; // Gold antes que Premium, y Premium antes que Standar
+          return pesoB - pesoA;
         }
 
-        // Desempate alfabético
         return a.nombre.localeCompare(b.nombre);
       });
     }
 
-    return filtrados;
+    return {
+      comerciosFiltrados: filtrados,
+      esResultadoCercanoFueraDeRadio: esFueraDeRadio,
+    };
   }, [
     comerciosAprobados,
     busqueda,
@@ -324,6 +344,7 @@ export default function DirectorioComercios({
     favoritosIds,
     cercaDeMi,
     radioKm,
+    radioEfectivo,
     ubicacionReferencia,
   ]);
 
@@ -562,8 +583,23 @@ export default function DirectorioComercios({
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
-                  {comerciosFiltrados.map((comercio) => (
+                <div className="space-y-4">
+                  {esResultadoCercanoFueraDeRadio && (
+                    <div className="p-3.5 rounded-2xl bg-amber-950/60 border border-amber-500/50 text-amber-200 text-xs flex items-start gap-2.5 animate-in fade-in shadow-lg">
+                      <MapPin className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-amber-300 block">
+                          No encontramos "{busqueda}" dentro de tu radio habitual de {radioEfectivo ? `${radioEfectivo} km` : 'cercanía'}
+                        </strong>
+                        <span className="text-[11px] text-zinc-300 mt-0.5 block leading-relaxed">
+                          Ampliamos la búsqueda para mostrarte los comercios más cercanos disponibles fuera de tu zona, ordenados por menor distancia:
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+                    {comerciosFiltrados.map((comercio) => (
                     <TarjetaComercio
                       key={comercio.id}
                       comercio={comercio}
@@ -573,6 +609,7 @@ export default function DirectorioComercios({
                       onReportar={(comercio) => setComercioAReportar(comercio)}
                     />
                   ))}
+                  </div>
                 </div>
               )}
             </section>

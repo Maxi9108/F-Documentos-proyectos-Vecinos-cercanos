@@ -1,4 +1,4 @@
-import { UsuarioSistema, EstadoUsuario } from '@/types/comercio';
+import { UsuarioSistema, EstadoUsuario, RolUsuario } from '@/types/comercio';
 import { supabase, isSupabaseConfigured } from './supabase';
 
 const STORAGE_KEY_USUARIOS = 'vecinos_usuarios_registrados';
@@ -181,6 +181,41 @@ export async function cambiarEstadoUsuario(
     return { exito: true };
   } catch (err: any) {
     return { exito: false, error: err?.message || 'Error al modificar estado del usuario.' };
+  }
+}
+
+/**
+ * Cambia el rol de un usuario (ej. promover a admin_nivel2 o comerciante)
+ */
+export async function cambiarRolUsuario(
+  id: string,
+  nuevoRol: RolUsuario
+): Promise<{ exito: boolean; error?: string }> {
+  try {
+    const lista = await getUsuariosSistema();
+    const idx = lista.findIndex((u) => u.id === id);
+
+    if (idx < 0) {
+      return { exito: false, error: 'Usuario no encontrado.' };
+    }
+
+    if (lista[idx].rol === 'superadmin') {
+      return { exito: false, error: 'No es posible modificar el rol del SuperAdmin Principal.' };
+    }
+
+    lista[idx].rol = nuevoRol;
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(lista));
+    }
+
+    if (isSupabaseConfigured) {
+      await supabase.from('usuarios').update({ rol: nuevoRol }).eq('id', id);
+    }
+
+    return { exito: true };
+  } catch (err: any) {
+    return { exito: false, error: err?.message || 'Error al cambiar rol del usuario.' };
   }
 }
 

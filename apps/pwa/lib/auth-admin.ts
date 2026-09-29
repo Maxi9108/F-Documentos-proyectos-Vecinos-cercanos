@@ -1,5 +1,6 @@
 import { Administrador, PermisosAdmin } from '@/types/comercio';
 import { hashPassword, verifyPassword } from './crypto';
+import { getUsuariosSistema, cambiarRolUsuario } from './usuarios';
 
 const STORAGE_KEY_ADMINS = 'vecinos_administradores_sistema';
 const STORAGE_KEY_SESION = 'vecinos_admin_sesion_usuario';
@@ -9,6 +10,8 @@ const SUPERADMIN_POR_DEFECTO: Administrador = {
   id: 'admin-super-maxi',
   email: 'maxi0802@gmail.com',
   password: 'admin', // Clave inicial por defecto, editable en cualquier momento
+  pregunta_seguridad: '¿Cuál es tu palabra clave de seguridad o ciudad de origen?',
+  respuesta_seguridad: 'admin',
   nombre: 'Maxi (SuperAdmin)',
   rol: 'superadmin',
   permisos: {
@@ -76,12 +79,18 @@ export function getAdminActual(): Administrador | null {
 }
 
 /**
- * Inicia sesión de administrador con Email y Contraseña
+ * Paso 1 de Doble Identificación: Valida correo y contraseña del administrador
  */
-export async function autenticarAdmin(
+export async function iniciarPaso1Admin(
   emailInput: string,
   passInput: string
-): Promise<{ exito: boolean; admin?: Administrador; error?: string }> {
+): Promise<{
+  exito: boolean;
+  requierePregunta?: boolean;
+  pregunta?: string;
+  email?: string;
+  error?: string;
+}> {
   const cleanEmail = emailInput.trim().toLowerCase();
   const cleanPass = passInput.trim();
 
@@ -90,10 +99,7 @@ export async function autenticarAdmin(
   }
 
   const admins = getAdministradores();
-
-  const encontrado = admins.find(
-    (a) => a.email.toLowerCase() === cleanEmail
-  );
+  const encontrado = admins.find((a) => a.email.toLowerCase() === cleanEmail);
 
   if (!encontrado) {
     return { exito: false, error: 'Credenciales inválidas. Verifica tu correo y contraseña.' };
@@ -108,8 +114,80 @@ export async function autenticarAdmin(
     return { exito: false, error: 'Este usuario se encuentra inactivo. Contacta al Administrador Principal.' };
   }
 
+  const pregunta =
+    encontrado.pregunta_seguridad || '¿Cuál es tu palabra clave de seguridad o ciudad de origen?';
+
+  return {
+    exito: true,
+    requierePregunta: true,
+    pregunta,
+    email: encontrado.email,
+  };
+}
+
+/**
+ * Paso 2 de Doble Identificación: Valida la respuesta a la pregunta de seguridad
+ */
+export async function completarPaso2Admin(
+  emailInput: string,
+  respuestaInput: string
+): Promise<{ exito: boolean; admin?: Administrador; error?: string }> {
+  const cleanEmail = emailInput.trim().toLowerCase();
+  const cleanRespuesta = respuestaInput.trim().toLowerCase();
+
+  if (!cleanRespuesta) {
+    return { exito: false, error: 'Por favor ingresa la respuesta a tu pregunta de seguridad.' };
+  }
+
+  const admins = getAdministradores();
+  const encontrado = admins.find((a) => a.email.toLowerCase() === cleanEmail);
+
+  if (!encontrado) {
+    return { exito: false, error: 'No se encontró la cuenta de administrador.' };
+  }
+
+  const respuestaCorrecta = (encontrado.respuesta_seguridad || 'admin').trim().toLowerCase();
+
+  if (cleanRespuesta !== respuestaCorrecta) {
+    return {
+      exito: false,
+      error: 'Respuesta de seguridad incorrecta. Verifica tu respuesta secreta.',
+    };
+  }
+
   guardarSesion(encontrado);
   return { exito: true, admin: encontrado };
+}
+
+/**
+ * Inicia sesión de administrador con Doble Identificación (Contraseña + Pregunta de Seguridad)
+ */
+export async function autenticarAdmin(
+  emailInput: string,
+  passInput: string,
+  respuestaSeguridadInput?: string
+): Promise<{
+  exito: boolean;
+  admin?: Administrador;
+  error?: string;
+  requierePregunta?: boolean;
+  pregunta?: string;
+}> {
+  const paso1 = await iniciarPaso1Admin(emailInput, passInput);
+  if (!paso1.exito) {
+    return { exito: false, error: paso1.error };
+  }
+
+  if (respuestaSeguridadInput === undefined) {
+    // Si no se proporcionó respuesta aún, requerir el segundo factor
+    return {
+      exito: false,
+      requierePregunta: true,
+      pregunta: paso1.pregunta,
+    };
+  }
+
+  return completarPaso2Admin(emailInput, respuestaSeguridadInput);
 }
 
 /**
@@ -117,7 +195,6 @@ export async function autenticarAdmin(
  */
 export function obtenerAdminPorEmail(email: string): Administrador | null {
   if (!email || typeof window === 'undefined') {
-    // Si estamos en SSR o inicio, comprobar contra el superadmin por defecto
     const clean = (email || '').trim().toLowerCase();
     if (clean === SUPERADMIN_POR_DEFECTO.email.toLowerCase()) {
       return SUPERADMIN_POR_DEFECTO;
@@ -130,7 +207,6 @@ export function obtenerAdminPorEmail(email: string): Administrador | null {
   const encontrado = admins.find((a) => a.email.toLowerCase() === clean && a.activo);
   if (encontrado) return encontrado;
 
-  // Respaldo garantizado para el email principal
   if (clean === SUPERADMIN_POR_DEFECTO.email.toLowerCase()) {
     return SUPERADMIN_POR_DEFECTO;
   }
@@ -163,12 +239,14 @@ export function cerrarSesionAdmin(): void {
 }
 
 /**
- * Actualiza el perfil y contraseña del SuperAdmin (Maxi)
+ * Actualiza el perfil, contraseña y pregunta de seguridad del SuperAdmin (Maxi)
  */
 export async function actualizarPerfilSuperAdmin(
   nuevoEmail: string,
   nuevoPassword?: string,
-  nuevoNombre?: string
+  nuevoNombre?: string,
+  nuevaPregunta?: string,
+  nuevaRespuesta?: string
 ): Promise<{ exito: boolean; admin?: Administrador; error?: string }> {
   const admins = getAdministradores();
   const index = admins.findIndex((a) => a.rol === 'superadmin');
@@ -188,6 +266,8 @@ export async function actualizarPerfilSuperAdmin(
     email: nuevoEmail.trim().toLowerCase() || adminActual.email,
     nombre: nuevoNombre ? nuevoNombre.trim() : adminActual.nombre,
     password: passFinal,
+    pregunta_seguridad: nuevaPregunta !== undefined ? nuevaPregunta.trim() : adminActual.pregunta_seguridad,
+    respuesta_seguridad: nuevaRespuesta !== undefined ? nuevaRespuesta.trim() : adminActual.respuesta_seguridad,
   };
 
   admins[index] = actualizado;
@@ -198,13 +278,15 @@ export async function actualizarPerfilSuperAdmin(
 }
 
 /**
- * Da de alta un nuevo Administrador Nivel 2 con permisos granulares
+ * Da de alta un nuevo Administrador Nivel 2 con permisos granulares y pregunta de seguridad
  */
 export async function crearAdminNivel2(datos: {
   email: string;
   password: string;
   nombre: string;
   permisos: PermisosAdmin;
+  pregunta_seguridad?: string;
+  respuesta_seguridad?: string;
 }): Promise<{ exito: boolean; admin?: Administrador; error?: string }> {
   const cleanEmail = datos.email.trim().toLowerCase();
 
@@ -228,6 +310,8 @@ export async function crearAdminNivel2(datos: {
     id: 'admin-n2-' + Date.now(),
     email: cleanEmail,
     password: hashedPass,
+    pregunta_seguridad: datos.pregunta_seguridad?.trim() || '¿Cuál es tu palabra clave o ciudad de origen?',
+    respuesta_seguridad: datos.respuesta_seguridad?.trim() || 'admin',
     nombre: datos.nombre.trim() || 'Moderador Nivel 2',
     rol: 'admin_nivel2',
     permisos: datos.permisos,
@@ -239,6 +323,73 @@ export async function crearAdminNivel2(datos: {
   guardarAdministradores(admins);
 
   return { exito: true, admin: nuevo };
+}
+
+/**
+ * Busca a un usuario registrado por correo electrónico y lo promueve a Administrador Categoría 2 (Nivel 2)
+ */
+export async function promoverUsuarioAAdminNivel2(
+  email: string,
+  permisos?: PermisosAdmin
+): Promise<{ exito: boolean; admin?: Administrador; error?: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    return { exito: false, error: 'Por favor ingresa un correo electrónico válido.' };
+  }
+
+  const usuarios = await getUsuariosSistema();
+  const objetivo = usuarios.find((u) => u.email.toLowerCase() === cleanEmail);
+
+  if (!objetivo) {
+    return {
+      exito: false,
+      error: `No se encontró ningún usuario registrado con el correo "${cleanEmail}".`,
+    };
+  }
+
+  if (objetivo.rol === 'superadmin') {
+    return { exito: false, error: 'El usuario ya es el SuperAdmin Principal.' };
+  }
+
+  const admins = getAdministradores();
+  const existenteIdx = admins.findIndex((a) => a.email.toLowerCase() === cleanEmail);
+
+  const permisosFinales: PermisosAdmin = permisos || {
+    corroborar_locales: true,
+    aprobar_rechazar: true,
+    asignar_categorias: true,
+  };
+
+  let adminResultado: Administrador;
+
+  if (existenteIdx >= 0) {
+    admins[existenteIdx] = {
+      ...admins[existenteIdx],
+      activo: true,
+      rol: 'admin_nivel2',
+      permisos: permisosFinales,
+    };
+    adminResultado = admins[existenteIdx];
+  } else {
+    adminResultado = {
+      id: 'admin-n2-' + objetivo.id,
+      email: cleanEmail,
+      nombre: objetivo.nombre || cleanEmail.split('@')[0],
+      password: objetivo.password_hash || (await hashPassword('admin123')),
+      pregunta_seguridad: '¿Cuál es tu palabra clave o ciudad de origen?',
+      respuesta_seguridad: 'admin',
+      rol: 'admin_nivel2',
+      permisos: permisosFinales,
+      activo: true,
+      created_at: new Date().toISOString(),
+    };
+    admins.push(adminResultado);
+  }
+
+  guardarAdministradores(admins);
+  await cambiarRolUsuario(objetivo.id, 'admin_nivel2');
+
+  return { exito: true, admin: adminResultado };
 }
 
 /**

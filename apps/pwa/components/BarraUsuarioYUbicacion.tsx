@@ -15,6 +15,7 @@ import {
   Compass,
   ShieldCheck,
   Database,
+  HelpCircle,
 } from 'lucide-react';
 
 export default function BarraUsuarioYUbicacion() {
@@ -31,6 +32,7 @@ export default function BarraUsuarioYUbicacion() {
     desactivarGps,
     abrirModalUbicaciones,
     ubicaciones,
+    abrirModalSoporte,
   } = useUser();
 
   return (
@@ -163,6 +165,16 @@ export default function BarraUsuarioYUbicacion() {
           <span>Ingresar</span>
         </button>
       )}
+      {/* Botón de Ayuda, Soporte y Recomendaciones */}
+      <button
+        type="button"
+        onClick={() => abrirModalSoporte('problema_local_membresia')}
+        title="Problemas con tu local, cuenta o sugerencias"
+        className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-cyan-400 transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+      >
+        <HelpCircle className="w-4 h-4 text-cyan-400" />
+        <span className="hidden xl:inline">Ayuda / Sugerencias</span>
+      </button>
     </div>
   );
 }

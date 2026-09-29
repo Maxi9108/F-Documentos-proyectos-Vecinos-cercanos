@@ -73,7 +73,7 @@ export default function ModalCrearDebate({ comercio, onClose }: ModalCrearDebate
               }}
               className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold text-xs shadow-lg shadow-violet-950/50 cursor-pointer"
             >
-              Crear Cuenta con Verificación
+              Crear Cuenta
             </button>
             <button
               type="button"

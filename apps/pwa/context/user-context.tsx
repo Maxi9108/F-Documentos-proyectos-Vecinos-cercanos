@@ -3,10 +3,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { obtenerUbicacionGpsActual, PosicionSatelital } from '@/lib/geolocation';
 import { supabase } from '@/lib/supabase';
-import { Administrador } from '@/types/comercio';
+import { Administrador, TipoTicketSoporte } from '@/types/comercio';
 import { obtenerAdminPorEmail, guardarSesion, cerrarSesionAdmin } from '@/lib/auth-admin';
 import { getUsuariosSistema, registrarOActualizarUsuario } from '@/lib/usuarios';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
+import ModalSoporte from '@/components/ModalSoporte';
 
 export interface Usuario {
   id: string;
@@ -102,6 +103,12 @@ interface UserContextType {
   modalUbicacionesAbierto: boolean;
   abrirModalUbicaciones: () => void;
   cerrarModalUbicaciones: () => void;
+  // Modal de Soporte y Recomendaciones
+  modalSoporteAbierto: boolean;
+  modalSoporteTipo: TipoTicketSoporte;
+  modalSoporteComercioNombre: string;
+  abrirModalSoporte: (tipo?: TipoTicketSoporte, comercioNombre?: string) => void;
+  cerrarModalSoporte: () => void;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -313,7 +320,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Autenticación con Token (Paso 1: Solicitar Token para comprobar mail)
+  // Autenticación Directa (Sin envío de tokens de verificación)
   const solicitarTokenRegistro = async (
     email: string,
     nombre: string
@@ -327,44 +334,17 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, mensaje: 'Por favor ingresa tu nombre completo o de pila.' };
     }
 
-    // Generar token local de 6 dígitos de respaldo
-    const token = Math.floor(100000 + Math.random() * 900000).toString();
-    const expira = Date.now() + 15 * 60 * 1000; // 15 minutos de validez
-
     try {
-      const datosToken = { email: cleanEmail, nombre: cleanNombre, token, expira };
-      localStorage.setItem('vecinos_token_' + cleanEmail, JSON.stringify(datosToken));
-
-      // 1. Enviar código de verificación por correo usando Supabase Auth (OTP real a la casilla)
-      if (supabase) {
-        try {
-          await supabase.auth.signInWithOtp({
-            email: cleanEmail,
-            options: {
-              shouldCreateUser: true,
-              data: { nombre: cleanNombre },
-            },
-          });
-        } catch (supaErr) {
-          console.warn('[UserContext] Supabase signInWithOtp error:', supaErr);
-        }
-
-        Promise.resolve(supabase.from('tokens_registro').upsert(datosToken)).catch(() => {});
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('vecinos_token_verificado_' + cleanEmail, 'true');
       }
-
-      // 2. Disparar API de correo transaccional (Resend/SMTP)
-      fetch('/api/enviar-codigo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: cleanEmail, nombre: cleanNombre, token }),
-      }).catch((e) => console.warn('[UserContext] Error al invocar envío de correo:', e));
 
       return {
         ok: true,
-        mensaje: `Código de comprobación enviado a ${cleanEmail}. Revisa tu bandeja de entrada o spam e ingresa los 6 dígitos a continuación.`,
+        mensaje: 'Identidad confirmada de forma directa. Puedes continuar inmediatamente.',
       };
     } catch (e: any) {
-      return { ok: false, mensaje: 'Error al generar el código de verificación.' };
+      return { ok: false, mensaje: 'Error al comprobar correo.' };
     }
   };
 
@@ -824,6 +804,21 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const abrirModalUbicaciones = () => setModalUbicacionesAbierto(true);
   const cerrarModalUbicaciones = () => setModalUbicacionesAbierto(false);
 
+  // Modal de Soporte y Recomendaciones
+  const [modalSoporteAbierto, setModalSoporteAbierto] = useState(false);
+  const [modalSoporteTipo, setModalSoporteTipo] = useState<TipoTicketSoporte>('problema_local_membresia');
+  const [modalSoporteComercioNombre, setModalSoporteComercioNombre] = useState('');
+
+  const abrirModalSoporte = (
+    tipo: TipoTicketSoporte = 'problema_local_membresia',
+    comercioNombre: string = ''
+  ) => {
+    setModalSoporteTipo(tipo);
+    setModalSoporteComercioNombre(comercioNombre);
+    setModalSoporteAbierto(true);
+  };
+  const cerrarModalSoporte = () => setModalSoporteAbierto(false);
+
   const adminData = usuario ? obtenerAdminPorEmail(usuario.email) : null;
   const esAdmin = !!(usuario?.esAdmin || adminData);
 
@@ -864,9 +859,20 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         modalUbicacionesAbierto,
         abrirModalUbicaciones,
         cerrarModalUbicaciones,
+        modalSoporteAbierto,
+        modalSoporteTipo,
+        modalSoporteComercioNombre,
+        abrirModalSoporte,
+        cerrarModalSoporte,
       }}
     >
       {children}
+      <ModalSoporte
+        isOpen={modalSoporteAbierto}
+        onClose={cerrarModalSoporte}
+        tipoInicial={modalSoporteTipo}
+        comercioNombreInicial={modalSoporteComercioNombre}
+      />
     </UserContext.Provider>
   );
 }

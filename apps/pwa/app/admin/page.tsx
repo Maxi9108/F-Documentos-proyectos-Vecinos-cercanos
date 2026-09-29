@@ -16,6 +16,10 @@ import {
   UsuarioSistema,
   EstadoUsuario,
   RolUsuario,
+  TicketSoporte,
+  TipoTicketSoporte,
+  OrigenTicketSoporte,
+  EstadoTicketSoporte,
 } from '@/types/comercio';
 import {
   getUsuariosSistema,
@@ -47,12 +51,17 @@ import {
   confirmarBajaDefinitivaComercio,
   levantarCuarentenaAdmin,
   isSupabaseConfigured,
+  getTicketsSoporte,
+  actualizarTicketSoporte,
 } from '@/lib/supabase';
 import ContadorMembresia from '@/components/ContadorMembresia';
 import { useUser } from '@/context/user-context';
 import {
   getAdminActual,
   autenticarAdmin,
+  iniciarPaso1Admin,
+  completarPaso2Admin,
+  promoverUsuarioAAdminNivel2,
   cerrarSesionAdmin,
   actualizarPerfilSuperAdmin,
   crearAdminNivel2,
@@ -121,14 +130,21 @@ import {
   ChevronRight,
   UserX,
   Ban,
+  FileSpreadsheet,
+  HelpCircle,
+  Send,
+  Globe,
 } from 'lucide-react';
 
 export default function AdminPage() {
-  // Estado de Autenticación
+  // Estado de Autenticación & 2FA
   const [adminActual, setAdminActual] = useState<Administrador | null>(null);
   const [emailInput, setEmailInput] = useState('maxi0802@gmail.com');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [pasoLogin, setPasoLogin] = useState<1 | 2>(1);
+  const [preguntaSeguridad, setPreguntaSeguridad] = useState('');
+  const [respuestaSeguridadInput, setRespuestaSeguridadInput] = useState('');
 
   // Pestaña Activa
   const [pestanaActiva, setPestanaActiva] = useState<
@@ -138,12 +154,33 @@ export default function AdminPage() {
     | 'transferencias'
     | 'modificaciones'
     | 'debates'
+    | 'soporte'
+    | 'exportar'
     | 'metricas'
     | 'categorias'
     | 'equipo'
     | 'perfil'
     | 'usuarios'
   >('pendientes');
+
+  // Estados de Tickets de Soporte y Recomendaciones (Usuarios y Comercios)
+  const [ticketsSoporte, setTicketsSoporte] = useState<TicketSoporte[]>([]);
+  const [filtroTipoTicket, setFiltroTipoTicket] = useState<'todos' | TipoTicketSoporte>('todos');
+  const [filtroOrigenTicket, setFiltroOrigenTicket] = useState<'todos' | OrigenTicketSoporte>('todos');
+  const [filtroEstadoTicket, setFiltroEstadoTicket] = useState<'todos' | EstadoTicketSoporte>('todos');
+  const [busquedaTickets, setBusquedaTickets] = useState('');
+  const [ticketSeleccionado, setTicketSeleccionado] = useState<TicketSoporte | null>(null);
+  const [respuestaTicketInput, setRespuestaTicketInput] = useState('');
+  const [procesandoTicketId, setProcesandoTicketId] = useState<string | null>(null);
+
+  // Estados de Exportación de Planilla Pública
+  const [busquedaExportar, setBusquedaExportar] = useState('');
+  const [filtroRubroExportar, setFiltroRubroExportar] = useState('Todos');
+
+  // Promoción de Admin Cat. 2 por Email
+  const [busquedaEmailAdminN2, setBusquedaEmailAdminN2] = useState('');
+  const [promocionN2Mensaje, setPromocionN2Mensaje] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
+  const [procesandoPromocion, setProcesandoPromocion] = useState(false);
 
   // Estados de Gestión de Usuarios Registrados
   const [usuariosSistema, setUsuariosSistema] = useState<UsuarioSistema[]>([]);
@@ -198,6 +235,10 @@ export default function AdminPage() {
   const [perfilPassActual, setPerfilPassActual] = useState('');
   const [perfilPassNuevo, setPerfilPassNuevo] = useState('');
   const [perfilPassConfirm, setPerfilPassConfirm] = useState('');
+  const [perfilPreguntaSeguridad, setPerfilPreguntaSeguridad] = useState(
+    '¿Cuál es tu palabra clave de seguridad o ciudad de origen?'
+  );
+  const [perfilRespuestaSeguridad, setPerfilRespuestaSeguridad] = useState('');
   const [perfilMensaje, setPerfilMensaje] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
 
   // Formulario Admin Nivel 2
@@ -224,6 +265,8 @@ export default function AdminPage() {
         setAdminActual(admin);
         setPerfilEmail(admin.email);
         setPerfilNombre(admin.nombre);
+        if (admin.pregunta_seguridad) setPerfilPreguntaSeguridad(admin.pregunta_seguridad);
+        if (admin.respuesta_seguridad) setPerfilRespuestaSeguridad(admin.respuesta_seguridad);
         return;
       }
     }
@@ -234,6 +277,8 @@ export default function AdminPage() {
       setAdminActual(sesion);
       setPerfilEmail(sesion.email);
       setPerfilNombre(sesion.nombre);
+      if (sesion.pregunta_seguridad) setPerfilPreguntaSeguridad(sesion.pregunta_seguridad);
+      if (sesion.respuesta_seguridad) setPerfilRespuestaSeguridad(sesion.respuesta_seguridad);
     }
   }, [usuario]);
 
@@ -282,6 +327,9 @@ export default function AdminPage() {
 
     const usrs = await getUsuariosSistema();
     setUsuariosSistema(usrs);
+
+    const tcks = await getTicketsSoporte();
+    setTicketsSoporte(tcks);
 
     setCargando(false);
   };
@@ -363,24 +411,196 @@ export default function AdminPage() {
     }
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  // Paso 1 de Login: Validación de Email y Contraseña
+  const handlePaso1Login = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
-    const res = await autenticarAdmin(emailInput, passwordInput);
+    const res = await iniciarPaso1Admin(emailInput, passwordInput);
+    if (res.exito) {
+      setPreguntaSeguridad(
+        res.pregunta || '¿Cuál es tu palabra clave de seguridad o ciudad de origen?'
+      );
+      setPasoLogin(2);
+    } else {
+      setLoginError(res.error || 'Credenciales incorrectas');
+    }
+  };
+
+  // Paso 2 de Login: Doble Identificación con Pregunta de Seguridad
+  const handlePaso2Login = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+
+    const res = await completarPaso2Admin(emailInput, respuestaSeguridadInput);
     if (res.exito && res.admin) {
       setAdminActual(res.admin);
       setPerfilEmail(res.admin.email);
       setPerfilNombre(res.admin.nombre);
+      if (res.admin.pregunta_seguridad) setPerfilPreguntaSeguridad(res.admin.pregunta_seguridad);
+      if (res.admin.respuesta_seguridad) setPerfilRespuestaSeguridad(res.admin.respuesta_seguridad);
+      setPasoLogin(1);
+      setPasswordInput('');
+      setRespuestaSeguridadInput('');
     } else {
-      setLoginError(res.error || 'Credenciales incorrectas');
+      setLoginError(res.error || 'Respuesta de seguridad incorrecta. Verifica tu respuesta secreta.');
     }
+  };
+
+  const handleVolverPaso1 = () => {
+    setPasoLogin(1);
+    setRespuestaSeguridadInput('');
+    setLoginError(null);
   };
 
   const handleLogout = () => {
     cerrarSesionAdmin();
     setAdminActual(null);
     setPasswordInput('');
+    setRespuestaSeguridadInput('');
+    setPasoLogin(1);
+  };
+
+  // Promover Usuario a Administrador Categoría 2 (Nivel 2) por Email
+  const handlePromoverUsuarioPorEmail = async (emailObjetivo: string) => {
+    const clean = emailObjetivo.trim().toLowerCase();
+    if (!clean || !clean.includes('@')) {
+      setPromocionN2Mensaje({ tipo: 'err', texto: 'Por favor ingresa un correo electrónico válido.' });
+      return;
+    }
+    setProcesandoPromocion(true);
+    setPromocionN2Mensaje(null);
+    try {
+      const res = await promoverUsuarioAAdminNivel2(clean);
+      if (res.exito) {
+        setAdministradores(getAdministradores());
+        setUsuariosSistema(await getUsuariosSistema());
+        setPromocionN2Mensaje({
+          tipo: 'ok',
+          texto: `¡El usuario ${clean} fue nombrado Administrador Categoría 2 (Nivel 2) con éxito!`,
+        });
+        setBusquedaEmailAdminN2('');
+      } else {
+        setPromocionN2Mensaje({ tipo: 'err', texto: res.error || 'No se pudo promover al usuario.' });
+      }
+    } catch (err: any) {
+      setPromocionN2Mensaje({ tipo: 'err', texto: err.message || 'Error al procesar la solicitud.' });
+    } finally {
+      setProcesandoPromocion(false);
+    }
+  };
+
+  // Cambiar Estado y Responder Tickets de Soporte
+  const handleCambiarEstadoTicket = async (
+    ticketId: string,
+    nuevoEstado: EstadoTicketSoporte,
+    notas?: string
+  ) => {
+    setProcesandoTicketId(ticketId);
+    try {
+      const cambios: Partial<TicketSoporte> = {
+        estado: nuevoEstado,
+        notas_admin: notas !== undefined ? notas : undefined,
+      };
+      if (nuevoEstado === 'resuelto') {
+        cambios.fecha_resolucion = new Date().toISOString();
+      }
+      await actualizarTicketSoporte(ticketId, cambios);
+      setTicketsSoporte(await getTicketsSoporte());
+    } finally {
+      setProcesandoTicketId(null);
+    }
+  };
+
+  // Filtrado de Comercios para Exportar Planilla Pública
+  const comerciosParaExportar = useMemo(() => {
+    return comercios.filter((c) => {
+      if (busquedaExportar) {
+        const q = busquedaExportar.toLowerCase();
+        const coincide =
+          c.nombre.toLowerCase().includes(q) ||
+          c.rubro.toLowerCase().includes(q) ||
+          c.direccion.toLowerCase().includes(q) ||
+          (c.localidad && c.localidad.toLowerCase().includes(q));
+        if (!coincide) return false;
+      }
+      if (filtroRubroExportar !== 'Todos' && c.rubro !== filtroRubroExportar) {
+        return false;
+      }
+      return true;
+    });
+  }, [comercios, busquedaExportar, filtroRubroExportar]);
+
+  // Descarga de Planilla CSV con información no privada de comercios
+  const handleDescargarCSVComercios = () => {
+    const encabezados = [
+      'ID',
+      'Nombre',
+      'Rubro',
+      'Dirección',
+      'Localidad',
+      'Categoría / Nivel',
+      'Estado Abierto',
+      'Estado Aprobación',
+      'Teléfono',
+      'WhatsApp',
+      'Email Público',
+      'Envíos a Domicilio',
+      'Alcance de Envíos',
+      'Strikes Reportes',
+      'Strikes Urgencia',
+      'En Cuarentena',
+      'Sitio Web',
+      'Instagram',
+      'TikTok',
+      'Facebook',
+      'Otros Enlaces',
+      'Fecha Solicitud / Alta',
+    ];
+
+    const filas = comerciosParaExportar.map((c) => [
+      `"${(c.id || '').replace(/"/g, '""')}"`,
+      `"${(c.nombre || '').replace(/"/g, '""')}"`,
+      `"${(c.rubro || '').replace(/"/g, '""')}"`,
+      `"${(c.direccion || '').replace(/"/g, '""')}"`,
+      `"${(c.localidad || 'Barrio General').replace(/"/g, '""')}"`,
+      `"${(c.nivel || 'standar').toUpperCase()}"`,
+      `"${c.esta_abierto ? 'Abierto' : 'Cerrado'}"`,
+      `"${(c.estado_aprobacion || 'aprobado').toUpperCase()}"`,
+      `"${(c.telefono || '').replace(/"/g, '""')}"`,
+      `"${(c.whatsapp || '').replace(/"/g, '""')}"`,
+      `"${(c.email || c.email_comercio || '').replace(/"/g, '""')}"`,
+      `"${c.tipo_atencion !== 'local_fisico' ? 'Sí' : 'No'}"`,
+      `"${(c.cobertura_poligono && c.cobertura_poligono.length > 0
+        ? `Polígono dibujado (${c.cobertura_poligono.length} puntos)`
+        : c.radio_entrega_metros
+        ? `${c.radio_entrega_metros / 1000} km`
+        : 'Sin envíos'
+      ).replace(/"/g, '""')}"`,
+      `"${c.strikes_reportes || 0}"`,
+      `"${c.strikes_urgencia || 0}"`,
+      `"${c.en_cuarentena ? 'SÍ' : 'NO'}"`,
+      `"${(c.sitio_web || '').replace(/"/g, '""')}"`,
+      `"${(c.instagram || '').replace(/"/g, '""')}"`,
+      `"${(c.tiktok || '').replace(/"/g, '""')}"`,
+      `"${(c.facebook || '').replace(/"/g, '""')}"`,
+      `"${(c.otros_links || '').replace(/"/g, '""')}"`,
+      `"${c.fecha_solicitud || ''}"`,
+    ]);
+
+    const csvContenido = '\uFEFF' + [encabezados.join(';'), ...filas.map((f) => f.join(';'))].join('\r\n');
+    const blob = new Blob([csvContenido], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute(
+      'download',
+      `comercios_vecinos_cercanos_${new Date().toISOString().split('T')[0]}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Filtrado de Comercios y Solicitudes
@@ -422,6 +642,29 @@ export default function AdminPage() {
     if (filtroEstadoDebate === 'todos') return debates;
     return debates.filter((d) => d.estado === filtroEstadoDebate);
   }, [debates, filtroEstadoDebate]);
+
+  const ticketsSoportePendientes = useMemo(() => {
+    return ticketsSoporte.filter((t) => t.estado === 'pendiente');
+  }, [ticketsSoporte]);
+
+  const ticketsSoporteFiltrados = useMemo(() => {
+    return ticketsSoporte.filter((t) => {
+      if (busquedaTickets) {
+        const q = busquedaTickets.toLowerCase();
+        const coincide =
+          t.asunto.toLowerCase().includes(q) ||
+          t.mensaje.toLowerCase().includes(q) ||
+          t.email.toLowerCase().includes(q) ||
+          t.nombre.toLowerCase().includes(q) ||
+          (t.comercio_nombre && t.comercio_nombre.toLowerCase().includes(q));
+        if (!coincide) return false;
+      }
+      if (filtroTipoTicket !== 'todos' && t.tipo !== filtroTipoTicket) return false;
+      if (filtroOrigenTicket !== 'todos' && t.origen !== filtroOrigenTicket) return false;
+      if (filtroEstadoTicket !== 'todos' && t.estado !== filtroEstadoTicket) return false;
+      return true;
+    });
+  }, [ticketsSoporte, busquedaTickets, filtroTipoTicket, filtroOrigenTicket, filtroEstadoTicket]);
 
   // Handler: Acreditar +1 Mes Extra al comercio
   const handleAcreditarMesExtra = async (comp: ComprobanteTransferencia) => {
@@ -877,7 +1120,9 @@ export default function AdminPage() {
     const res = await actualizarPerfilSuperAdmin(
       perfilEmail,
       perfilPassNuevo || undefined,
-      perfilNombre
+      perfilNombre,
+      perfilPreguntaSeguridad,
+      perfilRespuestaSeguridad
     );
 
     if (res.exito && res.admin) {
@@ -1002,54 +1247,120 @@ export default function AdminPage() {
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-cyan-400" />
-                Correo de Administrador
-              </label>
-              <input
-                type="email"
-                required
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="maxi0802@gmail.com"
-                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-cyan-400" />
-                Contraseña
-              </label>
-              <input
-                type="password"
-                required
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="Ingresa tu contraseña"
-                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
-              />
-              <p className="text-[11px] text-zinc-500 mt-1">
-                SuperAdmin inicial configurado para: <strong>maxi0802@gmail.com</strong>
-              </p>
-            </div>
-
-            {loginError && (
-              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{loginError}</span>
+          {pasoLogin === 1 ? (
+            <form onSubmit={handlePaso1Login} className="space-y-4">
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 bg-zinc-900/60 px-3 py-1.5 rounded-lg border border-zinc-800">
+                <span className="font-semibold text-cyan-400">Paso 1 de 2:</span>
+                <span>Contraseña de acceso</span>
               </div>
-            )}
 
-            <button
-              type="submit"
-              className="w-full py-3 px-4 bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-cyan-950/60 cursor-pointer"
-            >
-              Ingresar al Panel
-            </button>
-          </form>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-cyan-400" />
+                  Correo de Administrador
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  placeholder="maxi0802@gmail.com"
+                  className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-cyan-400" />
+                  Contraseña
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="Ingresa tu contraseña"
+                  className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
+                />
+                <p className="text-[11px] text-zinc-500 mt-1">
+                  SuperAdmin inicial configurado para: <strong>maxi0802@gmail.com</strong>
+                </p>
+              </div>
+
+              {loginError && (
+                <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{loginError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-3 px-4 bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-cyan-950/60 cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>Continuar a Pregunta de Seguridad</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handlePaso2Login} className="space-y-4">
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 bg-cyan-950/40 px-3 py-1.5 rounded-lg border border-cyan-800/40">
+                <span className="font-semibold text-cyan-300">Paso 2 de 2:</span>
+                <span>Doble Factor de Seguridad</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-2">
+                <span className="text-[11px] text-zinc-400 uppercase font-bold tracking-wider block">
+                  Pregunta de Seguridad Registrada:
+                </span>
+                <p className="text-sm font-semibold text-white">
+                  {preguntaSeguridad}
+                </p>
+                <p className="text-[11px] text-zinc-500">
+                  Responde a la pregunta secreta configurada para tu cuenta de administrador.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
+                  Tu Respuesta Secreta
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={respuestaSeguridadInput}
+                  onChange={(e) => setRespuestaSeguridadInput(e.target.value)}
+                  placeholder="Ingresa tu respuesta de seguridad"
+                  className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
+                />
+              </div>
+
+              {loginError && (
+                <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{loginError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-cyan-500 hover:from-emerald-500 hover:to-cyan-400 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-cyan-950/60 cursor-pointer flex items-center justify-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Verificar e Ingresar al Panel</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleVolverPaso1}
+                className="w-full py-2 text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer text-center"
+              >
+                ← Volver a ingresar correo o contraseña
+              </button>
+            </form>
+          )}
 
           <div className="pt-2 text-center border-t border-zinc-800/80">
             <Link
@@ -1235,6 +1546,37 @@ export default function AdminPage() {
                 {debatesAbiertos.length}
               </span>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('soporte')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              pestanaActiva === 'soporte'
+                ? 'border-cyan-500 text-cyan-300'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <HelpCircle className="w-4 h-4 text-cyan-400" />
+            Soporte & Sugerencias
+            {ticketsSoportePendientes.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500 text-black animate-pulse">
+                {ticketsSoportePendientes.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('exportar')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              pestanaActiva === 'exportar'
+                ? 'border-emerald-500 text-emerald-300'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+            Planilla Pública ({comerciosParaExportar.length})
           </button>
 
           <button
@@ -2578,6 +2920,516 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* PESTAÑA: SOPORTE Y RECOMENDACIONES DE USUARIOS Y COMERCIOS */}
+        {pestanaActiva === 'soporte' && (
+          <div className="space-y-6">
+            {/* Cabecera de Soporte */}
+            <div className="p-6 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-black text-white flex items-center gap-2">
+                    <HelpCircle className="w-6 h-6 text-cyan-400" />
+                    Soporte & Recomendaciones Barriales
+                    {ticketsSoportePendientes.length > 0 && (
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-cyan-500 text-black animate-pulse">
+                        {ticketsSoportePendientes.length} nuevos
+                      </span>
+                    )}
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Gestión de problemas con locales, membresías, cuentas y sugerencias recibidas de usuarios o comercios.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const tcks = await getTicketsSoporte();
+                      setTicketsSoporte(tcks);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Actualizar
+                  </button>
+                </div>
+              </div>
+
+              {/* Estadísticas Rápidas */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80">
+                  <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider">Total Recibidos</span>
+                  <div className="text-xl font-black text-white mt-0.5">{ticketsSoporte.length}</div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80">
+                  <span className="text-[10px] text-amber-400 uppercase font-bold tracking-wider">Locales / Membresía</span>
+                  <div className="text-xl font-black text-amber-300 mt-0.5">
+                    {ticketsSoporte.filter((t) => t.tipo === 'local_membresia').length}
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80">
+                  <span className="text-[10px] text-indigo-400 uppercase font-bold tracking-wider">Cuentas</span>
+                  <div className="text-xl font-black text-indigo-300 mt-0.5">
+                    {ticketsSoporte.filter((t) => t.tipo === 'cuenta').length}
+                  </div>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80">
+                  <span className="text-[10px] text-cyan-400 uppercase font-bold tracking-wider">Recomendaciones</span>
+                  <div className="text-xl font-black text-cyan-300 mt-0.5">
+                    {ticketsSoporte.filter((t) => t.tipo === 'recomendacion').length}
+                  </div>
+                </div>
+              </div>
+
+              {/* Barra de Filtros y Búsqueda */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 pt-2">
+                <div className="sm:col-span-1">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      value={busquedaTickets}
+                      onChange={(e) => setBusquedaTickets(e.target.value)}
+                      placeholder="Buscar en tickets..."
+                      className="w-full pl-9 pr-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <select
+                    value={filtroTipoTicket}
+                    onChange={(e) => setFiltroTipoTicket(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                  >
+                    <option value="todos">Todos los Tipos</option>
+                    <option value="local_membresia">Problemas de Local / Membresía</option>
+                    <option value="cuenta">Problemas con Cuenta</option>
+                    <option value="recomendacion">Recomendaciones Barriales</option>
+                  </select>
+                </div>
+
+                <div>
+                  <select
+                    value={filtroOrigenTicket}
+                    onChange={(e) => setFiltroOrigenTicket(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                  >
+                    <option value="todos">Todos los Orígenes</option>
+                    <option value="usuario">Desde Vecinos / Usuarios</option>
+                    <option value="comercio">Desde Comercios</option>
+                  </select>
+                </div>
+
+                <div>
+                  <select
+                    value={filtroEstadoTicket}
+                    onChange={(e) => setFiltroEstadoTicket(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                  >
+                    <option value="todos">Todos los Estados</option>
+                    <option value="pendiente">Solo Pendientes</option>
+                    <option value="en_revision">En Revisión</option>
+                    <option value="resuelto">Resueltos</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Listado de Tickets */}
+            {ticketsSoporteFiltrados.length === 0 ? (
+              <div className="p-12 text-center rounded-3xl bg-zinc-950 border border-zinc-800 space-y-3">
+                <HelpCircle className="w-12 h-12 text-zinc-600 mx-auto" />
+                <h3 className="text-base font-bold text-white">No hay tickets que coincidan con la búsqueda</h3>
+                <p className="text-xs text-zinc-400">
+                  Los reportes de inconvenientes y sugerencias cargados por usuarios y comerciantes aparecerán aquí.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {ticketsSoporteFiltrados.map((ticket) => {
+                  const esLocal = ticket.tipo === 'local_membresia';
+                  const esCuenta = ticket.tipo === 'cuenta';
+                  const esRecomendacion = ticket.tipo === 'recomendacion';
+
+                  return (
+                    <div
+                      key={ticket.id}
+                      className="p-5 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-4 shadow-xl hover:border-zinc-700 transition-colors"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2.5 pb-3 border-b border-zinc-900">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                              esLocal
+                                ? 'bg-amber-950/60 text-amber-300 border-amber-800/60'
+                                : esCuenta
+                                ? 'bg-indigo-950/60 text-indigo-300 border-indigo-800/60'
+                                : 'bg-cyan-950/60 text-cyan-300 border-cyan-800/60'
+                            }`}
+                          >
+                            {esLocal
+                              ? 'Local / Membresía'
+                              : esCuenta
+                              ? 'Problema de Cuenta'
+                              : 'Recomendación'}
+                          </span>
+
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-900 text-zinc-300 border border-zinc-800">
+                            {ticket.origen === 'comercio' ? 'Comercio' : 'Usuario'}
+                          </span>
+
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                              ticket.estado === 'resuelto'
+                                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
+                                : ticket.estado === 'en_revision'
+                                ? 'bg-violet-950/60 text-violet-300 border-violet-800/60'
+                                : 'bg-amber-950/60 text-amber-300 border-amber-800/60'
+                            }`}
+                          >
+                            {ticket.estado === 'resuelto'
+                              ? 'RESUELTO'
+                              : ticket.estado === 'en_revision'
+                              ? 'EN REVISIÓN'
+                              : 'PENDIENTE'}
+                          </span>
+                        </div>
+
+                        <span className="text-[11px] text-zinc-500 font-mono">
+                          {new Date(ticket.fecha_creacion).toLocaleString('es-AR')}
+                        </span>
+                      </div>
+
+                      {/* Datos de contacto y remitente */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-zinc-900/60 p-3.5 rounded-2xl border border-zinc-800/70">
+                        <div>
+                          <span className="text-zinc-500 text-[10px] uppercase font-bold block">Remitente</span>
+                          <span className="font-semibold text-white">{ticket.nombre}</span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 text-[10px] uppercase font-bold block">Contacto</span>
+                          <a
+                            href={`mailto:${ticket.email}`}
+                            className="text-cyan-400 hover:underline block truncate font-mono text-[11px]"
+                          >
+                            {ticket.email}
+                          </a>
+                          {ticket.telefono && (
+                            <a
+                              href={`tel:${ticket.telefono}`}
+                              className="text-zinc-300 hover:text-white block font-mono text-[11px]"
+                            >
+                              Tel: {ticket.telefono}
+                            </a>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-zinc-500 text-[10px] uppercase font-bold block">Comercio Asociado</span>
+                          <span className="text-zinc-300 font-medium">
+                            {ticket.comercio_nombre || 'Ninguno especificado'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Asunto y Mensaje */}
+                      <div className="space-y-1.5">
+                        <h4 className="text-sm font-bold text-white">{ticket.asunto}</h4>
+                        <div className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">
+                          {ticket.mensaje}
+                        </div>
+                      </div>
+
+                      {/* Notas del Administrador */}
+                      {ticket.notas_admin && (
+                        <div className="p-3 rounded-2xl bg-indigo-950/30 border border-indigo-900/40 text-xs text-indigo-200 space-y-1">
+                          <span className="font-bold text-[11px] text-indigo-300 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Nota de Resolución del Administrador:
+                          </span>
+                          <p>{ticket.notas_admin}</p>
+                          {ticket.fecha_resolucion && (
+                            <span className="text-[10px] text-indigo-400/80 block mt-1">
+                              Resuelto el: {new Date(ticket.fecha_resolucion).toLocaleString('es-AR')}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Acciones del Administrador */}
+                      <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-900">
+                        <div className="flex items-center gap-2">
+                          {ticket.estado !== 'en_revision' && ticket.estado !== 'resuelto' && (
+                            <button
+                              type="button"
+                              disabled={procesandoTicketId === ticket.id}
+                              onClick={() => handleCambiarEstadoTicket(ticket.id, 'en_revision')}
+                              className="px-3 py-1.5 rounded-xl bg-violet-950/60 hover:bg-violet-900/60 text-violet-300 border border-violet-800/60 text-xs font-semibold cursor-pointer transition-colors"
+                            >
+                              Tomar en Revisión
+                            </button>
+                          )}
+
+                          {ticket.estado !== 'resuelto' ? (
+                            <button
+                              type="button"
+                              disabled={procesandoTicketId === ticket.id}
+                              onClick={() => {
+                                const nota = prompt(
+                                  'Ingresa una nota o respuesta de resolución (opcional):',
+                                  ticket.notas_admin || 'Resuelto y gestionado por la administración'
+                                );
+                                if (nota !== null) {
+                                  handleCambiarEstadoTicket(ticket.id, 'resuelto', nota);
+                                }
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm cursor-pointer transition-colors flex items-center gap-1.5"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Marcar como Resuelto
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={procesandoTicketId === ticket.id}
+                              onClick={() => handleCambiarEstadoTicket(ticket.id, 'pendiente')}
+                              className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 text-xs font-semibold cursor-pointer transition-colors"
+                            >
+                              Reabrir Ticket
+                            </button>
+                          )}
+                        </div>
+
+                        <a
+                          href={`mailto:${ticket.email}?subject=${encodeURIComponent(
+                            'Respuesta a tu ticket: ' + ticket.asunto
+                          )}&body=${encodeURIComponent(
+                            `Hola ${ticket.nombre},\n\nTe respondemos desde la administración de Vecinos Cercanos respecto a tu solicitud:\n"${ticket.mensaje}"\n\nSaludos cordiales.`
+                          )}`}
+                          className="px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-cyan-950/40 text-cyan-300 border border-zinc-800 hover:border-cyan-700/50 text-xs font-semibold flex items-center gap-1.5 transition-colors no-underline"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                          Responder por Mail
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PESTAÑA: PLANILLA DE INFORMACIÓN PÚBLICA DE COMERCIOS (DESCARGAR CSV) */}
+        {pestanaActiva === 'exportar' && (
+          <div className="space-y-6">
+            {/* Cabecera y Botón de Descarga */}
+            <div className="p-6 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-black text-white flex items-center gap-2">
+                    <FileSpreadsheet className="w-6 h-6 text-emerald-400" />
+                    Planilla de Información Pública de Comercios
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Tabla con todos los datos públicos y no privados de comercios (dirección, localidad, rubro, strikes, categoría, horarios, envíos y redes) lista para exportar a Excel.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleDescargarCSVComercios}
+                  className="px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 cursor-pointer transition-all shrink-0"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Descargar Planilla (CSV / Excel)</span>
+                </button>
+              </div>
+
+              {/* Filtros de la Tabla */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                <div className="relative flex-1 w-full">
+                  <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    value={busquedaExportar}
+                    onChange={(e) => setBusquedaExportar(e.target.value)}
+                    placeholder="Filtrar por nombre, rubro, dirección o localidad..."
+                    className="w-full pl-9 pr-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="w-full sm:w-64">
+                  <select
+                    value={filtroRubroExportar}
+                    onChange={(e) => setFiltroRubroExportar(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-300 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                  >
+                    <option value="Todos">Todos los Rubros</option>
+                    {categorias.map((cat) => (
+                      <option key={cat.id} value={cat.nombre}>
+                        {cat.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-zinc-500">
+                Mostrando <strong className="text-zinc-300">{comerciosParaExportar.length}</strong> de{' '}
+                <strong className="text-zinc-300">{comercios.length}</strong> comercios registrados.
+              </div>
+            </div>
+
+            {/* Tabla Completa de Comercios No Privados */}
+            <div className="bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden shadow-2xl">
+              <div className="overflow-x-auto no-scrollbar max-h-[600px] overflow-y-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="sticky top-0 z-10 bg-zinc-900/95 backdrop-blur-xs border-b border-zinc-800 text-[10px] text-zinc-400 font-bold uppercase tracking-wider">
+                    <tr>
+                      <th className="py-3 px-4">Comercio</th>
+                      <th className="py-3 px-4">Rubro</th>
+                      <th className="py-3 px-4">Dirección / Localidad</th>
+                      <th className="py-3 px-4">Categoría / Nivel</th>
+                      <th className="py-3 px-4">Contacto</th>
+                      <th className="py-3 px-4">Envíos</th>
+                      <th className="py-3 px-4">Strikes</th>
+                      <th className="py-3 px-4">Redes Sociales</th>
+                      <th className="py-3 px-4">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/80">
+                    {comerciosParaExportar.map((c) => (
+                      <tr key={c.id} className="hover:bg-zinc-900/40 transition-colors">
+                        <td className="py-3 px-4">
+                          <div>
+                            <span className="font-bold text-white block">{c.nombre}</span>
+                            <span className="text-[10px] text-zinc-500 font-mono">ID: {c.id}</span>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-900 text-zinc-300 border border-zinc-800">
+                            {c.rubro}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <div>
+                            <span className="text-zinc-300 block">{c.direccion}</span>
+                            <span className="text-[10px] text-zinc-500">{c.localidad || 'Barrio General'}</span>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                              c.nivel === 'gold'
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                : c.nivel === 'premium'
+                                ? 'bg-violet-500/20 text-violet-300 border-violet-500/30'
+                                : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                            }`}
+                          >
+                            {c.nivel || 'standar'}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-4 text-zinc-400 space-y-0.5">
+                          {c.telefono && <span className="block text-[11px] font-mono">Tel: {c.telefono}</span>}
+                          {c.whatsapp && <span className="block text-[11px] font-mono text-emerald-400">Wp: {c.whatsapp}</span>}
+                          {(c.email || c.email_comercio) && (
+                            <span className="block text-[10px] font-mono text-cyan-400 truncate max-w-[140px]">
+                              {c.email || c.email_comercio}
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {c.tipo_atencion !== 'local_fisico' ? (
+                            <div>
+                              <span className="text-emerald-400 font-semibold block text-[11px]">Envíos habilitados</span>
+                              <span className="text-[10px] text-zinc-500">
+                                {c.cobertura_poligono && c.cobertura_poligono.length > 0
+                                  ? `Polígono (${c.cobertura_poligono.length} pts)`
+                                  : c.radio_entrega_metros
+                                  ? `${c.radio_entrega_metros / 1000} km`
+                                  : 'Ilimitado'}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-zinc-500 text-[11px]">Solo mostrador</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <div className="space-y-0.5 text-[11px]">
+                            <span className="block text-zinc-400">
+                              Reportes: <strong className={c.strikes_reportes ? 'text-amber-400' : 'text-zinc-500'}>{c.strikes_reportes || 0}</strong>
+                            </span>
+                            <span className="block text-zinc-400">
+                              Urgencia: <strong className={c.strikes_urgencia ? 'text-rose-400' : 'text-zinc-500'}>{c.strikes_urgencia || 0}</strong>
+                            </span>
+                            {c.en_cuarentena && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-rose-950 text-rose-300 border border-rose-800">
+                                CUARENTENA
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 text-[10.5px] text-zinc-400 space-y-0.5">
+                          {c.sitio_web && (
+                            <a href={c.sitio_web} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline block truncate max-w-[120px]">
+                              Web
+                            </a>
+                          )}
+                          {c.instagram && (
+                            <span className="block truncate max-w-[120px] text-pink-400 font-mono">
+                              IG: {c.instagram}
+                            </span>
+                          )}
+                          {c.tiktok && (
+                            <span className="block truncate max-w-[120px] text-teal-400 font-mono">
+                              TT: {c.tiktok}
+                            </span>
+                          )}
+                          {c.facebook && (
+                            <span className="block truncate max-w-[120px] text-blue-400 font-mono">
+                              FB: {c.facebook}
+                            </span>
+                          )}
+                          {!c.sitio_web && !c.instagram && !c.tiktok && !c.facebook && (
+                            <span className="text-zinc-600 italic">Sin redes</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <div className="space-y-1">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border block text-center ${
+                                c.esta_abierto
+                                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60'
+                                  : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                              }`}
+                            >
+                              {c.esta_abierto ? 'Abierto' : 'Cerrado'}
+                            </span>
+                            <span className="text-[10px] text-zinc-500 block text-center capitalize">
+                              {c.estado_aprobacion || 'aprobado'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* PESTAÑA 3: INFORMES & ANALÍTICAS DIARIAS */}
         {pestanaActiva === 'metricas' && (
           <div className="space-y-6">
@@ -2783,15 +3635,94 @@ export default function AdminPage() {
         {/* PESTAÑA 5: EQUIPO Y ADMINISTRADORES NIVEL 2 */}
         {pestanaActiva === 'equipo' && esSuperAdmin && (
           <div className="space-y-6">
+            {/* Buscar Usuario por Email para poner Administrador Categoría 2 */}
+            <div className="p-6 rounded-3xl bg-zinc-950 border border-indigo-500/40 space-y-4 shadow-xl">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Search className="w-5 h-5 text-indigo-400" />
+                  Buscar Usuario por Mail para poner Administrador Categoría 2
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Busca cualquier usuario registrado en la plataforma por su correo electrónico y asígnalo directamente con rol de Administrador Nivel 2.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="relative flex-1">
+                  <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3" />
+                  <input
+                    type="email"
+                    value={busquedaEmailAdminN2}
+                    onChange={(e) => setBusquedaEmailAdminN2(e.target.value)}
+                    placeholder="Escribe el email del usuario registrado (ej. usuario@gmail.com)..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={procesandoPromocion || !busquedaEmailAdminN2.trim()}
+                  onClick={() => handlePromoverUsuarioPorEmail(busquedaEmailAdminN2)}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-bold text-xs shadow-md shadow-indigo-950/60 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                >
+                  <Crown className="w-4 h-4" />
+                  <span>{procesandoPromocion ? 'Asignando...' : 'Poner Administrador Categoría 2'}</span>
+                </button>
+              </div>
+
+              {/* Sugerencias de usuarios que coinciden con el email escrito */}
+              {busquedaEmailAdminN2.trim().length >= 2 && (
+                <div className="p-3 bg-zinc-900/80 rounded-2xl border border-zinc-800 space-y-2">
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block">
+                    Usuarios encontrados:
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {usuariosSistema
+                      .filter((u) => u.email.toLowerCase().includes(busquedaEmailAdminN2.toLowerCase()))
+                      .slice(0, 5)
+                      .map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => setBusquedaEmailAdminN2(u.email)}
+                          className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 border border-zinc-700 flex items-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <span className="font-semibold text-white">{u.nombre}</span>
+                          <span className="text-zinc-400 font-mono text-[11px]">({u.email})</span>
+                          <span className="text-[10px] text-indigo-400 font-bold">[{u.rol}]</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {promocionN2Mensaje && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                    promocionN2Mensaje.tipo === 'ok'
+                      ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
+                      : 'bg-rose-950/40 border-rose-800 text-rose-300'
+                  }`}
+                >
+                  {promocionN2Mensaje.tipo === 'ok' ? (
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                  )}
+                  <span>{promocionN2Mensaje.texto}</span>
+                </div>
+              )}
+            </div>
+
             {/* Formulario Agregar Admin Nivel 2 */}
             <div className="p-6 rounded-3xl bg-zinc-950 border border-cyan-500/30 space-y-4">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <Users className="w-5 h-5 text-cyan-400" />
-                  Asignar Administrador de Nivel 2 (Moderador)
+                  Crear Nuevo Administrador de Nivel 2 (Con contraseña manual)
                 </h3>
                 <p className="text-xs text-zinc-400 mt-1">
-                  Los administradores nivel 2 reciben acceso al panel para corroborar locales, verificar datos y aprobar comercios según los permisos asignados.
+                  Crea una nueva cuenta de administrador de nivel 2 definiendo su contraseña inicial y permisos específicos.
                 </p>
               </div>
 
@@ -3037,6 +3968,44 @@ export default function AdminPage() {
                       />
                     </div>
                   )}
+                </div>
+
+                <div className="pt-3 border-t border-zinc-800/80 space-y-3">
+                  <span className="text-xs font-bold text-white block flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                    Doble Factor de Identificación (Pregunta de Seguridad)
+                  </span>
+
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">
+                      Pregunta de Seguridad Secreta *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={perfilPreguntaSeguridad}
+                      onChange={(e) => setPerfilPreguntaSeguridad(e.target.value)}
+                      placeholder="Ej. ¿Cuál es tu palabra clave o ciudad de origen?"
+                      className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1">
+                      Respuesta de Seguridad Secreta *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={perfilRespuestaSeguridad}
+                      onChange={(e) => setPerfilRespuestaSeguridad(e.target.value)}
+                      placeholder="Tu respuesta secreta (no visible públicamente)"
+                      className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    />
+                    <p className="text-[11px] text-zinc-500 mt-1">
+                      Se solicitará esta respuesta cada vez que inicies sesión en el panel como segundo paso.
+                    </p>
+                  </div>
                 </div>
 
                 {perfilMensaje && (
@@ -3429,6 +4398,19 @@ export default function AdminPage() {
                                 <span className="text-[11px] text-zinc-500 italic">Cuenta Protegida</span>
                               ) : (
                                 <div className="flex items-center justify-end gap-1.5">
+                                  {esSuperAdmin && u.rol !== 'admin_nivel2' && u.estado === 'activo' && (
+                                    <button
+                                      type="button"
+                                      disabled={procesandoPromocion}
+                                      onClick={() => handlePromoverUsuarioPorEmail(u.email)}
+                                      className="py-1 px-2.5 rounded-xl bg-indigo-950/60 hover:bg-indigo-900/60 text-indigo-300 border border-indigo-800/60 text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                                      title="Nombrar Administrador Categoría 2 a este usuario"
+                                    >
+                                      <Crown className="w-3.5 h-3.5 text-indigo-400" />
+                                      <span>Hacer Admin Cat. 2</span>
+                                    </button>
+                                  )}
+
                                   {u.estado !== 'activo' ? (
                                     <button
                                       type="button"

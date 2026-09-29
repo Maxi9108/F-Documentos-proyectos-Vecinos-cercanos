@@ -26,10 +26,13 @@ export function cerrarSesionAdmin(): void {
   }
 }
 
-export async function loginAdmin(
+/**
+ * Paso 1: Valida correo y contraseña del administrador
+ */
+export async function verificarCredencialesAdmin(
   emailInput: string,
   passInput: string
-): Promise<{ ok: boolean; admin?: AdminSesion; error?: string; esAdmin?: boolean }> {
+): Promise<{ ok: boolean; requierePregunta?: boolean; pregunta?: string; error?: string }> {
   const email = emailInput.trim().toLowerCase();
   const password = passInput.trim();
 
@@ -37,7 +40,6 @@ export async function loginAdmin(
     return { ok: false, error: 'Por favor ingresa tu correo y contraseña.' };
   }
 
-  // 1. Consulta en Supabase
   if (isSupabaseConfigured) {
     try {
       const { data, error } = await supabase
@@ -53,6 +55,67 @@ export async function loginAdmin(
 
         const passValida = await verifyPassword(password, data.password_hash || data.password);
         if (passValida) {
+          return {
+            ok: true,
+            requierePregunta: true,
+            pregunta:
+              data.pregunta_seguridad ||
+              '¿Cuál es tu palabra clave de seguridad o ciudad de origen?',
+          };
+        }
+        return {
+          ok: false,
+          error: 'Contraseña de administrador incorrecta.',
+        };
+      }
+    } catch (err) {
+      console.warn('[Admin Auth] Error consultando Supabase:', err);
+    }
+  }
+
+  if (email === 'maxi0802@gmail.com') {
+    const esValida = password === 'admin' || (await verifyPassword(password, 'admin'));
+    if (esValida) {
+      return {
+        ok: true,
+        requierePregunta: true,
+        pregunta: '¿Cuál es tu palabra clave de seguridad o ciudad de origen?',
+      };
+    }
+    return {
+      ok: false,
+      error: 'Contraseña de administrador incorrecta.',
+    };
+  }
+
+  return { ok: false, error: 'Credenciales inválidas. Verifica tu correo y contraseña.' };
+}
+
+/**
+ * Paso 2: Valida la respuesta a la pregunta de seguridad para emitir la sesión
+ */
+export async function verificarPreguntaSeguridadAdmin(
+  emailInput: string,
+  respuestaInput: string
+): Promise<{ ok: boolean; admin?: AdminSesion; error?: string }> {
+  const email = emailInput.trim().toLowerCase();
+  const cleanRespuesta = respuestaInput.trim().toLowerCase();
+
+  if (!cleanRespuesta) {
+    return { ok: false, error: 'Por favor ingresa la respuesta a tu pregunta de seguridad.' };
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('administradores')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (!error && data) {
+        const respuestaEsperada = (data.respuesta_seguridad || 'admin').trim().toLowerCase();
+        if (cleanRespuesta === respuestaEsperada) {
           const sesion: AdminSesion = {
             id: data.id,
             email: data.email,
@@ -66,8 +129,7 @@ export async function loginAdmin(
         }
         return {
           ok: false,
-          esAdmin: true,
-          error: 'Contraseña de administrador incorrecta. Por motivos de seguridad, tus credenciales están protegidas y no se muestran en pantalla.',
+          error: 'Respuesta de seguridad incorrecta. Verifica tu respuesta secreta.',
         };
       }
     } catch (err) {
@@ -75,10 +137,8 @@ export async function loginAdmin(
     }
   }
 
-  // 2. Verificación para SuperAdmin
   if (email === 'maxi0802@gmail.com') {
-    const esValida = password === 'admin' || (await verifyPassword(password, 'admin'));
-    if (esValida) {
+    if (cleanRespuesta === 'admin') {
       const sesion: AdminSesion = {
         id: 'superadmin-maxi',
         email: 'maxi0802@gmail.com',
@@ -92,12 +152,38 @@ export async function loginAdmin(
     }
     return {
       ok: false,
-      esAdmin: true,
-      error: 'Contraseña de administrador incorrecta. Por motivos de seguridad, no se revelan credenciales en pantalla. Puedes solicitar un correo de confirmación para restablecer tu clave.',
+      error: 'Respuesta de seguridad incorrecta. Verifica tu respuesta secreta.',
     };
   }
 
-  return { ok: false, error: 'Credenciales inválidas. Verifica tu correo y contraseña.' };
+  return { ok: false, error: 'No se encontró la cuenta de administrador.' };
+}
+
+export async function loginAdmin(
+  emailInput: string,
+  passInput: string,
+  respuestaSeguridadInput?: string
+): Promise<{
+  ok: boolean;
+  admin?: AdminSesion;
+  error?: string;
+  requierePregunta?: boolean;
+  pregunta?: string;
+}> {
+  const p1 = await verificarCredencialesAdmin(emailInput, passInput);
+  if (!p1.ok) {
+    return { ok: false, error: p1.error };
+  }
+
+  if (respuestaSeguridadInput === undefined) {
+    return {
+      ok: false,
+      requierePregunta: true,
+      pregunta: p1.pregunta,
+    };
+  }
+
+  return verificarPreguntaSeguridadAdmin(emailInput, respuestaSeguridadInput);
 }
 
 /**

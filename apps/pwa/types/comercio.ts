@@ -82,7 +82,15 @@ export interface Comercio {
   nombre: string;
   rubro: string;
   direccion: string;
+  localidad?: string;
   telefono: string;
+  email?: string;
+  // Enlaces y redes sociales
+  sitio_web?: string;
+  instagram?: string;
+  tiktok?: string;
+  facebook?: string;
+  otros_links?: string;
   esta_abierto: boolean;
   latitud: number;
   longitud: number;
@@ -230,6 +238,8 @@ export interface Administrador {
   id: string;
   email: string;
   password?: string;
+  pregunta_seguridad?: string;
+  respuesta_seguridad?: string;
   nombre: string;
   rol: RolAdmin;
   permisos: PermisosAdmin;
@@ -415,5 +425,40 @@ export interface UsuarioSistema {
   fecha_registro: string;
   ultimo_acceso?: string;
 }
+
+// ==============================================================================
+// 17. TICKETS DE SOPORTE, PROBLEMAS Y RECOMENDACIONES
+// ==============================================================================
+export type TipoTicketSoporte =
+  | 'problema_local_membresia'
+  | 'problema_cuenta'
+  | 'recomendacion'
+  | 'local_membresia'
+  | 'cuenta'
+  | 'otro';
+
+export type OrigenTicketSoporte = 'usuario' | 'comercio';
+
+export type EstadoTicketSoporte = 'pendiente' | 'en_revision' | 'resuelto' | 'descartado';
+
+export interface TicketSoporte {
+  id: string;
+  tipo: TipoTicketSoporte;
+  origen: OrigenTicketSoporte;
+  nombre: string;
+  email: string;
+  telefono?: string;
+  comercio_nombre?: string;
+  comercio_id?: string;
+  asunto: string;
+  mensaje: string;
+  estado: EstadoTicketSoporte;
+  fecha_creacion: string;
+  respuesta_admin?: string;
+  notas_admin?: string;
+  resuelto_por?: string;
+  fecha_resolucion?: string;
+}
+
 
 

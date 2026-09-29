@@ -12,6 +12,8 @@ import {
 } from '@/lib/supabase';
 import {
   loginAdmin,
+  verificarCredencialesAdmin,
+  verificarPreguntaSeguridadAdmin,
   getSesionAdmin,
   cerrarSesionAdmin,
   solicitarCambioPasswordAdmin,
@@ -21,7 +23,7 @@ import AdminHeader from '@/components/AdminHeader';
 import ComerciosTable from '@/components/ComerciosTable';
 import ComercioModal from '@/components/ComercioModal';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
-import { CheckCircle2, AlertCircle, X, ShieldCheck, Mail, Lock } from 'lucide-react';
+import { CheckCircle2, AlertCircle, X, ShieldCheck, Mail, Lock, HelpCircle, ChevronRight, Download } from 'lucide-react';
 
 interface NotificationState {
   type: 'success' | 'error';
@@ -29,11 +31,14 @@ interface NotificationState {
 }
 
 export default function AdminDashboard() {
-  // Autenticación de Administrador
+  // Autenticación de Administrador (2FA: Contraseña + Pregunta de Seguridad)
   const [adminSesion, setAdminSesion] = useState<AdminSesion | null>(null);
   const [isVerificandoSesion, setIsVerificandoSesion] = useState(true);
   const [emailInput, setEmailInput] = useState('maxi0802@gmail.com');
   const [passwordInput, setPasswordInput] = useState('');
+  const [pasoLogin, setPasoLogin] = useState<1 | 2>(1);
+  const [preguntaSeguridad, setPreguntaSeguridad] = useState('');
+  const [respuestaSeguridadInput, setRespuestaSeguridadInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
@@ -81,15 +86,18 @@ export default function AdminDashboard() {
     }
   }, [adminSesion, cargarComercios]);
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
+  // Paso 1 de Login: Validación de Email y Contraseña
+  const handleLoginPaso1 = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
     setIsLoggingIn(true);
     try {
-      const res = await loginAdmin(emailInput, passwordInput);
-      if (res.ok && res.admin) {
-        setAdminSesion(res.admin);
-        setPasswordInput('');
+      const res = await verificarCredencialesAdmin(emailInput, passwordInput);
+      if (res.ok) {
+        setPreguntaSeguridad(
+          res.pregunta || '¿Cuál es tu palabra clave de seguridad o ciudad de origen?'
+        );
+        setPasoLogin(2);
       } else {
         setAuthError(res.error || 'Credenciales inválidas.');
       }
@@ -100,9 +108,112 @@ export default function AdminDashboard() {
     }
   };
 
+  // Paso 2 de Login: Doble Identificación con Pregunta de Seguridad
+  const handleLoginPaso2 = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setIsLoggingIn(true);
+    try {
+      const res = await verificarPreguntaSeguridadAdmin(emailInput, respuestaSeguridadInput);
+      if (res.ok && res.admin) {
+        setAdminSesion(res.admin);
+        setPasswordInput('');
+        setRespuestaSeguridadInput('');
+        setPasoLogin(1);
+      } else {
+        setAuthError(res.error || 'Respuesta de seguridad incorrecta. Verifica tu respuesta secreta.');
+      }
+    } catch {
+      setAuthError('Error al validar tu respuesta de seguridad.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleVolverPaso1 = () => {
+    setPasoLogin(1);
+    setRespuestaSeguridadInput('');
+    setAuthError(null);
+  };
+
   const handleLogout = () => {
     cerrarSesionAdmin();
     setAdminSesion(null);
+    setPasoLogin(1);
+    setPasswordInput('');
+    setRespuestaSeguridadInput('');
+  };
+
+  // Descarga de Planilla CSV con información pública y no privada
+  const handleDescargarCSVPublico = () => {
+    const encabezados = [
+      'ID',
+      'Nombre',
+      'Rubro',
+      'Dirección',
+      'Localidad',
+      'Categoría / Nivel',
+      'Estado Abierto',
+      'Estado Aprobación',
+      'Teléfono',
+      'WhatsApp',
+      'Email Público',
+      'Envíos a Domicilio',
+      'Alcance de Envíos',
+      'Strikes Reportes',
+      'Strikes Urgencia',
+      'En Cuarentena',
+      'Sitio Web',
+      'Instagram',
+      'TikTok',
+      'Facebook',
+      'Otros Enlaces',
+      'Fecha Creación',
+    ];
+
+    const filas = comercios.map((c) => [
+      `"${(c.id || '').replace(/"/g, '""')}"`,
+      `"${(c.nombre || '').replace(/"/g, '""')}"`,
+      `"${(c.rubro || '').replace(/"/g, '""')}"`,
+      `"${(c.direccion || '').replace(/"/g, '""')}"`,
+      `"${(c.localidad || 'Barrio General').replace(/"/g, '""')}"`,
+      `"${(c.nivel || 'standar').toUpperCase()}"`,
+      `"${c.esta_abierto ? 'Abierto' : 'Cerrado'}"`,
+      `"${(c.estado_aprobacion || 'aprobado').toUpperCase()}"`,
+      `"${(c.telefono || '').replace(/"/g, '""')}"`,
+      `"${(c.whatsapp || '').replace(/"/g, '""')}"`,
+      `"${(c.email || c.email_comercio || '').replace(/"/g, '""')}"`,
+      `"${c.tipo_atencion !== 'local_fisico' ? 'Sí' : 'No'}"`,
+      `"${(c.cobertura_poligono && c.cobertura_poligono.length > 0
+        ? `Polígono dibujado (${c.cobertura_poligono.length} puntos)`
+        : c.radio_entrega_metros
+        ? `${c.radio_entrega_metros / 1000} km`
+        : 'Sin envíos'
+      ).replace(/"/g, '""')}"`,
+      `"${c.strikes_reportes || 0}"`,
+      `"${c.strikes_urgencia || 0}"`,
+      `"${c.en_cuarentena ? 'SÍ' : 'NO'}"`,
+      `"${(c.sitio_web || '').replace(/"/g, '""')}"`,
+      `"${(c.instagram || '').replace(/"/g, '""')}"`,
+      `"${(c.tiktok || '').replace(/"/g, '""')}"`,
+      `"${(c.facebook || '').replace(/"/g, '""')}"`,
+      `"${(c.otros_links || '').replace(/"/g, '""')}"`,
+      `"${c.fecha_creacion || c.fecha_solicitud || ''}"`,
+    ]);
+
+    const csvContenido = '\uFEFF' + [encabezados.join(';'), ...filas.map((f) => f.join(';'))].join('\r\n');
+    const blob = new Blob([csvContenido], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute(
+      'download',
+      `comercios_neofaro_admin_${new Date().toISOString().split('T')[0]}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Temporizador para auto-ocultar notificaciones
@@ -281,69 +392,136 @@ export default function AdminDashboard() {
             </p>
           </div>
 
-          <form onSubmit={handleLoginSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-indigo-400" />
-                Correo Electrónico
-              </label>
-              <input
-                type="email"
-                required
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-                placeholder="maxi0802@gmail.com"
-                className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
-              />
-            </div>
+          {pasoLogin === 1 ? (
+            <form onSubmit={handleLoginPaso1} className="space-y-4">
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800">
+                <span className="font-semibold text-indigo-400">Paso 1 de 2:</span>
+                <span>Credenciales de acceso</span>
+              </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5 text-indigo-400" />
-                Contraseña
-              </label>
-              <input
-                type="password"
-                required
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="Ingresa tu contraseña de administrador"
-                className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
-              />
-            </div>
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                  Correo Electrónico
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  placeholder="maxi0802@gmail.com"
+                  className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+                />
+              </div>
 
-            {authError && (
-              <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                  Contraseña
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="Ingresa tu contraseña de administrador"
+                  className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+                />
+              </div>
+
+              {authError && (
+                <div className="space-y-2">
+                  <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                    <span>{authError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await solicitarCambioPasswordAdmin(emailInput);
+                      setNotification({
+                        type: 'success',
+                        message: res.mensaje,
+                      });
+                      setAuthError(null);
+                    }}
+                    className="w-full py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Enviar correo de confirmación y cambio de clave</span>
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-50 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/25 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>{isLoggingIn ? 'Verificando...' : 'Continuar a Pregunta de Seguridad'}</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleLoginPaso2} className="space-y-4">
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 bg-indigo-950/50 px-3 py-1.5 rounded-lg border border-indigo-800/50">
+                <span className="font-semibold text-indigo-300">Paso 2 de 2:</span>
+                <span>Doble Factor de Seguridad</span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1.5">
+                <span className="text-[10px] text-zinc-400 uppercase font-bold tracking-wider block">
+                  Pregunta de Seguridad Registrada:
+                </span>
+                <p className="text-sm font-semibold text-white">
+                  {preguntaSeguridad}
+                </p>
+                <p className="text-[11px] text-zinc-500">
+                  Responde a tu pregunta secreta de administrador para confirmar tu identidad.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-indigo-400" />
+                  Tu Respuesta Secreta
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={respuestaSeguridadInput}
+                  onChange={(e) => setRespuestaSeguridadInput(e.target.value)}
+                  placeholder="Ingresa tu respuesta de seguridad"
+                  className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+                />
+              </div>
+
+              {authError && (
                 <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
                   <span>{authError}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const res = await solicitarCambioPasswordAdmin(emailInput);
-                    setNotification({
-                      type: 'success',
-                      message: res.mensaje,
-                    });
-                    setAuthError(null);
-                  }}
-                  className="w-full py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Mail className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Enviar correo de confirmación y cambio de clave</span>
-                </button>
-              </div>
-            )}
+              )}
 
-            <button
-              type="submit"
-              disabled={isLoggingIn}
-              className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-50 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/25 transition-all cursor-pointer"
-            >
-              {isLoggingIn ? 'Iniciando sesión...' : 'Ingresar al Panel'}
-            </button>
-          </form>
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 active:scale-[0.98] disabled:opacity-50 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/25 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>{isLoggingIn ? 'Verificando identidad...' : 'Confirmar e Ingresar al Panel'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleVolverPaso1}
+                className="w-full py-2 text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer text-center"
+              >
+                ← Volver a ingresar correo o contraseña
+              </button>
+            </form>
+          )}
         </div>
       </div>
     );
@@ -362,6 +540,7 @@ export default function AdminDashboard() {
         onRefresh={cargarComercios}
         isLoading={isLoading}
         onLogout={handleLogout}
+        onDescargarCSV={handleDescargarCSVPublico}
       />
 
       {/* Contenedor de notificación Toast flotante */}

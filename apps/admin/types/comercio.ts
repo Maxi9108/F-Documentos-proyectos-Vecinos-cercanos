@@ -53,10 +53,26 @@ export interface Comercio {
   nombre: string;
   rubro: string;
   direccion: string;
+  localidad?: string;
   telefono: string;
+  whatsapp?: string;
+  email?: string;
+  email_comercio?: string;
+  estado_aprobacion?: 'pendiente' | 'aprobado' | 'rechazado';
+  fecha_creacion?: string;
+  fecha_solicitud?: string;
+  // Enlaces y redes sociales
+  sitio_web?: string;
+  instagram?: string;
+  tiktok?: string;
+  facebook?: string;
+  otros_links?: string;
   esta_abierto: boolean;
   latitud: number;
   longitud: number;
+  radio_entrega_metros?: number;
+  zona_envio_descripcion?: string;
+  cobertura_poligono?: [number, number][];
   nivel?: NivelComercio;
   nivel_solicitado?: NivelComercio;
   fecha_inicio_nivel?: string;
@@ -143,3 +159,35 @@ export const RUBROS_PREDEFINIDOS = [
 ] as const;
 
 export type Rubro = (typeof RUBROS_PREDEFINIDOS)[number] | string;
+
+export type TipoTicketSoporte =
+  | 'problema_local_membresia'
+  | 'problema_cuenta'
+  | 'recomendacion'
+  | 'local_membresia'
+  | 'cuenta'
+  | 'otro';
+
+export type OrigenTicketSoporte = 'usuario' | 'comercio';
+
+export type EstadoTicketSoporte = 'pendiente' | 'en_revision' | 'resuelto' | 'descartado';
+
+export interface TicketSoporte {
+  id: string;
+  tipo: TipoTicketSoporte;
+  origen: OrigenTicketSoporte;
+  nombre: string;
+  email: string;
+  telefono?: string;
+  comercio_nombre?: string;
+  comercio_id?: string;
+  asunto: string;
+  mensaje: string;
+  estado: EstadoTicketSoporte;
+  fecha_creacion: string;
+  respuesta_admin?: string;
+  notas_admin?: string;
+  resuelto_por?: string;
+  fecha_resolucion?: string;
+}
+

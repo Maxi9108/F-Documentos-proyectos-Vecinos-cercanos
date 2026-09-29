@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Store, Plus, Database, CheckCircle2, XCircle, Tag, RefreshCw, LogOut } from 'lucide-react';
+import { Store, Plus, Database, CheckCircle2, XCircle, Tag, RefreshCw, LogOut, Download } from 'lucide-react';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 interface AdminHeaderProps {
@@ -14,6 +14,7 @@ interface AdminHeaderProps {
   onRefresh: () => void;
   isLoading: boolean;
   onLogout?: () => void;
+  onDescargarCSV?: () => void;
 }
 
 export default function AdminHeader({
@@ -26,6 +27,7 @@ export default function AdminHeader({
   onRefresh,
   isLoading,
   onLogout,
+  onDescargarCSV,
 }: AdminHeaderProps) {
   return (
     <header className="bg-white dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-20 shadow-xs">
@@ -92,6 +94,19 @@ export default function AdminHeader({
               <Database className="w-3.5 h-3.5 text-indigo-500" />
               <span>Respaldar BD</span>
             </a>
+
+            {/* Botón Exportar Planilla CSV de Comercios */}
+            {onDescargarCSV && (
+              <button
+                type="button"
+                onClick={onDescargarCSV}
+                title="Descargar planilla con información pública de los comercios (CSV / Excel)"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-2.5 border border-emerald-300 dark:border-emerald-800/80 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Exportar Planilla</span>
+              </button>
+            )}
 
             {/* Botón Nuevo Comercio */}
             <button

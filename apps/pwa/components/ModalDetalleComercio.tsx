@@ -29,6 +29,9 @@ import {
   ShoppingCart,
   Send,
   Flame,
+  Compass,
+  Globe,
+  Mail,
 } from 'lucide-react';
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
@@ -345,14 +348,21 @@ export default function ModalDetalleComercio({
                       <span className="font-semibold text-cyan-300 block">
                         {comercio.zona_envio_descripcion ? `Zona de entrega: ${comercio.zona_envio_descripcion}` : 'Servicio a domicilio sin atención al público'}
                       </span>
-                      <span className="text-[11px] text-zinc-400">Dirección particular reservada por seguridad</span>
+                      <span className="text-[11px] text-zinc-400">
+                        {comercio.localidad ? `Zona / Localidad: ${comercio.localidad}` : 'Dirección particular reservada por seguridad'}
+                      </span>
                     </div>
                   </>
                 ) : (
                   <>
                     <MapPin className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <span className="font-semibold block">{comercio.direccion}</span>
+                      <span className="font-semibold block">
+                        {comercio.direccion}
+                        {comercio.localidad && (
+                          <span className="text-zinc-400 font-normal"> ({comercio.localidad})</span>
+                        )}
+                      </span>
                       <a
                         href={`https://www.google.com/maps/dir/?api=1&destination=${comercio.latitud},${comercio.longitud}`}
                         target="_blank"
@@ -372,6 +382,13 @@ export default function ModalDetalleComercio({
                   <span>
                     Radio de entrega: {(comercio.radio_entrega_metros! / 1000).toFixed(1)} km a la redonda
                   </span>
+                </div>
+              )}
+
+              {Boolean(comercio.cobertura_poligono && comercio.cobertura_poligono.length >= 3) && (
+                <div className="pt-2 border-t border-zinc-800/80 flex items-center gap-2 text-amber-300 text-[11px]">
+                  <Compass className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                  <span>Zona de reparto delimitada en mapa (perímetro personalizado)</span>
                 </div>
               )}
             </div>
@@ -416,6 +433,83 @@ export default function ModalDetalleComercio({
                 </p>
               )}
             </div>
+
+            {/* Presencia Digital & Redes Sociales */}
+            {(comercio.sitio_web || comercio.instagram || comercio.tiktok || comercio.facebook || comercio.email || comercio.email_comercio || comercio.otros_links) && (
+              <div className="p-3.5 rounded-2xl bg-zinc-900/70 border border-zinc-800 text-xs space-y-2">
+                <span className="text-zinc-400 font-semibold flex items-center gap-1.5">
+                  <Globe className="w-4 h-4 text-cyan-400" />
+                  Presencia Digital & Contacto:
+                </span>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {comercio.sitio_web && (
+                    <a
+                      href={comercio.sitio_web.startsWith('http') ? comercio.sitio_web : `https://${comercio.sitio_web}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-cyan-500/50 text-cyan-300 text-[11px] font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                    >
+                      <Globe className="w-3.5 h-3.5" />
+                      Web
+                    </a>
+                  )}
+                  {comercio.instagram && (
+                    <a
+                      href={comercio.instagram.startsWith('http') ? comercio.instagram : `https://instagram.com/${comercio.instagram.replace('@', '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-pink-500/50 text-pink-300 text-[11px] font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                    >
+                      <span className="font-bold text-[10px]">IG</span>
+                      {comercio.instagram.startsWith('@') ? comercio.instagram : `@${comercio.instagram.replace(/https?:\/\/(www\.)?instagram\.com\/?/, '')}`}
+                    </a>
+                  )}
+                  {comercio.tiktok && (
+                    <a
+                      href={comercio.tiktok.startsWith('http') ? comercio.tiktok : `https://tiktok.com/@${comercio.tiktok.replace('@', '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-zinc-500 text-zinc-200 text-[11px] font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                    >
+                      <span className="font-bold text-[10px]">TT</span>
+                      TikTok
+                    </a>
+                  )}
+                  {comercio.facebook && (
+                    <a
+                      href={comercio.facebook.startsWith('http') ? comercio.facebook : `https://facebook.com/${comercio.facebook}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-blue-500/50 text-blue-300 text-[11px] font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                    >
+                      <span className="font-bold text-[10px]">FB</span>
+                      Facebook
+                    </a>
+                  )}
+                  {(comercio.email || comercio.email_comercio) && (
+                    <a
+                      href={`mailto:${comercio.email || comercio.email_comercio}`}
+                      className="px-2.5 py-1.5 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-indigo-500/50 text-indigo-300 text-[11px] font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                      title={comercio.email || comercio.email_comercio}
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      Email
+                    </a>
+                  )}
+                  {comercio.otros_links && (
+                    <a
+                      href={comercio.otros_links.startsWith('http') ? comercio.otros_links : `https://${comercio.otros_links}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-cyan-500/50 text-zinc-300 text-[11px] font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
+                      Otros Links
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Botones de Acción (Llamar, WhatsApp, Mapa) */}
@@ -841,7 +935,12 @@ export default function ModalDetalleComercio({
                     <MapPin className="w-4 h-4 text-violet-400" />
                     Dirección y Localización
                   </h4>
-                  <p className="text-zinc-200">{comercio.direccion}</p>
+                  <p className="text-zinc-200">
+                    {comercio.direccion}
+                    {comercio.localidad && (
+                      <span className="text-zinc-400"> — {comercio.localidad}</span>
+                    )}
+                  </p>
                   <a
                     href={`https://www.google.com/maps/dir/?api=1&destination=${comercio.latitud},${comercio.longitud}`}
                     target="_blank"
@@ -868,17 +967,102 @@ export default function ModalDetalleComercio({
                   )}
                 </div>
 
-                {cleanWhatsapp && (
-                  <a
-                    href={whatsappGeneralUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 no-underline"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    Contactar por WhatsApp
-                  </a>
+                {/* Enlaces y Redes Sociales en la Ficha */}
+                {(comercio.sitio_web || comercio.instagram || comercio.tiktok || comercio.facebook || comercio.email || comercio.email_comercio || comercio.otros_links) && (
+                  <div className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-2.5">
+                    <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-cyan-400" />
+                      Redes Sociales y Enlaces Oficiales
+                    </h4>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {comercio.sitio_web && (
+                        <a
+                          href={comercio.sitio_web.startsWith('http') ? comercio.sitio_web : `https://${comercio.sitio_web}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-cyan-500/50 text-cyan-300 font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                        >
+                          <Globe className="w-3.5 h-3.5" />
+                          Sitio Web
+                        </a>
+                      )}
+                      {comercio.instagram && (
+                        <a
+                          href={comercio.instagram.startsWith('http') ? comercio.instagram : `https://instagram.com/${comercio.instagram.replace('@', '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-pink-500/50 text-pink-300 font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                        >
+                          Instagram ({comercio.instagram})
+                        </a>
+                      )}
+                      {comercio.tiktok && (
+                        <a
+                          href={comercio.tiktok.startsWith('http') ? comercio.tiktok : `https://tiktok.com/@${comercio.tiktok.replace('@', '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-300 font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                        >
+                          TikTok ({comercio.tiktok})
+                        </a>
+                      )}
+                      {comercio.facebook && (
+                        <a
+                          href={comercio.facebook.startsWith('http') ? comercio.facebook : `https://facebook.com/${comercio.facebook}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-blue-500/50 text-blue-300 font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                        >
+                          Facebook
+                        </a>
+                      )}
+                      {(comercio.email || comercio.email_comercio) && (
+                        <a
+                          href={`mailto:${comercio.email || comercio.email_comercio}`}
+                          className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:border-indigo-500/50 text-indigo-300 font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                          {comercio.email || comercio.email_comercio}
+                        </a>
+                      )}
+                      {comercio.otros_links && (
+                        <a
+                          href={comercio.otros_links.startsWith('http') ? comercio.otros_links : `https://${comercio.otros_links}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 font-medium inline-flex items-center gap-1.5 transition-colors no-underline"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Más Enlaces
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 )}
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  {comercio.telefono && (
+                    <a
+                      href={`tel:${cleanPhone}`}
+                      className="flex-1 py-3 px-4 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-200 font-bold text-xs rounded-xl flex items-center justify-center gap-2 no-underline transition-colors"
+                    >
+                      <Phone className="w-4 h-4 text-zinc-400" />
+                      Llamar ({cleanPhone})
+                    </a>
+                  )}
+
+                  {cleanWhatsapp && (
+                    <a
+                      href={whatsappGeneralUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 no-underline transition-colors shadow-lg shadow-emerald-950/50"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                      WhatsApp
+                    </a>
+                  )}
+                </div>
               </div>
             )}
           </div>
