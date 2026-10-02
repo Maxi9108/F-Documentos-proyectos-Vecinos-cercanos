@@ -33,6 +33,8 @@ import {
   Lock,
   Globe,
   Mail,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { getCategorias } from '@/lib/categorias';
 import { registrarEvento } from '@/lib/analytics';
@@ -72,6 +74,8 @@ export default function CargarComercioPage() {
   // Credenciales exclusivas para administrar el comercio en /mi-comercio
   const [emailComercio, setEmailComercio] = useState('');
   const [passwordComercio, setPasswordComercio] = useState('');
+  const [confirmarPasswordComercio, setConfirmarPasswordComercio] = useState('');
+  const [mostrarPass, setMostrarPass] = useState(false);
 
   // Farmacia de Turno (rubro Farmacia)
   const [estaDeTurno, setEstaDeTurno] = useState(false);
@@ -226,6 +230,11 @@ export default function CargarComercioPage() {
 
     if (!passwordComercio || passwordComercio.length < 4) {
       setErrorMsg('La contraseña de administración del comercio debe tener al menos 4 caracteres.');
+      return;
+    }
+
+    if (passwordComercio !== confirmarPasswordComercio) {
+      setErrorMsg('Las contraseñas no coinciden. Por favor confirma la contraseña exactamente igual.');
       return;
     }
 
@@ -778,7 +787,7 @@ export default function CargarComercioPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                   <div>
                     <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
                       Correo Electrónico de Gestión *
@@ -794,16 +803,39 @@ export default function CargarComercioPage() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
-                      Contraseña de Acceso al Comercio *
+                    <label className="block text-[11px] font-semibold text-zinc-300 mb-1 flex items-center justify-between">
+                      <span>Contraseña de Acceso *</span>
+                      <button
+                        type="button"
+                        onClick={() => setMostrarPass(!mostrarPass)}
+                        className="text-zinc-400 hover:text-white inline-flex items-center gap-1 text-[10px]"
+                      >
+                        {mostrarPass ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        <span>{mostrarPass ? 'Ocultar' : 'Ver'}</span>
+                      </button>
                     </label>
                     <input
-                      type="password"
+                      type={mostrarPass ? 'text' : 'password'}
                       required
                       minLength={4}
                       value={passwordComercio}
                       onChange={(e) => setPasswordComercio(e.target.value)}
                       placeholder="Mínimo 4 caracteres"
+                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
+                      Confirmar Contraseña *
+                    </label>
+                    <input
+                      type={mostrarPass ? 'text' : 'password'}
+                      required
+                      minLength={4}
+                      value={confirmarPasswordComercio}
+                      onChange={(e) => setConfirmarPasswordComercio(e.target.value)}
+                      placeholder="Repite la contraseña"
                       className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
                     />
                   </div>

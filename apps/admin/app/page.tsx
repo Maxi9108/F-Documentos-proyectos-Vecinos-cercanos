@@ -17,13 +17,14 @@ import {
   getSesionAdmin,
   cerrarSesionAdmin,
   solicitarCambioPasswordAdmin,
+  restablecerPasswordAdminConPregunta,
   AdminSesion,
 } from '@/lib/auth';
 import AdminHeader from '@/components/AdminHeader';
 import ComerciosTable from '@/components/ComerciosTable';
 import ComercioModal from '@/components/ComercioModal';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
-import { CheckCircle2, AlertCircle, X, ShieldCheck, Mail, Lock, HelpCircle, ChevronRight, Download } from 'lucide-react';
+import { CheckCircle2, AlertCircle, X, ShieldCheck, Mail, Lock, HelpCircle, ChevronRight, Download, KeyRound } from 'lucide-react';
 
 interface NotificationState {
   type: 'success' | 'error';
@@ -41,6 +42,14 @@ export default function AdminDashboard() {
   const [respuestaSeguridadInput, setRespuestaSeguridadInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // Recuperación In-App de Contraseña de Administrador (100% interna)
+  const [modoRecuperarPass, setModoRecuperarPass] = useState(false);
+  const [recuperarRespuesta, setRecuperarRespuesta] = useState('');
+  const [recuperarNuevaClave, setRecuperarNuevaClave] = useState('');
+  const [recuperarConfirmarClave, setRecuperarConfirmarClave] = useState('');
+  const [recuperarMensaje, setRecuperarMensaje] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
+  const [isRecuperando, setIsRecuperando] = useState(false);
 
   const [comercios, setComercios] = useState<Comercio[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -85,6 +94,51 @@ export default function AdminDashboard() {
       cargarComercios();
     }
   }, [adminSesion, cargarComercios]);
+
+  // Restablecimiento directo de contraseña para Administradores con Pregunta de Seguridad (100% in-app)
+  const handleRestablecerAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecuperarMensaje(null);
+    const cleanMail = emailInput.trim().toLowerCase();
+    if (!cleanMail || !cleanMail.includes('@')) {
+      setRecuperarMensaje({ tipo: 'err', texto: 'Por favor ingresa un correo de administrador válido.' });
+      return;
+    }
+    if (recuperarNuevaClave.length < 6) {
+      setRecuperarMensaje({ tipo: 'err', texto: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+      return;
+    }
+    if (recuperarNuevaClave !== recuperarConfirmarClave) {
+      setRecuperarMensaje({ tipo: 'err', texto: 'Las contraseñas no coinciden.' });
+      return;
+    }
+    setIsRecuperando(true);
+    const res = await restablecerPasswordAdminConPregunta(
+      cleanMail,
+      recuperarRespuesta.trim(),
+      recuperarNuevaClave
+    );
+    setIsRecuperando(false);
+    if (res.ok) {
+      setRecuperarMensaje({
+        tipo: 'ok',
+        texto: '¡Contraseña restablecida con éxito! Ya puedes ingresar con tu nueva clave.',
+      });
+      setPasswordInput(recuperarNuevaClave);
+      setTimeout(() => {
+        setModoRecuperarPass(false);
+        setRecuperarMensaje(null);
+        setRecuperarRespuesta('');
+        setRecuperarNuevaClave('');
+        setRecuperarConfirmarClave('');
+      }, 1800);
+    } else {
+      setRecuperarMensaje({
+        tipo: 'err',
+        texto: res.error || 'Respuesta de seguridad incorrecta o administrador no encontrado.',
+      });
+    }
+  };
 
   // Paso 1 de Login: Validación de Email y Contraseña
   const handleLoginPaso1 = async (e: React.FormEvent) => {
@@ -392,7 +446,119 @@ export default function AdminDashboard() {
             </p>
           </div>
 
-          {pasoLogin === 1 ? (
+          {modoRecuperarPass ? (
+            <form onSubmit={handleRestablecerAdmin} className="space-y-4">
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 bg-amber-950/40 px-3 py-1.5 rounded-lg border border-amber-800/40">
+                <span className="font-semibold text-amber-300">Recuperación de Contraseña:</span>
+                <span>Validación Secreta In-App</span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-1">
+                <p className="text-xs text-zinc-300 font-semibold">
+                  Restablecimiento inmediato sin dependencias de correo
+                </p>
+                <p className="text-[11px] text-zinc-400">
+                  Ingresa tu respuesta de seguridad secreta para definir tu nueva contraseña de administrador.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                  Correo de Administrador
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  placeholder="maxi0802@gmail.com"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+                  Respuesta de Seguridad Secreta
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={recuperarRespuesta}
+                  onChange={(e) => setRecuperarRespuesta(e.target.value)}
+                  placeholder="Respuesta a tu pregunta de seguridad"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">
+                  Responde a: <em>¿Cuál es tu palabra clave de seguridad o ciudad de origen?</em>
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                  Nueva Contraseña
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={recuperarNuevaClave}
+                  onChange={(e) => setRecuperarNuevaClave(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                  Confirmar Nueva Contraseña
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={recuperarConfirmarClave}
+                  onChange={(e) => setRecuperarConfirmarClave(e.target.value)}
+                  placeholder="Repite la nueva contraseña"
+                  className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                />
+              </div>
+
+              {recuperarMensaje && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                    recuperarMensaje.tipo === 'ok'
+                      ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+                      : 'bg-rose-950/40 border-rose-800/60 text-rose-300'
+                  }`}
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{recuperarMensaje.texto}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isRecuperando}
+                className="w-full py-3 px-4 bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white font-bold text-sm rounded-xl transition-all shadow-lg cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>{isRecuperando ? 'Restableciendo...' : 'Restablecer e Iniciar Sesión'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setModoRecuperarPass(false);
+                  setRecuperarMensaje(null);
+                }}
+                className="w-full py-2 text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer text-center"
+              >
+                ← Volver al formulario de ingreso
+              </button>
+            </form>
+          ) : pasoLogin === 1 ? (
             <form onSubmit={handleLoginPaso1} className="space-y-4">
               <div className="flex items-center justify-between text-[11px] text-zinc-400 bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800">
                 <span className="font-semibold text-indigo-400">Paso 1 de 2:</span>
@@ -415,10 +581,22 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-indigo-400" />
-                  Contraseña
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                    Contraseña
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModoRecuperarPass(true);
+                      setRecuperarMensaje(null);
+                    }}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 hover:underline transition-colors"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
                 <input
                   type="password"
                   required
@@ -437,18 +615,14 @@ export default function AdminDashboard() {
                   </div>
                   <button
                     type="button"
-                    onClick={async () => {
-                      const res = await solicitarCambioPasswordAdmin(emailInput);
-                      setNotification({
-                        type: 'success',
-                        message: res.mensaje,
-                      });
-                      setAuthError(null);
+                    onClick={() => {
+                      setModoRecuperarPass(true);
+                      setRecuperarMensaje(null);
                     }}
                     className="w-full py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    <Mail className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Enviar correo de confirmación y cambio de clave</span>
+                    <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Restablecer contraseña con pregunta de seguridad</span>
                   </button>
                 </div>
               )}

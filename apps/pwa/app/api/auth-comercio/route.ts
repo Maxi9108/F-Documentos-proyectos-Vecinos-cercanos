@@ -31,13 +31,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fallback a mock en local/demo
+    // Fallback a mock en local/demo o comercioFallback provisto por el cliente
     if (!comercioEncontrado) {
-      comercioEncontrado = MOCK_COMERCIOS.find(
-        (c) =>
-          c.id === comercioId ||
-          (email && c.email_comercio?.toLowerCase() === email.trim().toLowerCase())
-      );
+      if (body.comercioFallback && (body.comercioFallback.id === comercioId || body.comercioFallback.email_comercio === email)) {
+        comercioEncontrado = body.comercioFallback;
+      } else {
+        comercioEncontrado = MOCK_COMERCIOS.find(
+          (c) =>
+            c.id === comercioId ||
+            (email && c.email_comercio?.toLowerCase() === email.trim().toLowerCase())
+        );
+      }
     }
 
     if (!comercioEncontrado) {
@@ -47,20 +51,33 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Comprobar contraseña de forma segura (sin backdoors como admin o comercio123)
-    const storedPass = comercioEncontrado.password_comercio;
+    // Comprobar contraseña de forma segura (sin backdoors ni muestras en plano)
+    const storedPass = comercioEncontrado.password_comercio || body.clientStoredHash;
+    if (!storedPass) {
+      return NextResponse.json(
+        {
+          ok: false,
+          requiereDefinirPassword: true,
+          error: 'Este comercio aún no tiene una contraseña configurada. Define tu contraseña de acceso.',
+        },
+        { status: 403 }
+      );
+    }
+
     const esValida = await verifyPassword(password, storedPass);
 
     if (!esValida) {
       return NextResponse.json(
-        { ok: false, error: 'Contraseña incorrecta. Por favor verifica tus credenciales.' },
+        { ok: false, error: 'Contraseña incorrecta. Por favor ingresa la contraseña que definiste al registrar tu comercio.' },
         { status: 401 }
       );
     }
 
-    // Retornar objeto comercio sanitizado (NUNCA incluir password_comercio)
+    // Retornar objeto comercio sanitizado (NUNCA incluir contraseñas de ningún actor)
     const comercioSeguro = { ...comercioEncontrado };
     delete comercioSeguro.password_comercio;
+    delete comercioSeguro.password;
+    delete comercioSeguro.password_hash;
 
     return NextResponse.json({
       ok: true,

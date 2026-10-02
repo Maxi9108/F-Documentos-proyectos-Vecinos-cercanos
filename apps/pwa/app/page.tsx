@@ -5,7 +5,7 @@ import BarraUsuarioYUbicacion from '@/components/BarraUsuarioYUbicacion';
 import NeoFaroLogo from '@/components/NeoFaroLogo';
 import BotonCompartirApp from '@/components/BotonCompartirApp';
 import { getComercios } from '@/lib/supabase';
-import { Plus, Store } from 'lucide-react';
+import { Store } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,38 +21,31 @@ export default async function HomePage() {
           <div className="flex items-center justify-between gap-2">
             <NeoFaroLogo size="md" showSlogan={true} />
 
-            {/* Botones Móvil: Compartir y Sumar */}
+            {/* Botones Móvil: Compartir y Mi Comercio */}
             <div className="flex md:hidden items-center gap-1.5">
               <BotonCompartirApp />
               <Link
-                href="/cargar-comercio"
-                className="py-1.5 px-3 bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold rounded-xl transition-all shadow-md shadow-violet-950/60 border border-cyan-400/30 flex items-center gap-1 text-xs cursor-pointer"
+                href="/mi-comercio"
+                title="Mi Comercio (Ingresar a tu local o cargarlo)"
+                className="py-1.5 px-3 bg-gradient-to-r from-violet-600 via-purple-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold rounded-xl transition-all shadow-md shadow-violet-950/60 border border-cyan-400/30 flex items-center gap-1.5 text-xs cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Sumar</span>
+                <Store className="w-3.5 h-3.5 text-cyan-300" />
+                <span>Mi Comercio</span>
               </Link>
             </div>
           </div>
 
-          {/* Fila 2 en Móvil / Derecha en Escritorio: Ubicación, Usuario, Sumar (Desktop) y Admin */}
+          {/* Fila 2 en Móvil / Derecha en Escritorio: Ubicación, Usuario, Mi Comercio (Desktop) */}
           <div className="flex items-center justify-between md:justify-end gap-2 sm:gap-3 text-xs flex-wrap">
             <BarraUsuarioYUbicacion />
 
             <Link
-              href="/cargar-comercio"
-              className="hidden md:flex py-2 px-3.5 bg-gradient-to-r from-violet-600 via-purple-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold rounded-xl transition-all shadow-md shadow-violet-950/60 hover:shadow-cyan-950/50 border border-cyan-400/30 items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Sumar mi Comercio</span>
-            </Link>
-
-            <Link
               href="/mi-comercio"
-              title="Portal de Mi Comercio (Modificar opciones, Comprobantes, Debates)"
-              className="py-1.5 sm:py-2 px-2.5 sm:px-3 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 hover:border-cyan-500/50 text-zinc-300 hover:text-white font-medium rounded-xl transition-all flex items-center gap-1.5"
+              title="Portal de Mi Comercio (Ingresar a tu local o cargarlo)"
+              className="hidden md:flex py-2 px-4 bg-gradient-to-r from-violet-600 via-purple-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold rounded-xl transition-all shadow-md shadow-violet-950/60 hover:shadow-cyan-950/50 border border-cyan-400/30 items-center gap-2 cursor-pointer text-xs"
             >
-              <Store className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-violet-400" />
-              <span className="hidden sm:inline">Mi Comercio</span>
+              <Store className="w-4 h-4 text-cyan-300" />
+              <span>Mi Comercio</span>
             </Link>
 
             <div className="hidden md:flex">

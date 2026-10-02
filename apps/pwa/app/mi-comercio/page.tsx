@@ -26,6 +26,7 @@ import {
   autoResolverCuarentenaComercio,
   guardarComercio,
 } from '@/lib/supabase';
+import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { getCategorias } from '@/lib/categorias';
 import { registrarEvento, getMetricasComercio } from '@/lib/analytics';
 import { formatearHorariosLegibles, HORARIOS_DEFECTO } from '@/lib/horarios';
@@ -82,6 +83,8 @@ import {
   RefreshCw,
   Globe,
   Mail,
+  ChevronRight,
+  KeyRound,
 } from 'lucide-react';
 import SelectorZonaEnvioWrapper from '@/components/SelectorZonaEnvioWrapper';
 
@@ -99,6 +102,13 @@ export default function MiComercioPage() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [mostrarLoginPass, setMostrarLoginPass] = useState(false);
   const [modalPasswordAbierto, setModalPasswordAbierto] = useState(false);
+
+  // Modo de acceso no autenticado: 'ingresar' (login) | 'cargar' (alta)
+  const [tabModoAcceso, setTabModoAcceso] = useState<'ingresar' | 'cargar'>('ingresar');
+  const [requiereDefinirClave, setRequiereDefinirClave] = useState(false);
+  const [nuevaClaveComercio, setNuevaClaveComercio] = useState('');
+  const [confirmarNuevaClaveComercio, setConfirmarNuevaClaveComercio] = useState('');
+  const [mostrarNuevaClave, setMostrarNuevaClave] = useState(false);
 
   // Pestañas del portal (5 pestañas)
   const [pestana, setPestana] = useState<'metricas' | 'modificar' | 'catalogo' | 'comprobantes' | 'debates'>('metricas');
@@ -273,7 +283,7 @@ export default function MiComercioPage() {
     cargarRelacionados();
   }, [comercioSeleccionadoId]);
 
-  // Manejar login de comercio seguro (sin backdoors y validado en servidor)
+  // Manejar login de comercio seguro (sin backdoors y validado en servidor / local)
   const handleLoginComercio = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
@@ -295,8 +305,10 @@ export default function MiComercioPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           comercioId: com.id,
-          email: loginEmail || undefined,
+          email: loginEmail || com.email_comercio || undefined,
           password: loginPassword,
+          clientStoredHash: com.password_comercio || undefined,
+          comercioFallback: com,
         }),
       });
 
@@ -311,12 +323,92 @@ export default function MiComercioPage() {
         cargarDatosFormulario(data.comercio);
         setLoginPassword('');
         setLoginError(null);
-      } else {
-        setLoginError(data.error || 'Contraseña incorrecta. Por favor verifica tus credenciales.');
+        setRequiereDefinirClave(false);
+        return;
       }
+
+      // Si el comercio no tiene contraseña configurada todavía, solicitar definirla de inmediato
+      if (data.requiereDefinirPassword || !com.password_comercio) {
+        setRequiereDefinirClave(true);
+        setLoginError(null);
+        return;
+      }
+
+      // Fallback criptográfico SHA-256 local
+      if (com.password_comercio) {
+        const esValida = await verifyPassword(loginPassword, com.password_comercio);
+        if (esValida) {
+          setComercioAutenticadoId(com.id);
+          setComercioSeleccionadoId(com.id);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('vecinos_comercio_auth_id', com.id);
+          }
+          cargarDatosFormulario(com);
+          setLoginPassword('');
+          setLoginError(null);
+          setRequiereDefinirClave(false);
+          return;
+        }
+      }
+
+      setLoginError(data.error || 'Contraseña incorrecta. Por favor ingresa la contraseña que pusiste al registrar tu comercio.');
     } catch (err) {
-      setLoginError('Error de conexión al verificar credenciales.');
+      // Fallback offline
+      if (com.password_comercio) {
+        const esValida = await verifyPassword(loginPassword, com.password_comercio);
+        if (esValida) {
+          setComercioAutenticadoId(com.id);
+          setComercioSeleccionadoId(com.id);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('vecinos_comercio_auth_id', com.id);
+          }
+          cargarDatosFormulario(com);
+          setLoginPassword('');
+          setLoginError(null);
+          return;
+        }
+      }
+      setLoginError('Error de conexión o contraseña incorrecta.');
     }
+  };
+
+  // Manejar definición de contraseña inicial para comercios que aún no tenían clave
+  const handleDefinirClaveInicial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    if (nuevaClaveComercio.length < 4) {
+      setLoginError('La contraseña debe tener al menos 4 caracteres.');
+      return;
+    }
+    if (nuevaClaveComercio !== confirmarNuevaClaveComercio) {
+      setLoginError('Las contraseñas no coinciden. Por favor repítela con exactitud.');
+      return;
+    }
+
+    const com = comercios.find((c) => c.id === loginComercioId);
+    if (!com) {
+      setLoginError('No se encontró el comercio seleccionado.');
+      return;
+    }
+
+    const hashed = await hashPassword(nuevaClaveComercio);
+    const comActualizado: Comercio = {
+      ...com,
+      password_comercio: hashed,
+    };
+
+    await guardarComercio(comActualizado);
+    setComercios((prev) => prev.map((c) => (c.id === com.id ? comActualizado : c)));
+    setComercioAutenticadoId(com.id);
+    setComercioSeleccionadoId(com.id);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('vecinos_comercio_auth_id', com.id);
+    }
+    cargarDatosFormulario(comActualizado);
+    setRequiereDefinirClave(false);
+    setNuevaClaveComercio('');
+    setConfirmarNuevaClaveComercio('');
+    setLoginError(null);
   };
 
   // Cerrar sesión del comercio
@@ -810,18 +902,54 @@ export default function MiComercioPage() {
         </div>
       </header>
 
-      {/* Si NO está autenticado, renderizar Formulario de Acceso a Comercio */}
+      {/* Si NO está autenticado, renderizar Portal Mi Comercio con pestañas de Ingreso y Carga */}
       {!estaAutenticado ? (
-        <div className="flex-1 max-w-md w-full mx-auto px-4 py-12 flex flex-col justify-center">
+        <div className="flex-1 max-w-lg w-full mx-auto px-4 py-8 flex flex-col justify-center">
           <div className="p-6 sm:p-8 bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl space-y-6">
             <div className="text-center space-y-2">
               <div className="w-14 h-14 rounded-2xl bg-cyan-950/60 border border-cyan-500/40 text-cyan-400 mx-auto flex items-center justify-center shadow-lg shadow-cyan-950/50">
                 <Store className="w-7 h-7" />
               </div>
-              <h2 className="text-xl font-black text-white">Ingreso a Mi Comercio</h2>
+              <h2 className="text-xl font-black text-white">Mi Comercio</h2>
               <p className="text-xs text-zinc-400">
-                Accede con las credenciales de tu local para gestionar métricas, horarios, catálogo mensual y promociones.
+                Accede a la gestión de tu local o súmalo a NeoFaro para estar visible 24/7 en el barrio.
               </p>
+            </div>
+
+            {/* Pestañas: Ingresar a mi Comercio vs Cargar mi Comercio */}
+            <div className="grid grid-cols-2 p-1 bg-zinc-900 border border-zinc-800 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setTabModoAcceso('ingresar');
+                  setRequiereDefinirClave(false);
+                  setLoginError(null);
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  tabModoAcceso === 'ingresar'
+                    ? 'bg-cyan-500 text-black shadow-md'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" />
+                <span>Ingresar a mi Comercio</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTabModoAcceso('cargar');
+                  setLoginError(null);
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  tabModoAcceso === 'cargar'
+                    ? 'bg-cyan-500 text-black shadow-md'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Cargar mi Comercio</span>
+              </button>
             </div>
 
             {loginError && (
@@ -831,74 +959,182 @@ export default function MiComercioPage() {
               </div>
             )}
 
-            <form onSubmit={handleLoginComercio} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                  Seleccionar Comercio:
-                </label>
-                <select
-                  value={loginComercioId}
-                  onChange={(e) => setLoginComercioId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
-                >
-                  {comercios.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nombre} ({c.rubro})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                  Contraseña del Comercio:
-                </label>
-                <div className="relative">
-                  <input
-                    type={mostrarLoginPass ? 'text' : 'password'}
-                    required
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="Ingresa la clave de tu local..."
-                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setMostrarLoginPass(!mostrarLoginPass)}
-                    className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300"
-                  >
-                    {mostrarLoginPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
+            {tabModoAcceso === 'cargar' ? (
+              <div className="space-y-5">
+                <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-3">
+                  <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs uppercase tracking-wider">
+                    <Sparkles className="w-4 h-4" />
+                    <span>Beneficios para tu comercio</span>
+                  </div>
+                  <ul className="space-y-2 text-xs text-zinc-300">
+                    <li className="flex items-start gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      <span><strong>Presencia barrial 24/7</strong> en el mapa interactivo con ubicación exacta.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      <span><strong>Horarios y estados</strong>: abierto, cerrado, vacaciones y farmacias de turno.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      <span><strong>Catálogo online y promociones semanales</strong> directo al WhatsApp de tu negocio.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                      <span><strong>Acceso privado exclusivo</strong> con la contraseña que vos elijas.</span>
+                    </li>
+                  </ul>
                 </div>
-              </div>
 
-              <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-[11px] text-zinc-400 space-y-1">
-                <span className="font-semibold text-zinc-300 flex items-center gap-1">
-                  <Info className="w-3.5 h-3.5 text-cyan-400" />
-                  Acceso Demostración:
-                </span>
-                <p>
-                  Para comercios de muestra o recién registrados, la clave de acceso inicial es{' '}
-                  <strong className="text-cyan-300 font-mono">comercio123</strong>. Podrás cambiarla una vez que ingreses.
+                <Link
+                  href="/cargar-comercio"
+                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 text-white font-extrabold text-sm shadow-xl shadow-cyan-950/60 transition-all flex items-center justify-center gap-2 cursor-pointer text-center no-underline"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Cargar mi Comercio Ahora</span>
+                  <ChevronRight className="w-4 h-4" />
+                </Link>
+
+                <p className="text-[11px] text-zinc-500 text-center">
+                  El registro es inmediato y podrás gestionar tus datos en cualquier momento.
                 </p>
               </div>
+            ) : requiereDefinirClave ? (
+              <form onSubmit={handleDefinirClaveInicial} className="space-y-4">
+                <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-800/40 space-y-1">
+                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                    <KeyRound className="w-4 h-4" />
+                    Configura tu Contraseña de Acceso
+                  </span>
+                  <p className="text-[11px] text-zinc-300">
+                    Este comercio aún no tiene una contraseña registrada. Establece tu clave personal para proteger la gestión de tu local.
+                  </p>
+                </div>
 
-              <button
-                type="submit"
-                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-extrabold text-xs shadow-lg shadow-violet-950/60 transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Store className="w-4 h-4" />
-                <span>Ingresar al Portal del Comercio</span>
-              </button>
-            </form>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center justify-between">
+                    <span>Nueva Contraseña *</span>
+                    <button
+                      type="button"
+                      onClick={() => setMostrarNuevaClave(!mostrarNuevaClave)}
+                      className="text-zinc-400 hover:text-white text-[10px] inline-flex items-center gap-1"
+                    >
+                      {mostrarNuevaClave ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      <span>{mostrarNuevaClave ? 'Ocultar' : 'Ver'}</span>
+                    </button>
+                  </label>
+                  <input
+                    type={mostrarNuevaClave ? 'text' : 'password'}
+                    required
+                    minLength={4}
+                    value={nuevaClaveComercio}
+                    onChange={(e) => setNuevaClaveComercio(e.target.value)}
+                    placeholder="Mínimo 4 caracteres"
+                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                    Confirmar Contraseña *
+                  </label>
+                  <input
+                    type={mostrarNuevaClave ? 'text' : 'password'}
+                    required
+                    minLength={4}
+                    value={confirmarNuevaClaveComercio}
+                    onChange={(e) => setConfirmarNuevaClaveComercio(e.target.value)}
+                    placeholder="Repite la nueva contraseña"
+                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-500 hover:from-emerald-500 hover:to-cyan-400 text-white font-extrabold text-xs shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Guardar Contraseña e Ingresar</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRequiereDefinirClave(false);
+                    setLoginError(null);
+                  }}
+                  className="w-full py-1 text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer text-center"
+                >
+                  ← Volver al formulario de ingreso
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleLoginComercio} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Seleccionar Comercio:
+                  </label>
+                  <select
+                    value={loginComercioId}
+                    onChange={(e) => setLoginComercioId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                  >
+                    {comercios.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre} ({c.rubro})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Contraseña del Comercio:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={mostrarLoginPass ? 'text' : 'password'}
+                      required
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      placeholder="Ingresa la contraseña de tu local..."
+                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setMostrarLoginPass(!mostrarLoginPass)}
+                      className="absolute right-3 top-2.5 text-zinc-500 hover:text-zinc-300"
+                    >
+                      {mostrarLoginPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-[11px] text-zinc-400 flex items-center gap-2">
+                  <Lock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>Ingresa con la contraseña configurada al momento de cargar tu comercio.</span>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-extrabold text-xs shadow-lg shadow-violet-950/60 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Store className="w-4 h-4" />
+                  <span>Ingresar al Portal del Comercio</span>
+                </button>
+              </form>
+            )}
 
             <div className="text-center pt-2 border-t border-zinc-800">
-              <Link
-                href="/cargar-comercio"
-                className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold"
+              <button
+                type="button"
+                onClick={() => setTabModoAcceso(tabModoAcceso === 'ingresar' ? 'cargar' : 'ingresar')}
+                className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer"
               >
-                ¿Aún no diste de alta tu local? Súmalo aquí &rarr;
-              </Link>
+                {tabModoAcceso === 'ingresar'
+                  ? '¿Aún no diste de alta tu local? Cárgalo aquí →'
+                  : '¿Ya registraste tu comercio? Ingresa aquí →'}
+              </button>
             </div>
           </div>
         </div>

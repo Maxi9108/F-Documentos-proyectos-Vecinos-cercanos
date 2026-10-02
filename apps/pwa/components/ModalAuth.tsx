@@ -26,6 +26,7 @@ export default function ModalAuth() {
     registrar,
     iniciarSesion,
     solicitarRecuperacionAdmin,
+    restablecerPasswordAdminDirecto,
     usuario,
     cerrarSesion,
   } = useUser();
@@ -38,6 +39,13 @@ export default function ModalAuth() {
   const [password, setPassword] = useState('');
   const [claveConfirmacion, setClaveConfirmacion] = useState('');
 
+  // Estados de Recuperación de Administrador In-App
+  const [modoRecuperarAdmin, setModoRecuperarAdmin] = useState(false);
+  const [recuperarEmail, setRecuperarEmail] = useState('maxi0802@gmail.com');
+  const [recuperarRespuesta, setRecuperarRespuesta] = useState('');
+  const [recuperarNuevaClave, setRecuperarNuevaClave] = useState('');
+  const [recuperarConfirmarClave, setRecuperarConfirmarClave] = useState('');
+
   // Feedback y loaders
   const [cargando, setCargando] = useState(false);
   const [enviandoRecuperacion, setEnviandoRecuperacion] = useState(false);
@@ -49,10 +57,47 @@ export default function ModalAuth() {
   React.useEffect(() => {
     if (modalAuthModo) {
       setModo(modalAuthModo);
+      setModoRecuperarAdmin(false);
       setMensajeError(null);
       setMensajeExito(null);
     }
   }, [modalAuthModo]);
+
+  const handleRestablecerAdminDirecto = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMensajeError(null);
+    setMensajeExito(null);
+
+    if (recuperarNuevaClave.length < 4) {
+      setMensajeError('La nueva contraseña debe tener al menos 4 caracteres.');
+      return;
+    }
+    if (recuperarNuevaClave !== recuperarConfirmarClave) {
+      setMensajeError('Las contraseñas no coinciden. Por favor verifícalas.');
+      return;
+    }
+
+    setCargando(true);
+    const res = await restablecerPasswordAdminDirecto(
+      recuperarEmail,
+      recuperarRespuesta,
+      recuperarNuevaClave
+    );
+    setCargando(false);
+
+    if (res.ok) {
+      setMensajeExito(res.mensaje);
+      setModoRecuperarAdmin(false);
+      setRecuperarRespuesta('');
+      setRecuperarNuevaClave('');
+      setRecuperarConfirmarClave('');
+      setTimeout(() => {
+        cerrarModalAuth();
+      }, 1500);
+    } else {
+      setMensajeError(res.mensaje);
+    }
+  };
 
   // Registro Directo en 1 solo paso (inmediato, sin esperar tokens ni mails)
   const handleRegistroDirecto = async (e: React.FormEvent) => {
@@ -223,36 +268,38 @@ export default function ModalAuth() {
             </div>
 
             {/* Selector de Pestañas: Crear Cuenta vs Ya tengo cuenta */}
-            <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800 mb-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setModo('registro');
-                  setMensajeError(null);
-                }}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  modo === 'registro'
-                    ? 'bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md shadow-violet-950/50'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                Crear Cuenta Directa
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setModo('login');
-                  setMensajeError(null);
-                }}
-                className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  modo === 'login'
-                    ? 'bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md shadow-violet-950/50'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                Ya tengo cuenta
-              </button>
-            </div>
+            {!modoRecuperarAdmin && (
+              <div className="flex bg-zinc-900 p-1 rounded-2xl border border-zinc-800 mb-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModo('registro');
+                    setMensajeError(null);
+                  }}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    modo === 'registro'
+                      ? 'bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md shadow-violet-950/50'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  Crear Cuenta Directa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModo('login');
+                    setMensajeError(null);
+                  }}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    modo === 'login'
+                      ? 'bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md shadow-violet-950/50'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  Ya tengo cuenta
+                </button>
+              </div>
+            )}
 
             {/* Mensajes de Feedback */}
             {mensajeError && (
@@ -262,21 +309,20 @@ export default function ModalAuth() {
                   <span>{mensajeError}</span>
                 </div>
                 {email.trim().toLowerCase() === 'maxi0802@gmail.com' && (
-                  <button
-                    type="button"
-                    disabled={enviandoRecuperacion}
-                    onClick={async () => {
-                      setEnviandoRecuperacion(true);
-                      const res = await solicitarRecuperacionAdmin(email);
-                      setEnviandoRecuperacion(false);
-                      setMensajeError(null);
-                      setMensajeExito(res.mensaje);
-                    }}
-                    className="w-full py-2 px-3 bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-200 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                  >
-                    <Mail className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>{enviandoRecuperacion ? 'Enviando correo...' : 'Enviar correo para confirmar identidad y cambiar clave'}</span>
-                  </button>
+                  <div className="space-y-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRecuperarEmail(email.trim().toLowerCase());
+                        setModoRecuperarAdmin(true);
+                        setMensajeError(null);
+                      }}
+                      className="w-full py-2.5 px-3 bg-gradient-to-r from-violet-900/90 to-cyan-900/90 hover:from-violet-800 hover:to-cyan-800 border border-cyan-500/40 text-cyan-200 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all shadow-md"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Restablecer clave aquí en la app (con pregunta secreta)</span>
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -288,8 +334,105 @@ export default function ModalAuth() {
               </div>
             )}
 
-            {/* PESTAÑA 1: REGISTRO DIRECTO INMEDIATO (SIN ESPERAR TOKENS POR CORREO) */}
-            {modo === 'registro' && (
+            {/* MODO RECUPERAR ADMIN DIRECTO IN-APP */}
+            {modoRecuperarAdmin ? (
+              <form onSubmit={handleRestablecerAdminDirecto} className="space-y-3.5">
+                <div className="p-3 bg-cyan-950/40 border border-cyan-500/30 rounded-2xl text-xs space-y-1">
+                  <span className="font-bold text-cyan-300 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                    Restablecer Clave de Administrador
+                  </span>
+                  <p className="text-[11px] text-zinc-400">
+                    Cambia tu clave de manera instantánea respondiendo a tu palabra clave secreta de seguridad registrada.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                    Correo de Administrador
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={recuperarEmail}
+                    onChange={(e) => setRecuperarEmail(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white"
+                  />
+                </div>
+
+                <div className="p-3 bg-zinc-900/80 border border-zinc-800 rounded-xl space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
+                    Pregunta de Seguridad Registrada:
+                  </span>
+                  <p className="text-xs font-semibold text-white">
+                    ¿Cuál es tu palabra clave de seguridad o ciudad de origen?
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                    Tu Respuesta Secreta *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={recuperarRespuesta}
+                    onChange={(e) => setRecuperarRespuesta(e.target.value)}
+                    placeholder="Ingresa tu respuesta de seguridad"
+                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                      Nueva Contraseña *
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      minLength={4}
+                      value={recuperarNuevaClave}
+                      onChange={(e) => setRecuperarNuevaClave(e.target.value)}
+                      placeholder="Mínimo 4 caracteres"
+                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                      Confirmar Contraseña *
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      minLength={4}
+                      value={recuperarConfirmarClave}
+                      onChange={(e) => setRecuperarConfirmarClave(e.target.value)}
+                      placeholder="Repite la contraseña"
+                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={cargando}
+                  className="w-full mt-2 py-3 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-500 hover:from-emerald-500 hover:to-cyan-400 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-950/60 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>{cargando ? 'Restableciendo...' : 'Restablecer Contraseña e Iniciar Sesión'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModoRecuperarAdmin(false)}
+                  className="w-full py-2 text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer text-center"
+                >
+                  ← Volver al login habitual
+                </button>
+              </form>
+            ) : modo === 'registro' ? (
               <form onSubmit={handleRegistroDirecto} className="space-y-3.5">
                 <div className="p-2.5 bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-[11px] text-emerald-300 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
@@ -381,10 +524,10 @@ export default function ModalAuth() {
                   )}
                 </button>
               </form>
-            )}
+            ) : null}
 
             {/* PESTAÑA 2: INICIAR SESIÓN */}
-            {modo === 'login' && (
+            {!modoRecuperarAdmin && modo === 'login' && (
               <form onSubmit={handleLogin} className="space-y-3.5">
                 {/* Atajo Rápido para SuperAdmin (Credenciales Protegidas) */}
                 <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-2xl text-xs space-y-1.5">
@@ -436,6 +579,21 @@ export default function ModalAuth() {
                     placeholder="Tu contraseña"
                     className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
                   />
+                  {email.trim().toLowerCase() === 'maxi0802@gmail.com' && (
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRecuperarEmail('maxi0802@gmail.com');
+                          setModoRecuperarAdmin(true);
+                          setMensajeError(null);
+                        }}
+                        className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium cursor-pointer"
+                      >
+                        ¿Olvidaste tu clave de administrador? Restablécela aquí
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <button

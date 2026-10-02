@@ -69,6 +69,7 @@ import {
   eliminarAdmin,
   actualizarAdmin,
   obtenerAdminPorEmail,
+  restablecerPasswordAdminConPregunta,
 } from '@/lib/auth-admin';
 import {
   getCategorias,
@@ -145,6 +146,15 @@ export default function AdminPage() {
   const [pasoLogin, setPasoLogin] = useState<1 | 2>(1);
   const [preguntaSeguridad, setPreguntaSeguridad] = useState('');
   const [respuestaSeguridadInput, setRespuestaSeguridadInput] = useState('');
+
+  // Recuperación In-App de Contraseña de Admin (100% interna sin redirecciones externas)
+  const [modoRecuperarPass, setModoRecuperarPass] = useState(false);
+  const [recuperarEmail, setRecuperarEmail] = useState('maxi0802@gmail.com');
+  const [recuperarRespuesta, setRecuperarRespuesta] = useState('');
+  const [recuperarNuevaClave, setRecuperarNuevaClave] = useState('');
+  const [recuperarConfirmarClave, setRecuperarConfirmarClave] = useState('');
+  const [recuperarMensaje, setRecuperarMensaje] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
+  const [recuperarProcesando, setRecuperarProcesando] = useState(false);
 
   // Pestaña Activa
   const [pestanaActiva, setPestanaActiva] = useState<
@@ -408,6 +418,52 @@ export default function AdminPage() {
         setUsuariosSistema(await getUsuariosSistema());
         setMensajeUsuarioExito(`Usuario ${u.nombre} reactivado correctamente.`);
       }
+    }
+  };
+
+  // Restablecimiento directo de contraseña para Administradores con Pregunta de Seguridad (100% in-app)
+  const handleRestablecerAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecuperarMensaje(null);
+    const cleanMail = recuperarEmail.trim().toLowerCase();
+    if (!cleanMail || !cleanMail.includes('@')) {
+      setRecuperarMensaje({ tipo: 'err', texto: 'Por favor ingresa un correo de administrador válido.' });
+      return;
+    }
+    if (recuperarNuevaClave.length < 6) {
+      setRecuperarMensaje({ tipo: 'err', texto: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+      return;
+    }
+    if (recuperarNuevaClave !== recuperarConfirmarClave) {
+      setRecuperarMensaje({ tipo: 'err', texto: 'Las contraseñas no coinciden.' });
+      return;
+    }
+    setRecuperarProcesando(true);
+    const res = await restablecerPasswordAdminConPregunta(
+      cleanMail,
+      recuperarRespuesta.trim(),
+      recuperarNuevaClave
+    );
+    setRecuperarProcesando(false);
+    if (res.exito) {
+      setRecuperarMensaje({
+        tipo: 'ok',
+        texto: '¡Contraseña restablecida con éxito! Ya puedes ingresar con tu nueva clave.',
+      });
+      setPasswordInput(recuperarNuevaClave);
+      setEmailInput(cleanMail);
+      setTimeout(() => {
+        setModoRecuperarPass(false);
+        setRecuperarMensaje(null);
+        setRecuperarRespuesta('');
+        setRecuperarNuevaClave('');
+        setRecuperarConfirmarClave('');
+      }, 1800);
+    } else {
+      setRecuperarMensaje({
+        tipo: 'err',
+        texto: res.error || 'Respuesta de seguridad incorrecta o administrador no encontrado.',
+      });
     }
   };
 
@@ -1247,7 +1303,119 @@ export default function AdminPage() {
             </p>
           </div>
 
-          {pasoLogin === 1 ? (
+          {modoRecuperarPass ? (
+            <form onSubmit={handleRestablecerAdmin} className="space-y-4">
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 bg-amber-950/40 px-3 py-1.5 rounded-lg border border-amber-800/40">
+                <span className="font-semibold text-amber-300">Recuperación de Contraseña:</span>
+                <span>Validación Secreta</span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-1">
+                <p className="text-xs text-zinc-300 font-semibold">
+                  Restablecimiento 100% In-App sin intermediarios
+                </p>
+                <p className="text-[11px] text-zinc-400">
+                  Ingresa tu correo y tu respuesta de seguridad secreta para definir tu nueva contraseña de forma inmediata.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-cyan-400" />
+                  Correo de Administrador
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={recuperarEmail}
+                  onChange={(e) => setRecuperarEmail(e.target.value)}
+                  placeholder="maxi0802@gmail.com"
+                  className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                  <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+                  Respuesta de Seguridad Secreta
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={recuperarRespuesta}
+                  onChange={(e) => setRecuperarRespuesta(e.target.value)}
+                  placeholder="Respuesta a tu pregunta de seguridad"
+                  className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">
+                  Responde a: <em>¿Cuál es tu palabra clave de seguridad o ciudad de origen?</em>
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                  Nueva Contraseña
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={recuperarNuevaClave}
+                  onChange={(e) => setRecuperarNuevaClave(e.target.value)}
+                  placeholder="Mínimo 6 caracteres"
+                  className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                  Confirmar Nueva Contraseña
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={recuperarConfirmarClave}
+                  onChange={(e) => setRecuperarConfirmarClave(e.target.value)}
+                  placeholder="Repite la nueva contraseña"
+                  className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                />
+              </div>
+
+              {recuperarMensaje && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                    recuperarMensaje.tipo === 'ok'
+                      ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+                      : 'bg-rose-950/40 border-rose-800/60 text-rose-300'
+                  }`}
+                >
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{recuperarMensaje.texto}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={recuperarProcesando}
+                className="w-full py-3 px-4 bg-gradient-to-r from-amber-600 to-emerald-500 hover:from-amber-500 hover:to-emerald-400 text-white font-bold text-sm rounded-xl transition-all shadow-lg cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>{recuperarProcesando ? 'Restableciendo...' : 'Restablecer e Iniciar Sesión'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setModoRecuperarPass(false);
+                  setRecuperarMensaje(null);
+                }}
+                className="w-full py-2 text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer text-center"
+              >
+                ← Volver al formulario de ingreso
+              </button>
+            </form>
+          ) : pasoLogin === 1 ? (
             <form onSubmit={handlePaso1Login} className="space-y-4">
               <div className="flex items-center justify-between text-[11px] text-zinc-400 bg-zinc-900/60 px-3 py-1.5 rounded-lg border border-zinc-800">
                 <span className="font-semibold text-cyan-400">Paso 1 de 2:</span>
@@ -1270,10 +1438,23 @@ export default function AdminPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-cyan-400" />
-                  Contraseña
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-cyan-400" />
+                    Contraseña
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModoRecuperarPass(true);
+                      setRecuperarEmail(emailInput);
+                      setRecuperarMensaje(null);
+                    }}
+                    className="text-[11px] text-cyan-400 hover:text-cyan-300 hover:underline transition-colors"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
                 <input
                   type="password"
                   required
@@ -1283,7 +1464,7 @@ export default function AdminPage() {
                   className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
                 />
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  SuperAdmin inicial configurado para: <strong>maxi0802@gmail.com</strong>
+                  SuperAdmin configurado para: <strong>maxi0802@gmail.com</strong>
                 </p>
               </div>
 

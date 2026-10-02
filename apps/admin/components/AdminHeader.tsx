@@ -85,7 +85,7 @@ export default function AdminHeader({
 
             {/* Botón Descargar Respaldo */}
             <a
-              href="http://localhost:3000/api/backup?download=true"
+              href="/api/backup?download=true"
               target="_blank"
               rel="noopener noreferrer"
               title="Descargar copia de seguridad completa (se genera automáticamente cada 12h)"
