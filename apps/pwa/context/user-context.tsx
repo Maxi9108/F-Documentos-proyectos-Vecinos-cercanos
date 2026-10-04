@@ -472,43 +472,15 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Autenticación con Google o Apple (Mac / iOS / Web)
+  // Autenticación con Google o Apple (Mac / iOS / Web)
   const iniciarSesionOAuth = async (
     provider: 'google' | 'apple'
   ): Promise<{ ok: boolean; mensaje?: string }> => {
-    const demoEmail = provider === 'google' ? 'usuario.google@gmail.com' : 'usuario.apple@icloud.com';
-    const demoNombre = provider === 'google' ? 'Usuario Google' : 'Usuario Apple (Mac)';
-
-    const activarSesionRapida = () => {
-      const nuevoUsuario: Usuario = {
-        id: 'usr_' + provider + '_' + Date.now(),
-        email: demoEmail,
-        nombre: demoNombre,
-        esAdmin: false,
-        rol: 'usuario',
-        creado_en: new Date().toISOString(),
-      };
-      setUsuario(nuevoUsuario);
-      try {
-        localStorage.setItem(STORAGE_KEYS.USUARIO, JSON.stringify(nuevoUsuario));
-      } catch (e) {}
-      registrarOActualizarUsuario({
-        id: nuevoUsuario.id,
-        email: demoEmail,
-        nombre: demoNombre,
-        rol: 'usuario',
-        estado: 'activo',
-        fecha_registro: nuevoUsuario.creado_en,
-        ultimo_acceso: new Date().toISOString(),
-      }).catch(() => {});
-      setModalAuthAbierto(false);
-      return {
-        ok: true,
-        mensaje: `¡Bienvenido! Sesión iniciada con tu cuenta de ${provider === 'google' ? 'Google' : 'Apple (Mac)'}.`,
-      };
-    };
-
     if (!supabase) {
-      return activarSesionRapida();
+      return {
+        ok: false,
+        mensaje: `Para ingresar con ${provider === 'google' ? 'Google' : 'Apple'}, utiliza el registro con correo electrónico y contraseña o vincula tu proyecto de Supabase.`,
+      };
     }
 
     try {
@@ -528,18 +500,26 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       });
 
       if (error) {
-        console.warn(`[OAuth] Supabase provider ${provider} aviso (${error.message}). Activando inicio rápido directo.`);
-        return activarSesionRapida();
+        return {
+          ok: false,
+          mensaje: `No se pudo conectar con ${provider === 'google' ? 'Google' : 'Apple'}: ${error.message}. Por favor utiliza el formulario de correo y contraseña.`,
+        };
       }
 
       if (data?.url) {
         window.location.href = data.url;
         return { ok: true };
       }
-      return activarSesionRapida();
+
+      return {
+        ok: false,
+        mensaje: 'No se recibió la URL de redirección. Por favor ingresa con tu correo y contraseña.',
+      };
     } catch (err: any) {
-      console.warn(`[OAuth] Conexión alternativa para ${provider}:`, err);
-      return activarSesionRapida();
+      return {
+        ok: false,
+        mensaje: err?.message || 'Error al conectar con el proveedor de autenticación.',
+      };
     }
   };
 

@@ -327,7 +327,11 @@ export default function AdminPage() {
         locales.forEach((loc) => {
           const idx = lista.findIndex((c) => c.id === loc.id);
           if (idx >= 0) {
-            lista[idx] = loc;
+            const serverItem = lista[idx];
+            const esPendiente = serverItem.estado_aprobacion === 'pendiente' || loc.estado_aprobacion === 'pendiente';
+            const esAprobado = serverItem.estado_aprobacion === 'aprobado' && loc.estado_aprobacion !== 'pendiente';
+            const estadoFinal = esAprobado ? 'aprobado' : (esPendiente ? 'pendiente' : 'aprobado');
+            lista[idx] = { ...loc, ...serverItem, estado_aprobacion: estadoFinal };
           } else {
             lista.unshift(loc);
           }
@@ -715,15 +719,51 @@ export default function AdminPage() {
 
   // Filtrado de Comercios y Solicitudes
   const solicitudesPendientes = useMemo(() => {
-    return comercios.filter((c) => c.estado_aprobacion === 'pendiente');
-  }, [comercios]);
+    const directos = comercios.filter((c) => c.estado_aprobacion === 'pendiente');
+    const ids = new Set(directos.map((c) => c.id));
+    const extras: Comercio[] = [];
+
+    solicitudesMod.forEach((sol) => {
+      if (sol.estado === 'pendiente' && !ids.has(sol.comercio_id) && sol.cambios) {
+        const existente = comercios.find((c) => c.id === sol.comercio_id);
+        if (existente) {
+          extras.push({
+            ...existente,
+            ...sol.cambios,
+            estado_aprobacion: 'pendiente',
+          });
+          ids.add(sol.comercio_id);
+        } else if (sol.cambios.nombre && sol.cambios.rubro) {
+          extras.push({
+            id: sol.comercio_id,
+            nombre: sol.comercio_nombre || sol.cambios.nombre,
+            rubro: sol.cambios.rubro,
+            direccion: sol.cambios.direccion || 'Sin dirección',
+            telefono: sol.cambios.telefono || '',
+            whatsapp: sol.cambios.whatsapp || '',
+            latitud: sol.cambios.latitud || -34.6,
+            longitud: sol.cambios.longitud || -58.4,
+            esta_abierto: true,
+            estado_aprobacion: 'pendiente',
+            fecha_solicitud: sol.fecha_solicitud,
+            ...sol.cambios,
+          } as Comercio);
+          ids.add(sol.comercio_id);
+        }
+      }
+    });
+
+    return [...directos, ...extras];
+  }, [comercios, solicitudesMod]);
 
   const comprobantesPendientes = useMemo(() => {
     return comprobantes.filter((c) => c.estado === 'pendiente');
   }, [comprobantes]);
 
   const solicitudesModPendientes = useMemo(() => {
-    return solicitudesMod.filter((s) => s.estado === 'pendiente');
+    return solicitudesMod.filter(
+      (s) => s.estado === 'pendiente' && (s.cambios as any)?.tipo_solicitud !== 'alta_nuevo_comercio'
+    );
   }, [solicitudesMod]);
 
   const debatesAbiertos = useMemo(() => {
@@ -848,8 +888,9 @@ export default function AdminPage() {
   };
 
   const comerciosAprobados = useMemo(() => {
-    return comercios.filter((c) => !c.estado_aprobacion || c.estado_aprobacion === 'aprobado');
-  }, [comercios]);
+    const idsPendientes = new Set(solicitudesPendientes.map((s) => s.id));
+    return comercios.filter((c) => !idsPendientes.has(c.id) && c.estado_aprobacion === 'aprobado');
+  }, [comercios, solicitudesPendientes]);
 
   const comerciosActivosFiltrados = useMemo(() => {
     const q = busquedaActivos.trim().toLowerCase();
@@ -1656,11 +1697,11 @@ export default function AdminPage() {
               </div>
             ) : (
               <div
-                title="Operando en modo Local Storage / Demostración. Vincula tus credenciales en .env.local para activar Supabase."
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-950/60 border border-amber-800/70 text-amber-300 text-xs font-semibold"
+                title="Operando con almacenamiento local seguro en este dispositivo."
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/60 border border-cyan-800/70 text-cyan-300 text-xs font-semibold"
               >
-                <Database className="w-3.5 h-3.5 text-amber-400" />
-                <span>Modo Local</span>
+                <Database className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Almacenamiento Local</span>
               </div>
             )}
 

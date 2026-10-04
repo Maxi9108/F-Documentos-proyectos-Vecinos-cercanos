@@ -3,71 +3,33 @@ import { supabase, isSupabaseConfigured } from './supabase';
 
 const STORAGE_KEY_USUARIOS = 'vecinos_usuarios_registrados';
 
-// Usuarios iniciales de ejemplo para tener histórico y probar filtros en el panel admin
-const USUARIOS_INICIALES: UsuarioSistema[] = [
-  {
-    id: 'usr-admin-1',
-    email: 'maxi0802@gmail.com',
-    nombre: 'Maxi (SuperAdmin)',
-    rol: 'superadmin',
-    estado: 'activo',
-    fecha_registro: '2026-01-01T12:00:00.000Z',
-    ultimo_acceso: new Date().toISOString(),
-  },
-  {
-    id: 'usr-com-1',
-    email: 'panaderia.espiga@gmail.com',
-    nombre: 'Carlos Rossi (Panadería La Espiga)',
-    rol: 'comerciante',
-    estado: 'activo',
-    comercio_nombre: 'Panadería La Espiga Dorada',
-    fecha_registro: '2026-02-10T14:30:00.000Z',
-    ultimo_acceso: new Date(Date.now() - 3600000 * 2).toISOString(),
-  },
-  {
-    id: 'usr-vecino-1',
-    email: 'mariana.lopez@yahoo.com.ar',
-    nombre: 'Mariana López',
-    rol: 'usuario',
-    estado: 'activo',
-    fecha_registro: '2026-02-15T09:15:00.000Z',
-    ultimo_acceso: new Date(Date.now() - 3600000 * 24).toISOString(),
-  },
-  {
-    id: 'usr-vecino-2',
-    email: 'juanperez.spam@gmail.com',
-    nombre: 'Juan Pérez (Reportado)',
-    rol: 'usuario',
-    estado: 'bloqueado',
-    motivo_estado: 'Múltiples reportes falsos y conducta indebida en debates comunitarios',
-    fecha_registro: '2026-02-18T18:20:00.000Z',
-    ultimo_acceso: '2026-03-01T10:00:00.000Z',
-  },
-  {
-    id: 'usr-vecino-3',
-    email: 'roberto_antiguo@hotmail.com',
-    nombre: 'Roberto Fernández',
-    rol: 'usuario',
-    estado: 'baja',
-    motivo_estado: 'Baja voluntaria solicitada por cambio de barrio',
-    fecha_registro: '2026-01-20T11:00:00.000Z',
-    ultimo_acceso: '2026-02-05T16:45:00.000Z',
-  },
-];
+// Lista inicial vacía para producción limpia sin datos falsos
+const USUARIOS_INICIALES: UsuarioSistema[] = [];
+
+// Emails de prueba históricos para purgar automáticamente del almacenamiento local
+const EMAILS_MOCK_PURGAR = new Set([
+  'panaderia.espiga@gmail.com',
+  'mariana.lopez@yahoo.com.ar',
+  'juanperez.spam@gmail.com',
+  'roberto_antiguo@hotmail.com',
+  'usuario.google@gmail.com',
+  'usuario.apple@icloud.com',
+]);
 
 /**
- * Obtiene todos los usuarios registrados del sistema (Supabase con fallback a LocalStorage)
+ * Obtiene todos los usuarios registrados del sistema (100% reales desde Supabase y almacenamiento local)
  */
 export async function getUsuariosSistema(): Promise<UsuarioSistema[]> {
-  let usuariosLocales: UsuarioSistema[] = USUARIOS_INICIALES;
+  let usuariosLocales: UsuarioSistema[] = [];
 
   if (typeof window !== 'undefined') {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_USUARIOS);
       if (raw) {
-        usuariosLocales = JSON.parse(raw);
-      } else {
-        localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(USUARIOS_INICIALES));
+        const parseados: UsuarioSistema[] = JSON.parse(raw);
+        // Purgar usuarios falsos de prueba si quedaron en el navegador
+        usuariosLocales = parseados.filter((u) => !EMAILS_MOCK_PURGAR.has(u.email.toLowerCase()));
+        localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(usuariosLocales));
       }
     } catch (e) {
       console.warn('[Usuarios] Error al leer usuarios de localStorage:', e);
@@ -81,15 +43,18 @@ export async function getUsuariosSistema(): Promise<UsuarioSistema[]> {
         .select('*')
         .order('fecha_registro', { ascending: false });
 
-      if (!error && data && data.length > 0) {
-        // Fusionar sin duplicar
-        const combinados = [...data];
+      if (!error && data) {
+        // Filtrar cualquier email de prueba que hubiera quedado
+        const reales = (data as UsuarioSistema[]).filter((u) => !EMAILS_MOCK_PURGAR.has(u.email.toLowerCase()));
+        // Fusionar con usuarios locales sin duplicados
+        const mapa = new Map<string, UsuarioSistema>();
+        reales.forEach((u) => mapa.set(u.email.toLowerCase(), u));
         usuariosLocales.forEach((ul) => {
-          if (!combinados.some((c) => c.email.toLowerCase() === ul.email.toLowerCase())) {
-            combinados.push(ul);
+          if (!mapa.has(ul.email.toLowerCase())) {
+            mapa.set(ul.email.toLowerCase(), ul);
           }
         });
-        return combinados;
+        return Array.from(mapa.values());
       }
     } catch (supaErr) {
       console.warn('[Usuarios] Fallback local para usuarios:', supaErr);

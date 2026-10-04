@@ -270,15 +270,42 @@ export function verificarYRestaurarEstados(comercios: Comercio[]): Comercio[] {
 }
 
 /**
- * Obtiene los comercios de Supabase o provee fallback a datos locales
- * en caso de que no existan credenciales configuradas o la tabla esté vacía.
+ * Obtiene los comercios de Supabase o provee datos reales locales.
+ * Solo muestra comercios 100% verdaderos cargados en la base de datos o en el dispositivo.
  */
 export async function getComercios(): Promise<Comercio[]> {
   if (!isSupabaseConfigured) {
-    return verificarYRestaurarEstados(verificarYDegradarVencidos(MOCK_COMERCIOS));
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('vecinos_comercios_nuevos');
+        if (raw) {
+          const locales: Comercio[] = JSON.parse(raw);
+          return verificarYRestaurarEstados(verificarYDegradarVencidos(locales));
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+    return [];
   }
 
   try {
+    // 1. Consultar solicitudes de moderación pendientes de Supabase
+    const solsPendientesMap = new Map<string, any>();
+    try {
+      const { data: sols } = await supabase
+        .from('solicitudes_modificacion')
+        .select('*')
+        .eq('estado', 'pendiente');
+      if (sols) {
+        sols.forEach((s) => {
+          solsPendientesMap.set(s.comercio_id, s);
+        });
+      }
+    } catch (e) {
+      console.warn('[Supabase] No se pudieron consultar solicitudes_modificacion:', e);
+    }
+
     const { data, error } = await supabase
       .from('comercios')
       .select('*')
@@ -286,36 +313,80 @@ export async function getComercios(): Promise<Comercio[]> {
 
     if (error) {
       console.warn('[Supabase] Error al consultar tabla "comercios":', error.message);
-      return verificarYRestaurarEstados(verificarYDegradarVencidos(MOCK_COMERCIOS));
     }
 
-    if (!data || data.length === 0) {
-      return verificarYRestaurarEstados(verificarYDegradarVencidos(MOCK_COMERCIOS));
-    }
-
-    // Combinar los 20 comercios de prueba con los registros de Supabase evitando duplicados
     const mapa = new Map<string, Comercio>();
-    MOCK_COMERCIOS.forEach((c) => {
-      const safeMock = { ...c };
-      delete safeMock.password_comercio;
-      mapa.set(safeMock.id, safeMock);
-    });
 
-    (data as Comercio[]).forEach((dbItem) => {
-      // Seguridad: eliminar password_comercio para que nunca viaje al cliente
-      const safeDb = { ...dbItem };
-      delete safeDb.password_comercio;
+    if (data && data.length > 0) {
+      (data as Comercio[]).forEach((dbItem) => {
+        // Seguridad: eliminar password_comercio para que nunca viaje al cliente
+        const safeDb = { ...dbItem };
+        delete safeDb.password_comercio;
 
-      const existePorId = mapa.has(safeDb.id);
-      const existePorNombre = Array.from(mapa.values()).find(
-        (c) => c.nombre.trim().toLowerCase() === safeDb.nombre.trim().toLowerCase()
-      );
-      if (existePorId) {
-        mapa.set(safeDb.id, { ...mapa.get(safeDb.id)!, ...safeDb });
-      } else if (!existePorNombre) {
+        // Si existe una solicitud de moderación pendiente en Supabase para este comercio, aplicar sus datos y marcarlo como pendiente
+        const sol = solsPendientesMap.get(safeDb.id);
+        if (sol) {
+          safeDb.estado_aprobacion = 'pendiente';
+          if (sol.cambios && typeof sol.cambios === 'object') {
+            Object.assign(safeDb, sol.cambios);
+            safeDb.estado_aprobacion = 'pendiente';
+          }
+        } else if (!safeDb.estado_aprobacion) {
+          // Por defecto, si está activo en la tabla principal y no tiene solicitud pendiente, es aprobado
+          safeDb.estado_aprobacion = 'aprobado';
+        }
+
         mapa.set(safeDb.id, safeDb);
+      });
+    }
+
+    // 2. Si hay solicitudes pendientes que aún no están en la tabla 'comercios', incorporarlas a la lista
+    solsPendientesMap.forEach((sol, comercioId) => {
+      if (!mapa.has(comercioId) && sol.cambios) {
+        const item: Comercio = {
+          id: comercioId,
+          nombre: sol.comercio_nombre || sol.cambios.nombre || 'Nuevo Comercio',
+          rubro: sol.cambios.rubro || 'General',
+          direccion: sol.cambios.direccion || 'Sin dirección',
+          telefono: sol.cambios.telefono || '',
+          whatsapp: sol.cambios.whatsapp || '',
+          latitud: sol.cambios.latitud || -34.6,
+          longitud: sol.cambios.longitud || -58.4,
+          esta_abierto: true,
+          estado_aprobacion: 'pendiente',
+          fecha_solicitud: sol.fecha_solicitud,
+          ...sol.cambios,
+        };
+        delete item.password_comercio;
+        mapa.set(comercioId, item);
       }
     });
+
+    // 3. Hidratar además los comercios creados localmente en el navegador para sincronía inmediata
+    if (typeof window !== 'undefined') {
+      try {
+        const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
+        if (localesRaw) {
+          const locales: Comercio[] = JSON.parse(localesRaw);
+          locales.forEach((loc) => {
+            if (mapa.has(loc.id)) {
+              // Si localmente o en el servidor está marcado pendiente y no fue aprobado explícitamente, mantener pendiente
+              const existente = mapa.get(loc.id)!;
+              const esPendiente =
+                loc.estado_aprobacion === 'pendiente' ||
+                existente.estado_aprobacion === 'pendiente';
+              const esAprobado = existente.estado_aprobacion === 'aprobado' && loc.estado_aprobacion !== 'pendiente';
+              existente.estado_aprobacion = esAprobado ? 'aprobado' : (esPendiente ? 'pendiente' : 'aprobado');
+              mapa.set(loc.id, { ...loc, ...existente, estado_aprobacion: existente.estado_aprobacion });
+            } else {
+              mapa.set(loc.id, loc);
+            }
+          });
+        }
+      } catch (e) {
+        console.warn('[LocalStorage] Error al combinar comercios locales:', e);
+      }
+    }
 
     const resultado = verificarYRestaurarEstados(verificarYDegradarVencidos(Array.from(mapa.values())));
     resultado.forEach((c) => {
@@ -324,7 +395,7 @@ export async function getComercios(): Promise<Comercio[]> {
     return resultado;
   } catch (err) {
     console.error('[Supabase] Error inesperado en la consulta:', err);
-    return verificarYRestaurarEstados(verificarYDegradarVencidos(MOCK_COMERCIOS));
+    return [];
   }
 }
 
@@ -437,6 +508,28 @@ export async function guardarComercio(comercio: Comercio): Promise<{ success: bo
           await supabase.from('comercios').upsert([payloadBase]);
         }
       }
+
+      // Si el comercio ingresa como pendiente, registrarlo siempre en solicitudes_modificacion
+      // para que aparezca indefectiblemente en el panel de administración
+      if (comercio.estado_aprobacion === 'pendiente') {
+        try {
+          const solPayload = {
+            id: comercio.id,
+            comercio_id: comercio.id,
+            comercio_nombre: comercio.nombre,
+            cambios: {
+              ...comercio,
+              tipo_solicitud: 'alta_nuevo_comercio',
+              estado_aprobacion: 'pendiente',
+            },
+            estado: 'pendiente',
+            fecha_solicitud: comercio.fecha_solicitud || new Date().toISOString(),
+          };
+          await supabase.from('solicitudes_modificacion').upsert([solPayload]);
+        } catch (eSol) {
+          console.warn('[Supabase] Error al sincronizar solicitud de alta pendiente:', eSol);
+        }
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn('[Supabase] Excepción al sincronizar en la nube:', msg);
@@ -492,6 +585,17 @@ export async function aprobarComercio(
   // 2. Actualizar en Supabase si está disponible
   if (isSupabaseConfigured) {
     try {
+      // 2a. Actualizar la solicitud en solicitudes_modificacion para que deje de estar pendiente
+      await supabase
+        .from('solicitudes_modificacion')
+        .update({
+          estado: 'aprobado',
+          aprobado_por: aprobadoPor,
+          fecha_aprobacion: fechaAprobacion,
+        })
+        .eq('comercio_id', id);
+
+      // 2b. Actualizar comercio en la tabla principal
       const updates: Record<string, unknown> = {
         estado_aprobacion: 'aprobado',
         aprobado_por: aprobadoPor,
@@ -502,7 +606,12 @@ export async function aprobarComercio(
       };
       if (rubroAsignado) updates.rubro = rubroAsignado;
 
-      await supabase.from('comercios').update(updates).eq('id', id);
+      const { error: errUpd } = await supabase.from('comercios').update(updates).eq('id', id);
+      if (errUpd && errUpd.code === 'PGRST204') {
+        if (rubroAsignado) {
+          await supabase.from('comercios').update({ rubro: rubroAsignado }).eq('id', id);
+        }
+      }
     } catch (err) {
       console.warn('[Supabase] Error al actualizar estado de aprobación:', err);
     }
@@ -675,6 +784,14 @@ export async function rechazarComercio(
 
   if (isSupabaseConfigured) {
     try {
+      await supabase
+        .from('solicitudes_modificacion')
+        .update({
+          estado: 'rechazado',
+          motivo_rechazo: motivo,
+        })
+        .eq('comercio_id', id);
+
       await supabase.from('comercios').update({
         estado_aprobacion: 'rechazado',
         motivo_rechazo: motivo,
@@ -693,6 +810,7 @@ export async function rechazarComercio(
 export async function eliminarComercio(id: string): Promise<{ success: boolean; error?: string }> {
   if (isSupabaseConfigured) {
     try {
+      await supabase.from('solicitudes_modificacion').delete().eq('comercio_id', id);
       const { error } = await supabase.from('comercios').delete().eq('id', id);
       if (error) {
         return { success: false, error: error.message };

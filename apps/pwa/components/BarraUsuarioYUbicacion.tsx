@@ -145,11 +145,11 @@ export default function BarraUsuarioYUbicacion() {
                 </span>
               ) : (
                 <span
-                  title="Configura NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY en .env.local"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900 text-amber-400 border border-zinc-800 text-[11px] font-mono cursor-help"
+                  title="Almacenamiento local seguro del dispositivo."
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900 text-cyan-400 border border-zinc-800 text-[11px] font-mono cursor-default"
                 >
-                  <Database className="w-3 h-3 text-amber-400" />
-                  Demo Local
+                  <Database className="w-3 h-3 text-cyan-400" />
+                  Almacenamiento Local
                 </span>
               )}
             </div>

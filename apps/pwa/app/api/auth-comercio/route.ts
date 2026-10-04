@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { verifyPassword } from '@/lib/crypto';
-import { MOCK_COMERCIOS } from '@/lib/mock-comercios';
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,16 +30,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fallback a mock en local/demo o comercioFallback provisto por el cliente
+    // Fallback a comercio provisto por el cliente
     if (!comercioEncontrado) {
       if (body.comercioFallback && (body.comercioFallback.id === comercioId || body.comercioFallback.email_comercio === email)) {
         comercioEncontrado = body.comercioFallback;
-      } else {
-        comercioEncontrado = MOCK_COMERCIOS.find(
-          (c) =>
-            c.id === comercioId ||
-            (email && c.email_comercio?.toLowerCase() === email.trim().toLowerCase())
-        );
       }
     }
 
