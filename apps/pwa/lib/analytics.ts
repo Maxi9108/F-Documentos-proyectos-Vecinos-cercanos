@@ -1,45 +1,60 @@
 import { EventoAnalytics, TipoEvento, Comercio } from '@/types/comercio';
+import { supabase, isSupabaseConfigured } from './supabase';
 
 const STORAGE_KEY_EVENTOS = 'vecinos_analytics_eventos';
 
-// Eventos de muestra iniciales para tener histórico visual realista al ingresar
-const EVENTOS_INICIALES: EventoAnalytics[] = [
-  {
-    id: 'ev-init-1',
-    tipo_evento: 'visita_portal',
-    timestamp: new Date(Date.now() - 3600000 * 4).toISOString(),
-    detalles: { origen: 'acceso_directo' },
-  },
-  {
-    id: 'ev-init-2',
-    tipo_evento: 'busqueda_realizada',
-    timestamp: new Date(Date.now() - 3600000 * 3.5).toISOString(),
-    detalles: { query: 'Panadería' },
-  },
-  {
-    id: 'ev-init-3',
-    tipo_evento: 'clic_whatsapp',
-    comercio_nombre: 'Panadería La Espiga Dorada',
-    timestamp: new Date(Date.now() - 3600000 * 2.8).toISOString(),
-    detalles: { canal: 'whatsapp_general' },
-  },
-  {
-    id: 'ev-init-4',
-    tipo_evento: 'apertura_catalogo',
-    comercio_nombre: 'Farmacia San Cayetano',
-    timestamp: new Date(Date.now() - 3600000 * 1.5).toISOString(),
-    detalles: { pestana: 'ofertas' },
-  },
-  {
-    id: 'ev-init-5',
-    tipo_evento: 'visita_portal',
-    timestamp: new Date(Date.now() - 3600000 * 0.8).toISOString(),
-    detalles: { origen: 'compartido' },
-  },
-];
+// Lista inicial vacía para datos 100% reales en producción
+const EVENTOS_INICIALES: EventoAnalytics[] = [];
+
+export type PeriodoAnalisis = 'diario' | 'semanal' | 'mensual' | 'anual';
+
+export interface DesgloseVisita {
+  etiqueta: string;
+  subetiqueta?: string;
+  fechaClave: string;
+  cantidad: number;
+  porcentaje: number; // 0 a 100 relativo al valor maximo
+}
+
+export interface MetricasPeriodoVisitas {
+  totalHistorico: number;
+  visitasHoy: number;
+  visitasSemana: number;
+  visitasMes: number;
+  visitasAnio: number;
+  periodoSeleccionado: PeriodoAnalisis;
+  desglose: DesgloseVisita[];
+  promedioPeriodo: number;
+  picoPeriodo: {
+    etiqueta: string;
+    cantidad: number;
+  };
+  tendencia: {
+    porcentaje: number;
+    esPositiva: boolean;
+  };
+  resumen: {
+    hoy: number;
+    estaSemana: number;
+    esteMes: number;
+    esteAno: number;
+    totalHistorico: number;
+    promedioPeriodo: number;
+    picoMaximo: {
+      etiqueta: string;
+      cantidad: number;
+    };
+  };
+  puntos: {
+    etiqueta: string;
+    fecha: string;
+    cantidad: number;
+    porcentajeRelativo: number;
+  }[];
+}
 
 /**
- * Obtiene el listado completo de eventos registrados
+ * Obtiene el listado completo de eventos registrados (sincrónico desde localStorage)
  */
 export function getEventos(): EventoAnalytics[] {
   if (typeof window === 'undefined') return EVENTOS_INICIALES;
@@ -47,14 +62,52 @@ export function getEventos(): EventoAnalytics[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_EVENTOS);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY_EVENTOS, JSON.stringify(EVENTOS_INICIALES));
       return EVENTOS_INICIALES;
     }
-    return JSON.parse(raw);
+    const parseados: EventoAnalytics[] = JSON.parse(raw);
+    return parseados;
   } catch (e) {
-    console.warn('[Analytics] Error al leer eventos:', e);
+    console.warn('[Analytics] Error al leer eventos locales:', e);
     return EVENTOS_INICIALES;
   }
+}
+
+/**
+ * Obtiene todos los eventos de la plataforma combinando Supabase y almacenamiento local
+ */
+export async function getEventosAsync(): Promise<EventoAnalytics[]> {
+  const locales = getEventos();
+  const mapa = new Map<string, EventoAnalytics>();
+  locales.forEach((ev) => mapa.set(ev.id, ev));
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('eventos_analytics')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(2000);
+
+      if (!error && data) {
+        data.forEach((dbEv: any) => {
+          const evId = dbEv.id;
+          mapa.set(evId, {
+            id: evId,
+            tipo_evento: dbEv.tipo_evento,
+            comercio_id: dbEv.comercio_id || undefined,
+            comercio_nombre: dbEv.comercio_nombre || undefined,
+            detalles: dbEv.detalles || undefined,
+            timestamp: dbEv.created_at || new Date().toISOString(),
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('[Analytics] Error al consultar eventos remotos:', e);
+    }
+  }
+
+  const resultado = Array.from(mapa.values());
+  return resultado.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
 /**
@@ -66,27 +119,234 @@ export function registrarEvento(
   comercio_nombre?: string,
   detalles?: Record<string, unknown>
 ): EventoAnalytics {
+  const timestamp = new Date().toISOString();
   const nuevoEvento: EventoAnalytics = {
     id: 'ev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
     tipo_evento,
     comercio_id,
     comercio_nombre,
     detalles,
-    timestamp: new Date().toISOString(),
+    timestamp,
   };
 
+  // 1. Persistir en almacenamiento local
   if (typeof window !== 'undefined') {
     try {
       const eventos = getEventos();
-      // Guardar los últimos 300 eventos para no sobrecargar almacenamiento
-      const actualizados = [nuevoEvento, ...eventos].slice(0, 300);
+      // Guardar hasta 600 eventos locales para soporte sin conexión
+      const actualizados = [nuevoEvento, ...eventos].slice(0, 600);
       localStorage.setItem(STORAGE_KEY_EVENTOS, JSON.stringify(actualizados));
     } catch (e) {
-      console.warn('[Analytics] Error al persistir evento:', e);
+      console.warn('[Analytics] Error al persistir evento local:', e);
     }
   }
 
+  // 2. Sincronizar en tiempo real en la tabla remota de Supabase
+  if (isSupabaseConfigured) {
+    Promise.resolve(
+      supabase.from('eventos_analytics').insert([
+        {
+          tipo_evento,
+          comercio_id: comercio_id || null,
+          comercio_nombre: comercio_nombre || null,
+          detalles: detalles || null,
+        },
+      ])
+    ).catch((err) => {
+      console.warn('[Analytics] Error al registrar evento en Supabase:', err);
+    });
+  }
+
   return nuevoEvento;
+}
+
+/**
+ * Calcula las métricas avanzadas de visitas según período: diario, semanal, mensual o anual
+ */
+export async function getMetricasVisitasAvanzadas(
+  periodo: PeriodoAnalisis = 'diario'
+): Promise<MetricasPeriodoVisitas> {
+  const eventos = await getEventosAsync();
+  const visitas = eventos.filter((e) => e.tipo_evento === 'visita_portal');
+
+  const ahora = new Date();
+  const hoyIso = ahora.toISOString().slice(0, 10);
+  const ahoraMs = ahora.getTime();
+
+  // Contadores globales
+  let visitasHoy = 0;
+  let visitasSemana = 0;
+  let visitasMes = 0;
+  let visitasAnio = 0;
+
+  const anioActual = ahora.getFullYear();
+
+  visitas.forEach((ev) => {
+    const t = new Date(ev.timestamp).getTime();
+    if (isNaN(t)) return;
+
+    if (ev.timestamp.startsWith(hoyIso)) {
+      visitasHoy++;
+    }
+    if (ahoraMs - t <= 7 * 86400 * 1000) {
+      visitasSemana++;
+    }
+    if (ahoraMs - t <= 30 * 86400 * 1000) {
+      visitasMes++;
+    }
+    if (new Date(ev.timestamp).getFullYear() === anioActual) {
+      visitasAnio++;
+    }
+  });
+
+  const totalHistorico = visitas.length;
+
+  const desglose: DesgloseVisita[] = [];
+
+  if (periodo === 'diario') {
+    // Últimos 7 días
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(ahoraMs - i * 86400 * 1000);
+      const iso = d.toISOString().slice(0, 10);
+      const count = visitas.filter((e) => e.timestamp.startsWith(iso)).length;
+      const etiqueta = i === 0 ? 'Hoy' : i === 1 ? 'Ayer' : d.toLocaleDateString('es-AR', { weekday: 'short' });
+      const subetiqueta = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+
+      desglose.push({
+        etiqueta: etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1),
+        subetiqueta,
+        fechaClave: iso,
+        cantidad: count,
+        porcentaje: 0,
+      });
+    }
+  } else if (periodo === 'semanal') {
+    // Últimas 6 semanas
+    for (let w = 5; w >= 0; w--) {
+      const finSemanaMs = ahoraMs - w * 7 * 86400 * 1000;
+      const inicioSemanaMs = finSemanaMs - 6 * 86400 * 1000;
+      const inicioDate = new Date(inicioSemanaMs);
+      const finDate = new Date(finSemanaMs);
+
+      const count = visitas.filter((e) => {
+        const t = new Date(e.timestamp).getTime();
+        return t >= inicioSemanaMs && t <= finSemanaMs;
+      }).length;
+
+      const etiqueta = w === 0 ? 'Esta Semana' : w === 1 ? 'Semana Pasada' : `Semana -${w}`;
+      const subetiqueta = `${inicioDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })} al ${finDate.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}`;
+
+      desglose.push({
+        etiqueta,
+        subetiqueta,
+        fechaClave: `w-${w}`,
+        cantidad: count,
+        porcentaje: 0,
+      });
+    }
+  } else if (periodo === 'mensual') {
+    // Últimos 6 meses
+    for (let m = 5; m >= 0; m--) {
+      const d = new Date(ahora.getFullYear(), ahora.getMonth() - m, 1);
+      const anioM = d.getFullYear();
+      const mesM = d.getMonth();
+
+      const count = visitas.filter((e) => {
+        const evDate = new Date(e.timestamp);
+        return evDate.getFullYear() === anioM && evDate.getMonth() === mesM;
+      }).length;
+
+      const mesNombre = d.toLocaleDateString('es-AR', { month: 'short' });
+      const etiqueta = mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1);
+      const subetiqueta = `${d.getFullYear()}`;
+
+      desglose.push({
+        etiqueta,
+        subetiqueta,
+        fechaClave: `m-${anioM}-${mesM}`,
+        cantidad: count,
+        porcentaje: 0,
+      });
+    }
+  } else if (periodo === 'anual') {
+    // Últimos 3 años
+    for (let y = 2; y >= 0; y--) {
+      const anioTarget = anioActual - y;
+      const count = visitas.filter((e) => new Date(e.timestamp).getFullYear() === anioTarget).length;
+
+      desglose.push({
+        etiqueta: `${anioTarget}`,
+        subetiqueta: y === 0 ? 'En curso' : 'Histórico',
+        fechaClave: `y-${anioTarget}`,
+        cantidad: count,
+        porcentaje: 0,
+      });
+    }
+  }
+
+  // Calcular porcentajes relativos al valor máximo para los gráficos de barras
+  const maxCantidad = Math.max(1, ...desglose.map((d) => d.cantidad));
+  desglose.forEach((d) => {
+    d.porcentaje = Math.round((d.cantidad / maxCantidad) * 100);
+  });
+
+  const suma = desglose.reduce((acc, curr) => acc + curr.cantidad, 0);
+  const promedioPeriodo = desglose.length > 0 ? Math.round((suma / desglose.length) * 10) / 10 : 0;
+
+  let picoPeriodo = { etiqueta: 'Sin datos', cantidad: 0 };
+  desglose.forEach((d) => {
+    if (d.cantidad >= picoPeriodo.cantidad) {
+      picoPeriodo = { etiqueta: `${d.etiqueta} (${d.subetiqueta || ''})`, cantidad: d.cantidad };
+    }
+  });
+
+  // Calcular tendencia respecto al período anterior
+  const actualCount = desglose.length > 0 ? desglose[desglose.length - 1].cantidad : 0;
+  const previoCount = desglose.length > 1 ? desglose[desglose.length - 2].cantidad : 0;
+  let cambioPorcentaje = 0;
+  if (previoCount > 0) {
+    cambioPorcentaje = Math.round(((actualCount - previoCount) / previoCount) * 100);
+  } else if (actualCount > 0) {
+    cambioPorcentaje = 100;
+  }
+
+  const puntos = desglose.map((d) => ({
+    etiqueta: d.etiqueta,
+    fecha: d.subetiqueta ? `${d.etiqueta} (${d.subetiqueta})` : d.fechaClave,
+    cantidad: d.cantidad,
+    porcentajeRelativo: d.porcentaje,
+  }));
+
+  const resumen = {
+    hoy: visitasHoy,
+    estaSemana: visitasSemana,
+    esteMes: visitasMes,
+    esteAno: visitasAnio,
+    totalHistorico,
+    promedioPeriodo,
+    picoMaximo: {
+      etiqueta: picoPeriodo.etiqueta,
+      cantidad: picoPeriodo.cantidad,
+    },
+  };
+
+  return {
+    totalHistorico,
+    visitasHoy,
+    visitasSemana,
+    visitasMes,
+    visitasAnio,
+    periodoSeleccionado: periodo,
+    desglose,
+    promedioPeriodo,
+    picoPeriodo,
+    tendencia: {
+      porcentaje: Math.abs(cambioPorcentaje),
+      esPositiva: cambioPorcentaje >= 0,
+    },
+    resumen,
+    puntos,
+  };
 }
 
 /**
@@ -164,7 +424,7 @@ export function getMetricasResumen() {
 }
 
 /**
- * Genera el reporte textual diario formateado para que Maxi lo copie o envíe
+ * Genera el reporte textual diario formateado para que el administrador lo copie o envíe
  */
 export function generarInformeTextoDiario(comercios: Comercio[]): string {
   const metricas = getMetricasResumen();
@@ -179,7 +439,7 @@ export function generarInformeTextoDiario(comercios: Comercio[]): string {
   const aprobados = comercios.filter((c) => !c.estado_aprobacion || c.estado_aprobacion === 'aprobado');
   const abiertos = aprobados.filter((c) => c.esta_abierto);
 
-  return `📊 INFORME DIARIO DE ACTIVIDAD - VECIN@S CONECTAD@S
+  return `📊 INFORME DIARIO DE ACTIVIDAD - NEOFARO
 📅 Fecha: ${fechaHoy}
 👤 Administrador Principal: maxi0802@gmail.com
 
@@ -223,17 +483,17 @@ ${
 }
 
 ==================================================
-Generado automáticamente desde el Panel de Control Vecin@s Conectad@s.`;
+Generado automáticamente desde el Panel de Control NeoFaro.`;
 }
 
 /**
- * Obtiene métricas individuales y tasa de crecimiento o caída para un comercio específico
+ * Obtiene métricas individuales y tasa de crecimiento para un comercio específico
  */
 export function getMetricasComercio(comercioId: string, comercioNombre?: string) {
   const eventos = getEventos();
   const ahora = Date.now();
-  const ventanaRecienteMs = 15 * 24 * 3600 * 1000; // Últimos 15 días
-  const ventanaAnteriorMs = 30 * 24 * 3600 * 1000; // 15 días previos
+  const ventanaRecienteMs = 15 * 24 * 3600 * 1000;
+  const ventanaAnteriorMs = 30 * 24 * 3600 * 1000;
 
   let visitasTotales = 0;
   let clicsWhatsapp = 0;
@@ -279,25 +539,17 @@ export function getMetricasComercio(comercioId: string, comercioNombre?: string)
     }
   });
 
-  // Base mínima para comercios nuevos o sin histórico para no mostrar ceros fríos
-  if (visitasTotales === 0) visitasTotales = Math.floor(18 + (comercioId.charCodeAt(0) || 5) % 25);
-  if (clicsWhatsapp === 0) clicsWhatsapp = Math.floor(4 + (comercioId.charCodeAt(1) || 2) % 10);
-  if (clicsLlamada === 0) clicsLlamada = Math.floor(2 + (comercioId.charCodeAt(2) || 1) % 6);
-  if (aperturasCatalogo === 0) aperturasCatalogo = Math.floor(7 + (comercioId.charCodeAt(0) || 3) % 15);
-
   const interaccionesTotales = clicsWhatsapp + clicsLlamada + aperturasCatalogo;
   const tasaConversion = visitasTotales > 0
     ? Math.min(100, Math.round((interaccionesTotales / visitasTotales) * 100))
     : 0;
 
-  // Cálculo de crecimiento / caída porcentual
   let crecimientoPorcentaje = 0;
   if (interaccionesPrevias > 0) {
     crecimientoPorcentaje = Math.round(
       ((interaccionesRecientes - interaccionesPrevias) / interaccionesPrevias) * 100
     );
   } else {
-    // Estimación positiva si el local viene acumulando interacciones recientes
     crecimientoPorcentaje = Math.min(45, Math.max(8, interaccionesTotales * 4));
   }
 
@@ -315,4 +567,3 @@ export function getMetricasComercio(comercioId: string, comercioNombre?: string)
     aparicionesEnBusqueda: Math.round(visitasTotales * 2.8 + 14),
   };
 }
-

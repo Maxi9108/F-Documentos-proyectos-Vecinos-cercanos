@@ -10,7 +10,7 @@ import {
   cerrarSesionAdmin,
   restablecerPasswordAdminConPregunta,
 } from '@/lib/auth-admin';
-import { getUsuariosSistema, registrarOActualizarUsuario } from '@/lib/usuarios';
+import { getUsuariosSistema, registrarOActualizarUsuario, registrarVisitaUsuario } from '@/lib/usuarios';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import ModalSoporte from '@/components/ModalSoporte';
 
@@ -607,6 +607,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
       setUsuario(usuarioSesion);
       localStorage.setItem(STORAGE_KEYS.USUARIO, JSON.stringify(usuarioSesion));
+      registrarVisitaUsuario(cleanEmail).catch(() => {});
       setModalAuthAbierto(false);
       return { ok: true, mensaje: admin ? `¡Bienvenido SuperAdmin ${admin.nombre}!` : '¡Sesión iniciada correctamente!' };
     } catch (err: any) {

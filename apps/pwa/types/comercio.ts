@@ -439,6 +439,8 @@ export interface UsuarioSistema {
   comercio_nombre?: string;
   fecha_registro: string;
   ultimo_acceso?: string;
+  verificado?: boolean;
+  visitas?: number;
 }
 
 // ==============================================================================
