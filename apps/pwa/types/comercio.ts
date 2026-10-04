@@ -171,7 +171,22 @@ export interface Comercio {
   reputacion_categoria?: 'oro' | 'plata' | 'bronce' | 'observacion';
   onboarding_verificado?: boolean;
   fecha_verificacion_presencial?: string;
-  verificado_por_admin?: string;
+  // Calificación vecinal interna (1 a 5 estrellas - Solo visible para Administradores y el Comercio)
+  calificacion_promedio?: number;
+  calificaciones_total?: number;
+  estado?: 'activo' | 'inactivo' | 'suspendido' | 'pendiente';
+  strikes_disciplinarios?: number;
+}
+
+export interface CalificacionComercio {
+  id: string;
+  comercio_id: string;
+  comercio_nombre?: string;
+  estrellas: number; // 1 a 5
+  comentario?: string;
+  fecha: string; // ISO 8601
+  creado_en?: string;
+  usuario_nombre?: string;
 }
 
 export type MotivoReporte =

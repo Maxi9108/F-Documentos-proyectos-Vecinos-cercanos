@@ -121,6 +121,18 @@ export interface Comercio {
   onboarding_verificado?: boolean;
   fecha_verificacion_presencial?: string;
   verificado_por_admin?: string;
+  calificacion_promedio?: number;
+  calificaciones_total?: number;
+}
+
+export interface CalificacionComercio {
+  id: string;
+  comercio_id: string;
+  comercio_nombre?: string;
+  estrellas: number;
+  comentario?: string;
+  fecha: string;
+  usuario_nombre?: string;
 }
 
 export type MotivoReporte =

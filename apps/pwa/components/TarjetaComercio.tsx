@@ -88,7 +88,15 @@ export default function TarjetaComercio({
       : 'bg-emerald-950/50 text-emerald-400 border-emerald-800/50'
     : 'bg-zinc-800/80 text-zinc-400 border-zinc-700/60';
 
-  if (comercio.cerrado_momentaneo) {
+  const isPendingOrInactive =
+    comercio.pulso_semanal_estado === 'pendiente' ||
+    comercio.pulso_semanal_estado === 'alerta' ||
+    comercio.pulso_semanal_estado === 'pausado';
+
+  if (isPendingOrInactive) {
+    estadoBadgeTexto = 'Sin confirmar';
+    estadoBadgeClases = 'bg-zinc-800/90 text-amber-300 border-amber-800/50';
+  } else if (comercio.cerrado_momentaneo) {
     estadoBadgeTexto = 'Pausa Mom.';
     estadoBadgeClases = 'bg-amber-950/60 text-amber-300 border-amber-800/60';
   } else if (comercio.en_vacaciones) {
@@ -99,7 +107,9 @@ export default function TarjetaComercio({
   return (
     <article
       id={`comercio-${comercio.id}`}
-      className={`group relative rounded-2xl p-5 transition-all duration-300 bg-zinc-900/90 border flex flex-col justify-between shadow-md ${bordeClases}`}
+      className={`group relative rounded-2xl p-5 transition-all duration-300 bg-zinc-900/90 border flex flex-col justify-between shadow-md ${
+        isPendingOrInactive ? 'opacity-85 hover:opacity-100 ring-1 ring-amber-500/20' : ''
+      } ${bordeClases}`}
     >
       <div>
         {/* Cabecera: Rubro, Nivel, Estado y Botón de Favorito */}
@@ -214,6 +224,16 @@ export default function TarjetaComercio({
                 &ldquo;{comercio.mensaje_vacaciones}&rdquo;
               </p>
             )}
+          </div>
+        )}
+
+        {/* Banner: Información sin Actualizar (Pulso Pendiente) */}
+        {isPendingOrInactive && !comercio.cerrado_momentaneo && !comercio.en_vacaciones && (
+          <div className="mb-2.5 p-2 rounded-xl bg-zinc-950/70 border border-zinc-700/80 text-zinc-300 text-xs flex items-center gap-2 shadow-sm">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="leading-tight">
+              <strong className="text-amber-300">Información sin actualizar:</strong> Este comercio aún no confirmó su actividad semanal.
+            </span>
           </div>
         )}
 

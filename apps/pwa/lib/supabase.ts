@@ -9,6 +9,7 @@ import {
   ReporteComercio,
   MotivoReporte,
   TicketSoporte,
+  CalificacionComercio,
 } from '@/types/comercio';
 import { MOCK_COMERCIOS } from './mock-comercios';
 import { hashPassword } from './crypto';
@@ -1994,6 +1995,291 @@ export async function actualizarTicketSoporte(
       }
     } catch (err) {
       console.warn('[Supabase] Fallo al actualizar ticket en Supabase:', err);
+    }
+  }
+
+  return { ok: true };
+}
+
+// Claves de almacenamiento para Calificaciones y Amnistías
+const STORAGE_KEYS_CALIFICACIONES = 'neofaro_calificaciones_vecinos';
+const STORAGE_KEYS_AMNISTIAS = 'neofaro_historial_amnistias';
+
+/**
+ * Guarda una calificación de 1 a 5 estrellas dejada por un vecino.
+ * Regla de negocio: Esta métrica es de visualización interna para el Comerciante y Administradores.
+ */
+export async function guardarCalificacionVecino(
+  comercioId: string,
+  estrellas: number,
+  comentario: string = '',
+  usuarioNombre: string = 'Vecino'
+): Promise<{ ok: boolean; calificacion?: CalificacionComercio; nuevoPromedio?: number; nuevoTotal?: number }> {
+  const nuevaCal: CalificacionComercio = {
+    id: `calif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    comercio_id: comercioId,
+    estrellas: Math.min(5, Math.max(1, Math.round(estrellas))),
+    comentario: comentario.trim(),
+    fecha: new Date().toISOString(),
+    usuario_nombre: usuarioNombre.trim() || 'Vecino del barrio',
+  };
+
+  let nuevoPromedio = 5;
+  let nuevoTotal = 1;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS_CALIFICACIONES);
+      const lista: CalificacionComercio[] = raw ? JSON.parse(raw) : [];
+      lista.unshift(nuevaCal);
+      localStorage.setItem(STORAGE_KEYS_CALIFICACIONES, JSON.stringify(lista));
+
+      // Calcular nuevo promedio y total para este comercio
+      const delComercio = lista.filter((c) => c.comercio_id === comercioId);
+      nuevoTotal = delComercio.length;
+      nuevoPromedio = Number(
+        (delComercio.reduce((sum, item) => sum + item.estrellas, 0) / nuevoTotal).toFixed(1)
+      );
+
+      // Actualizar el comercio en localStorage
+      const comerciosRaw = localStorage.getItem('vecinos_comercios_nuevos');
+      if (comerciosRaw) {
+        const comercios: Comercio[] = JSON.parse(comerciosRaw);
+        const idx = comercios.findIndex((c) => c.id === comercioId);
+        if (idx >= 0) {
+          comercios[idx] = {
+            ...comercios[idx],
+            calificacion_promedio: nuevoPromedio,
+            calificaciones_total: nuevoTotal,
+          };
+          localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(comercios));
+        }
+      }
+    } catch (e) {
+      console.warn('[LocalStorage] Error al guardar calificación:', e);
+    }
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('calificaciones_comercios').insert({
+        id: nuevaCal.id,
+        comercio_id: nuevaCal.comercio_id,
+        estrellas: nuevaCal.estrellas,
+        comentario: nuevaCal.comentario || null,
+        fecha: nuevaCal.fecha,
+        usuario_nombre: nuevaCal.usuario_nombre || null,
+      });
+
+      await supabase
+        .from('comercios')
+        .update({
+          calificacion_promedio: nuevoPromedio,
+          calificaciones_total: nuevoTotal,
+        })
+        .eq('id', comercioId);
+    } catch (err) {
+      console.warn('[Supabase] Inserción de calificación:', err);
+    }
+  }
+
+  return { ok: true, calificacion: nuevaCal, nuevoPromedio, nuevoTotal };
+}
+
+/**
+ * Obtiene las calificaciones de un comercio para su visualización privada en su panel
+ */
+export async function getCalificacionesComercio(comercioId: string): Promise<CalificacionComercio[]> {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS_CALIFICACIONES);
+      if (raw) {
+        const lista: CalificacionComercio[] = JSON.parse(raw);
+        return lista.filter((c) => c.comercio_id === comercioId);
+      }
+    } catch (e) {
+      console.warn('[LocalStorage] Error al leer calificaciones:', e);
+    }
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('calificaciones_comercios')
+        .select('*')
+        .eq('comercio_id', comercioId)
+        .order('fecha', { ascending: false });
+      if (!error && data) {
+        return data as CalificacionComercio[];
+      }
+    } catch (err) {
+      console.warn('[Supabase] Consulta de calificaciones:', err);
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Obtiene todas las calificaciones para el panel del Administrador
+ */
+export async function getTodasCalificaciones(): Promise<CalificacionComercio[]> {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS_CALIFICACIONES);
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.warn('[LocalStorage] Error al leer todas las calificaciones:', e);
+    }
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('calificaciones_comercios')
+        .select('*')
+        .order('fecha', { ascending: false });
+      if (!error && data) {
+        return data as CalificacionComercio[];
+      }
+    } catch (err) {
+      console.warn('[Supabase] Consulta de todas las calificaciones:', err);
+    }
+  }
+
+  return [];
+}
+
+/**
+ * Aplica una Amnistía Zonal ante un corte general de luz u evento masivo en el barrio.
+ * Restablece los locales cerrados por urgencia y resetea/anula el contador de urgencias para que no sumen strikes.
+ */
+export async function aplicarAmnistiaZonal(
+  zona: string,
+  motivo: string,
+  adminNombre: string
+): Promise<{ ok: boolean; restablecidos: number; nombres: string[] }> {
+  const todosComercios = await getComercios();
+  const zonaLower = zona.toLowerCase();
+
+  const afectados = todosComercios.filter((c) => {
+    if (zonaLower === 'todas') return true;
+    const loc = (c.localidad || '').toLowerCase();
+    const dir = (c.direccion || '').toLowerCase();
+    const nom = (c.nombre || '').toLowerCase();
+    return loc.includes(zonaLower) || dir.includes(zonaLower) || nom.includes(zonaLower);
+  });
+
+  const ids = afectados.map((c) => c.id);
+  const nombres = afectados.map((c) => c.nombre);
+
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('vecinos_comercios_nuevos');
+      const locales: Comercio[] = raw ? JSON.parse(raw) : [...MOCK_COMERCIOS];
+      const actualizados = locales.map((c) => {
+        if (ids.includes(c.id)) {
+          return {
+            ...c,
+            cerrado_momentaneo: false,
+            motivo_cierre_momentaneo: undefined,
+            reapertura_emergencia_programada: undefined,
+            contador_urgencias_mes: 0,
+            esta_abierto: true,
+          };
+        }
+        return c;
+      });
+      localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(actualizados));
+
+      // Guardar registro histórico de amnistía
+      const amnistiasRaw = localStorage.getItem(STORAGE_KEYS_AMNISTIAS);
+      const historial = amnistiasRaw ? JSON.parse(amnistiasRaw) : [];
+      historial.unshift({
+        id: `amn-${Date.now()}`,
+        zona,
+        motivo,
+        adminNombre,
+        fecha: new Date().toISOString(),
+        localesAfectados: nombres.length,
+      });
+      localStorage.setItem(STORAGE_KEYS_AMNISTIAS, JSON.stringify(historial));
+    } catch (e) {
+      console.warn('[LocalStorage] Error al aplicar amnistía zonal:', e);
+    }
+  }
+
+  if (isSupabaseConfigured && ids.length > 0) {
+    try {
+      await supabase
+        .from('comercios')
+        .update({
+          cerrado_momentaneo: false,
+          motivo_cierre_momentaneo: null,
+          reapertura_emergencia_programada: null,
+          contador_urgencias_mes: 0,
+          esta_abierto: true,
+        })
+        .in('id', ids);
+
+      await supabase.from('eventos_analytics').insert({
+        tipo_evento: 'amnistia_zonal',
+        detalles: { zona, motivo, adminNombre, cantidad: ids.length, timestamp: new Date().toISOString() },
+      });
+    } catch (err) {
+      console.warn('[Supabase] Error en update masivo de amnistía zonal:', err);
+    }
+  }
+
+  return { ok: true, restablecidos: ids.length, nombres };
+}
+
+/**
+ * Permite al comerciante levantar la urgencia de inmediato y reabrir su local
+ */
+export async function reabrirUrgenciaComercio(
+  comercioId: string
+): Promise<{ ok: boolean; error?: string }> {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('vecinos_comercios_nuevos');
+      if (raw) {
+        const locales: Comercio[] = JSON.parse(raw);
+        const idx = locales.findIndex((c) => c.id === comercioId);
+        if (idx >= 0) {
+          locales[idx] = {
+            ...locales[idx],
+            cerrado_momentaneo: false,
+            motivo_cierre_momentaneo: undefined,
+            reapertura_emergencia_programada: undefined,
+            esta_abierto: true,
+          };
+          localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(locales));
+        }
+      }
+    } catch (e) {
+      console.warn('[LocalStorage] Error al reabrir urgencia:', e);
+    }
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const { error } = await supabase
+        .from('comercios')
+        .update({
+          cerrado_momentaneo: false,
+          motivo_cierre_momentaneo: null,
+          reapertura_emergencia_programada: null,
+          esta_abierto: true,
+        })
+        .eq('id', comercioId);
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+    } catch (err: any) {
+      return { ok: false, error: err?.message || 'Error en Supabase' };
     }
   }
 

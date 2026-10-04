@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import BotonInstalarPWA from '@/components/BotonInstalarPWA';
 import {
   Compass,
   Store,
@@ -243,7 +244,8 @@ export default function BannerConoceNeoFaro() {
           </span>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+          <BotonInstalarPWA />
           <Link
             href="/mi-comercio"
             className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 via-purple-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold transition-all shadow-md shadow-violet-950/50 flex items-center justify-center gap-1.5 text-xs cursor-pointer"

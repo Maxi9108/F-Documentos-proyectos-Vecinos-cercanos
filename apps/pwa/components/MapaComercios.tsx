@@ -343,13 +343,24 @@ function createCustomPin(comercio: Comercio, isSelected: boolean) {
     ? `box-shadow: 0 0 24px 6px ${glowColor}, 0 0 0 3px #ffffff;`
     : `box-shadow: 0 0 14px 2px ${glowColor};`;
 
+  const isPendingOrInactive = comercio.pulso_semanal_estado === 'pendiente' || comercio.pulso_semanal_estado === 'alerta' || comercio.pulso_semanal_estado === 'pausado';
+
   const pulseAnimation = isSelected ? 'animate-bounce' : '';
   const scaleClass = isSelected ? 'scale-120 z-50' : 'hover:scale-110';
-  const opacityClass = !esta_abierto && !isPaused ? 'opacity-85' : '';
+  let opacityClass = !esta_abierto && !isPaused ? 'opacity-85' : '';
+  if (isPendingOrInactive) {
+    opacityClass = 'opacity-50 grayscale hover:opacity-85';
+  }
 
-  // Badge superior (Turno 24hs > Gold > Premium)
+  // Badge superior (Turno 24hs > Gold > Premium > Traslúcido Pendiente)
   let topBadge = '';
-  if (esta_de_turno) {
+  if (isPendingOrInactive) {
+    topBadge = `
+      <span class="absolute -top-2.5 -right-3.5 px-1 py-0.5 text-[8px] font-black bg-zinc-700/90 text-amber-300 rounded-full shadow-md border border-zinc-500 ring-1 ring-zinc-900 z-20 select-none flex items-center gap-0.5" title="Información sin actualizar">
+        ⚠️
+      </span>
+    `;
+  } else if (esta_de_turno) {
     topBadge = `
       <span class="absolute -top-2.5 -right-3.5 px-1.5 py-0.5 text-[8.5px] font-black bg-emerald-500 text-white rounded-full shadow-lg flex items-center gap-0.5 tracking-tighter border border-emerald-300 ring-2 ring-emerald-950 z-20 select-none">
         24h
@@ -376,9 +387,11 @@ function createCustomPin(comercio: Comercio, isSelected: boolean) {
     `;
   }
 
-  // Indicador de estado operativo en la esquina inferior (abierto / cerrado / pausa)
+  // Indicador de estado operativo en la esquina inferior (abierto / cerrado / pausa / sin confirmar)
   let statusDot = '';
-  if (isPaused) {
+  if (isPendingOrInactive) {
+    statusDot = `<span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-zinc-500 border-2 border-zinc-950 shadow-sm z-20" title="Información sin actualizar / Pendiente de confirmación"></span>`;
+  } else if (isPaused) {
     statusDot = `<span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-amber-400 border-2 border-zinc-950 shadow-sm z-20" title="En pausa / Vacaciones"></span>`;
   } else if (esta_abierto) {
     statusDot = `<span class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-zinc-950 shadow-sm z-20" title="Abierto ahora"></span>`;
@@ -930,6 +943,13 @@ export default function MapaComercios({
                   {comercio.cerrado_momentaneo && (
                     <div className="mb-2 p-1.5 rounded-lg bg-amber-950/50 border border-amber-700/60 text-[11px] text-amber-200">
                       ⏸️ {comercio.motivo_cierre_momentaneo || 'Cerrado momentáneamente.'}
+                    </div>
+                  )}
+
+                  {(comercio.pulso_semanal_estado === 'pendiente' || comercio.pulso_semanal_estado === 'alerta' || comercio.pulso_semanal_estado === 'pausado') && (
+                    <div className="mb-2 p-2 rounded-lg bg-zinc-900/90 border border-amber-500/40 text-[10.5px] text-amber-200 flex items-center gap-1.5 shadow-sm">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Información sin actualizar: Actividad pendiente de confirmación.</span>
                     </div>
                   )}
 

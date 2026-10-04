@@ -20,6 +20,7 @@ import {
   TipoTicketSoporte,
   OrigenTicketSoporte,
   EstadoTicketSoporte,
+  CalificacionComercio,
 } from '@/types/comercio';
 import {
   getUsuariosSistema,
@@ -53,6 +54,8 @@ import {
   isSupabaseConfigured,
   getTicketsSoporte,
   actualizarTicketSoporte,
+  aplicarAmnistiaZonal,
+  getTodasCalificaciones,
 } from '@/lib/supabase';
 import ContadorMembresia from '@/components/ContadorMembresia';
 import { useUser } from '@/context/user-context';
@@ -135,6 +138,7 @@ import {
   HelpCircle,
   Send,
   Globe,
+  Star,
 } from 'lucide-react';
 
 export default function AdminPage() {
@@ -171,7 +175,19 @@ export default function AdminPage() {
     | 'equipo'
     | 'perfil'
     | 'usuarios'
+    | 'amnistia'
+    | 'calificaciones'
   >('pendientes');
+
+  // Estados para Amnistía Zonal y Calificaciones Vecinales
+  const [zonaAmnistia, setZonaAmnistia] = useState('Todas');
+  const [motivoAmnistia, setMotivoAmnistia] = useState('');
+  const [procesandoAmnistia, setProcesandoAmnistia] = useState(false);
+  const [mensajeAmnistia, setMensajeAmnistia] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
+
+  const [calificacionesTodas, setCalificacionesTodas] = useState<CalificacionComercio[]>([]);
+  const [busquedaCalificaciones, setBusquedaCalificaciones] = useState('');
+  const [filtroEstrellasCalificaciones, setFiltroEstrellasCalificaciones] = useState<number | 'todas'>('todas');
 
   // Estados de Tickets de Soporte y Recomendaciones (Usuarios y Comercios)
   const [ticketsSoporte, setTicketsSoporte] = useState<TicketSoporte[]>([]);
@@ -341,7 +357,45 @@ export default function AdminPage() {
     const tcks = await getTicketsSoporte();
     setTicketsSoporte(tcks);
 
+    const califs = await getTodasCalificaciones();
+    setCalificacionesTodas(califs);
+
     setCargando(false);
+  };
+
+  // Manejo de Amnistía Zonal
+  const handleEjecutarAmnistia = async () => {
+    if (!motivoAmnistia.trim()) {
+      alert('Por favor indica el motivo de la amnistía zonal (ej: corte general de luz, restablecimiento masivo, temporal climático).');
+      return;
+    }
+    const zonaTexto = zonaAmnistia === 'Todas' ? 'todas las localidades' : `la localidad de ${zonaAmnistia}`;
+    if (!confirm(`¿Confirmas aplicar la Amnistía Zonal para ${zonaTexto}?\n\nAcciones que se ejecutarán:\n- Reactivación de locales suspendidos por falta de confirmación de pulso\n- Levantamiento de cuarentenas preventivas zonales\n- Puesta a cero de contadores de urgencia/strikes temporales\n- Notificación en registro de auditoría institucional.`)) {
+      return;
+    }
+
+    setProcesandoAmnistia(true);
+    setMensajeAmnistia(null);
+    try {
+      const res = await aplicarAmnistiaZonal(
+        zonaAmnistia,
+        motivoAmnistia,
+        adminActual?.nombre || 'Administrador General'
+      );
+      setMensajeAmnistia({
+        tipo: 'ok',
+        texto: `Amnistía Zonal aplicada con éxito: Se restablecieron y perdonaron ${res.restablecidos} comercios de la zona ${zonaAmnistia}.`,
+      });
+      setMotivoAmnistia('');
+      await recargarDatos();
+    } catch (e: any) {
+      setMensajeAmnistia({
+        tipo: 'err',
+        texto: e?.message || 'Error al procesar la amnistía zonal',
+      });
+    } finally {
+      setProcesandoAmnistia(false);
+    }
   };
 
   // Filtrado y Acciones de Usuarios Registrados
@@ -1815,6 +1869,32 @@ export default function AdminPage() {
           >
             <Users className="w-4 h-4 text-emerald-400" />
             Usuarios Registrados ({usuariosSistema.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('amnistia')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              pestanaActiva === 'amnistia'
+                ? 'border-amber-400 text-amber-300'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            Amnistía Zonal
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPestanaActiva('calificaciones')}
+            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              pestanaActiva === 'calificaciones'
+                ? 'border-amber-400 text-white'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Star className="w-4 h-4 text-amber-400" />
+            Calificaciones Vecinales ({calificacionesTodas.length})
           </button>
 
           {esSuperAdmin && (
@@ -4656,6 +4736,400 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* PESTAÑA: AMNISTÍA ZONAL */}
+        {pestanaActiva === 'amnistia' && (
+          <div className="space-y-6">
+            {/* Header del Módulo */}
+            <div className="p-6 rounded-3xl bg-gradient-to-r from-amber-950/40 via-zinc-900 to-zinc-950 border border-amber-500/40 shadow-xl space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.3)] shrink-0">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-black text-white">
+                        Módulo de Amnistía Zonal
+                      </h2>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider">
+                        Soberanía Operativa
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-300 mt-1 max-w-2xl">
+                      Permite perdonar masivamente faltas de confirmación de pulso mensual, reactivar comercios suspendidos o en cuarentena y resetear contadores de urgencia ante contingencias climáticas o cortes masivos de suministro.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="px-4 py-2 rounded-2xl bg-zinc-900/90 border border-zinc-800 text-right shrink-0">
+                  <span className="text-[10px] text-zinc-500 block uppercase font-mono tracking-tight">Comercios en la base</span>
+                  <strong className="text-lg font-mono font-bold text-white">{comercios.length} registrados</strong>
+                </div>
+              </div>
+
+              {mensajeAmnistia && (
+                <div
+                  className={`p-3.5 rounded-2xl border text-xs flex items-center justify-between gap-3 ${
+                    mensajeAmnistia.tipo === 'ok'
+                      ? 'bg-emerald-950/60 border-emerald-500/60 text-emerald-200'
+                      : 'bg-rose-950/60 border-rose-500/60 text-rose-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {mensajeAmnistia.tipo === 'ok' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    )}
+                    <span>{mensajeAmnistia.texto}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMensajeAmnistia(null)}
+                    className="text-xs underline cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Panel de Ejecución de Amnistía */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1 p-6 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-4">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-amber-400" />
+                  <span>Configurar Amnistía</span>
+                </h3>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    Seleccionar Zona / Localidad:
+                  </label>
+                  <select
+                    value={zonaAmnistia}
+                    onChange={(e) => setZonaAmnistia(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400 font-semibold"
+                  >
+                    <option value="Todas">🌍 Todas las Localidades (Global)</option>
+                    <option value="Maquinista Savio">Maquinista Savio</option>
+                    <option value="Garín">Garín</option>
+                    <option value="Grand Bourg">Grand Bourg</option>
+                    <option value="Del Viso">Del Viso</option>
+                    <option value="Matheu">Matheu</option>
+                    <option value="Ingeniero Maschwitz">Ingeniero Maschwitz</option>
+                    <option value="Tortuguitas">Tortuguitas</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    Motivo Justificatorio (Auditado):
+                  </label>
+                  <textarea
+                    value={motivoAmnistia}
+                    onChange={(e) => setMotivoAmnistia(e.target.value)}
+                    rows={3}
+                    placeholder="Ej: Temporal de lluvia y corte masivo de suministro eléctrico en la zona. Se restablece la operación de todos los comercios afectados."
+                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400 resize-none placeholder:text-zinc-500"
+                  />
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setMotivoAmnistia('Corte general de suministro eléctrico')}
+                      className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 hover:text-white"
+                    >
+                      ⚡ Corte de luz
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMotivoAmnistia('Contingencia climática / Temporal')}
+                      className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 hover:text-white"
+                    >
+                      🌧️ Temporal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMotivoAmnistia('Perdón administrativo de confirmación de pulso')}
+                      className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 hover:text-white"
+                    >
+                      🤝 Perdón de pulso
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-600/30 text-[11px] text-amber-200/90 space-y-1.5">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Efectos Inmediatos:</span>
+                  </div>
+                  <ul className="list-disc list-inside space-y-0.5 text-zinc-300 text-[10.5px]">
+                    <li>Reabre comercios cerrados por urgencia.</li>
+                    <li>Levanta cuarentenas preventivas.</li>
+                    <li>Resetea contadores de faltas de pulso a cero.</li>
+                    <li>Vuelve a colocarlos con visibilidad plena en el mapa.</li>
+                  </ul>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={procesandoAmnistia}
+                  onClick={handleEjecutarAmnistia}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-950/60 cursor-pointer transition-all disabled:opacity-50"
+                >
+                  <Sparkles className="w-4 h-4 text-black" />
+                  <span>{procesandoAmnistia ? 'Aplicando Amnistía Zonal...' : 'Ejecutar Amnistía Zonal Ahora'}</span>
+                </button>
+              </div>
+
+              {/* Lista de Comercios Comprendidos en la Zona */}
+              <div className="lg:col-span-2 p-6 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                  <div>
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                      Comercios en Alcance: {zonaAmnistia}
+                    </h3>
+                    <p className="text-[11px] text-zinc-400">
+                      Visualización previa del estado actual de los comercios que recibirán la amnistía.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-xl bg-zinc-900 border border-zinc-800 text-xs font-mono text-amber-400 font-bold">
+                    {comercios.filter((c) => zonaAmnistia === 'Todas' || c.localidad === zonaAmnistia).length} locales
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
+                  <table className="w-full text-left text-xs text-zinc-300">
+                    <thead className="bg-zinc-900/80 text-zinc-400 uppercase text-[10px] sticky top-0">
+                      <tr>
+                        <th className="py-2.5 px-3">Comercio</th>
+                        <th className="py-2.5 px-3">Localidad</th>
+                        <th className="py-2.5 px-3">Estado Actual</th>
+                        <th className="py-2.5 px-3">Urgencias / Strikes</th>
+                        <th className="py-2.5 px-3">Cuarentena</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/60">
+                      {comercios
+                        .filter((c) => zonaAmnistia === 'Todas' || c.localidad === zonaAmnistia)
+                        .map((c) => (
+                          <tr key={c.id} className="hover:bg-zinc-900/40">
+                            <td className="py-2.5 px-3">
+                              <span className="font-bold text-white block">{c.nombre}</span>
+                              <span className="text-[10px] text-zinc-500">{c.rubro}</span>
+                            </td>
+                            <td className="py-2.5 px-3 text-[11px] text-zinc-400">{c.localidad}</td>
+                            <td className="py-2.5 px-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  c.cerrado_momentaneo
+                                    ? 'bg-amber-950 text-amber-300 border border-amber-600/40'
+                                    : c.en_cuarentena || c.oculto_por_inactividad
+                                    ? 'bg-rose-950 text-rose-300 border border-rose-600/40'
+                                    : 'bg-emerald-950 text-emerald-300 border border-emerald-600/40'
+                                }`}
+                              >
+                                {c.cerrado_momentaneo
+                                  ? 'Cierre Urgencia'
+                                  : c.oculto_por_inactividad
+                                  ? 'Inactivo (+60d)'
+                                  : c.en_cuarentena
+                                  ? 'Cuarentena'
+                                  : (c.estado_aprobacion || 'ACTIVO').toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono text-[11px]">
+                              {c.contador_urgencias_mes || 0} usos / {c.strikes_urgencia || c.strikes_disciplinarios || 0} strikes
+                            </td>
+                            <td className="py-2.5 px-3">
+                              {c.en_cuarentena ? (
+                                <span className="text-rose-400 font-bold text-[10px]">EN CUARENTENA</span>
+                              ) : (
+                                <span className="text-zinc-500 text-[10px]">Normal</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PESTAÑA: CALIFICACIONES VECINALES (PRIVADO) */}
+        {pestanaActiva === 'calificaciones' && (
+          <div className="space-y-6">
+            {/* Header del Módulo */}
+            <div className="p-6 rounded-3xl bg-zinc-950 border border-zinc-800 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-400/30 flex items-center justify-center text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)] shrink-0">
+                    <Star className="w-6 h-6 fill-amber-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl font-black text-white">
+                        Calificaciones Vecinales (1 a 5 Estrellas)
+                      </h2>
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/40 uppercase tracking-wider">
+                        Estrictamente Confidencial
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-1 max-w-2xl">
+                      Módulo exclusivo para administración y para el panel propio de cada comerciante. Las reseñas de vecinos nunca se exponen al público en la guía para evitar linchamientos digitales o competencia desleal.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 bg-zinc-900 px-4 py-2.5 rounded-2xl border border-zinc-800 shrink-0">
+                  <div className="text-right">
+                    <span className="text-[10px] text-zinc-500 block uppercase font-mono tracking-tight">Total Opiniones</span>
+                    <strong className="text-lg font-mono font-bold text-amber-400">{calificacionesTodas.length}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filtros */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="flex-1 relative">
+                  <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={busquedaCalificaciones}
+                    onChange={(e) => setBusquedaCalificaciones(e.target.value)}
+                    placeholder="Buscar por comercio, vecino o palabra clave en comentarios..."
+                    className="w-full pl-10 pr-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto">
+                  <button
+                    type="button"
+                    onClick={() => setFiltroEstrellasCalificaciones('todas')}
+                    className={`px-3 py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                      filtroEstrellasCalificaciones === 'todas'
+                        ? 'bg-amber-500 text-black border-amber-400'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+                    }`}
+                  >
+                    Todas ({calificacionesTodas.length})
+                  </button>
+                  {[5, 4, 3, 2, 1].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setFiltroEstrellasCalificaciones(s)}
+                      className={`px-2.5 py-2 rounded-xl text-xs font-bold border flex items-center gap-1 transition-colors cursor-pointer ${
+                        filtroEstrellasCalificaciones === s
+                          ? 'bg-amber-500 text-black border-amber-400'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      <span>{s}</span>
+                      <Star className="w-3 h-3 fill-current" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Listado de Calificaciones */}
+            {calificacionesTodas.length === 0 ? (
+              <div className="text-center py-16 px-4 bg-zinc-950 border border-dashed border-zinc-800 rounded-3xl space-y-2">
+                <Star className="w-8 h-8 text-zinc-700 mx-auto" />
+                <h4 className="text-sm font-bold text-zinc-300">Aún no hay calificaciones registradas</h4>
+                <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                  A medida que los vecinos califiquen a los comercios barriales mediante el botón de feedback del detalle del comercio, sus valoraciones confidenciales aparecerán en esta tabla.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-zinc-950 border border-zinc-800 rounded-3xl overflow-hidden shadow-xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-zinc-300">
+                    <thead className="bg-zinc-900/80 text-zinc-400 uppercase text-[10px] border-b border-zinc-800">
+                      <tr>
+                        <th className="py-3 px-4">Fecha</th>
+                        <th className="py-3 px-4">Comercio</th>
+                        <th className="py-3 px-4">Vecino</th>
+                        <th className="py-3 px-4">Estrellas</th>
+                        <th className="py-3 px-4">Comentario Privado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/60">
+                      {calificacionesTodas
+                        .filter((c) => {
+                          if (filtroEstrellasCalificaciones !== 'todas' && c.estrellas !== filtroEstrellasCalificaciones) {
+                            return false;
+                          }
+                          if (busquedaCalificaciones) {
+                            const q = busquedaCalificaciones.toLowerCase();
+                            const com = comercios.find((x) => x.id === c.comercio_id);
+                            const nom = com?.nombre?.toLowerCase() || '';
+                            const vec = c.usuario_nombre?.toLowerCase() || '';
+                            const comnt = c.comentario?.toLowerCase() || '';
+                            if (!nom.includes(q) && !vec.includes(q) && !comnt.includes(q)) return false;
+                          }
+                          return true;
+                        })
+                        .map((calif) => {
+                          const com = comercios.find((x) => x.id === calif.comercio_id);
+                          return (
+                            <tr key={calif.id} className="hover:bg-zinc-900/40">
+                              <td className="py-3.5 px-4 text-zinc-500 font-mono text-[11px] whitespace-nowrap">
+                                {new Date(calif.creado_en || calif.fecha || Date.now()).toLocaleDateString('es-AR', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </td>
+                              <td className="py-3.5 px-4 whitespace-nowrap">
+                                <span className="font-bold text-white block">{com?.nombre || 'Comercio'}</span>
+                                <span className="text-[10px] text-zinc-500">{com?.localidad || 'Sin zona'}</span>
+                              </td>
+                              <td className="py-3.5 px-4 font-semibold text-zinc-300 whitespace-nowrap">
+                                {calif.usuario_nombre || 'Vecino del barrio'}
+                              </td>
+                              <td className="py-3.5 px-4 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex gap-0.5">
+                                    {[1, 2, 3, 4, 5].map((s) => (
+                                      <Star
+                                        key={s}
+                                        className={`w-3.5 h-3.5 ${
+                                          s <= calif.estrellas ? 'text-amber-400 fill-amber-400' : 'text-zinc-700'
+                                        }`}
+                                      />
+                                    ))}
+                                  </div>
+                                  <span className="font-mono font-bold text-amber-300 text-xs">
+                                    {calif.estrellas}.0
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                {calif.comentario ? (
+                                  <p className="text-zinc-200 italic bg-zinc-900/60 p-2 rounded-xl border border-zinc-800/80 max-w-lg">
+                                    &ldquo;{calif.comentario}&rdquo;
+                                  </p>
+                                ) : (
+                                  <span className="text-zinc-600 text-[11px]">Sin reseña escrita</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

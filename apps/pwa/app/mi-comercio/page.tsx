@@ -11,6 +11,7 @@ import {
   ModificacionComercio,
   HorariosConfig,
   Producto,
+  CalificacionComercio,
 } from '@/types/comercio';
 import {
   getComercios,
@@ -25,6 +26,8 @@ import {
   reanudarHorarioNormal,
   autoResolverCuarentenaComercio,
   guardarComercio,
+  getCalificacionesComercio,
+  reabrirUrgenciaComercio,
 } from '@/lib/supabase';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { getCategorias } from '@/lib/categorias';
@@ -58,6 +61,7 @@ import {
   X,
   Sparkles,
   Info,
+  Star,
   Sun,
   Moon,
   Bike,
@@ -186,6 +190,10 @@ export default function MiComercioPage() {
   const [respuestaTexto, setRespuestaTexto] = useState<{ [debateId: string]: string }>({});
   const [respondiendoDebateId, setRespondiendoDebateId] = useState<string | null>(null);
 
+  // Estados de Calificaciones Vecinales Privadas (Solo visible para Comercio y Admin)
+  const [calificacionesComercio, setCalificacionesComercio] = useState<CalificacionComercio[]>([]);
+  const [levantandoUrgencia, setLevantandoUrgencia] = useState(false);
+
   // Carga inicial de datos
   useEffect(() => {
     async function inicializar() {
@@ -278,6 +286,10 @@ export default function MiComercioPage() {
       // 3. Modificaciones
       const todasMod = await getSolicitudesModificacion();
       setSolicitudesMod(todasMod.filter((s) => s.comercio_id === comercioSeleccionadoId));
+
+      // 4. Calificaciones vecinales (Privadas)
+      const califs = await getCalificacionesComercio(comercioSeleccionadoId);
+      setCalificacionesComercio(califs);
     }
 
     cargarRelacionados();
@@ -832,6 +844,22 @@ export default function MiComercioPage() {
     }
   };
 
+  // Acción directa para levantar el cierre de urgencia y reabrir de inmediato
+  const handleLevantarUrgencia = async () => {
+    if (!comercioActual) return;
+    if (confirm('¿Confirmas que deseas levantar la urgencia y reabrir tu local de inmediato? Tu comercio volverá a figurar abierto en el mapa.')) {
+      setLevantandoUrgencia(true);
+      await reabrirUrgenciaComercio(comercioActual.id);
+      setCerradoMomentaneo(false);
+      setMotivoCierreMomentaneo('');
+      const c = await getComercios();
+      setComercios(c);
+      const act = c.find((x) => x.id === comercioActual.id);
+      if (act) cargarDatosFormulario(act);
+      setLevantandoUrgencia(false);
+    }
+  };
+
   const solicitudPendiente = solicitudesMod.find((s) => s.estado === 'pendiente');
 
   // Métricas del comercio seleccionado
@@ -1296,6 +1324,64 @@ export default function MiComercioPage() {
               </div>
             )}
 
+            {/* INDICADOR DE IMPACTO MENSUAL Y VISITAS RECIBIDAS (PREGUNTA 3) */}
+            {comercioActual && (
+              <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 border border-cyan-500/30 shadow-xl shadow-black/50 space-y-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-violet-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.3)] shrink-0">
+                      <Eye className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono font-bold tracking-wider text-cyan-400 uppercase">
+                          Métrica de Visibilidad Barrial
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+                          Mes en curso
+                        </span>
+                      </div>
+                      <h4 className="text-base sm:text-lg font-black text-white flex items-baseline gap-2 mt-0.5">
+                        <span>Tu local recibió</span>
+                        <span className="text-2xl sm:text-3xl text-cyan-300 font-mono font-black drop-shadow-[0_0_10px_rgba(6,182,212,0.4)]">
+                          {metricas?.visitasTotales || 0}
+                        </span>
+                        <span className="text-zinc-300 font-medium text-xs sm:text-sm">visitas de vecinos</span>
+                      </h4>
+                    </div>
+                  </div>
+
+                  {/* Valoración confidencial de vecinos (Privada para comercio y admin) */}
+                  <div className="flex items-center gap-2 bg-zinc-900/90 border border-zinc-800 px-3.5 py-2 rounded-2xl shrink-0">
+                    <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                    <div className="text-right">
+                      <div className="text-xs font-bold text-white flex items-center gap-1">
+                        <span>{comercioActual.calificacion_promedio ? `${comercioActual.calificacion_promedio} / 5` : '5.0 / 5'}</span>
+                        <span className="text-[10px] text-amber-400 font-normal">
+                          ({calificacionesComercio.length || comercioActual.calificaciones_total || 0} opin.)
+                        </span>
+                      </div>
+                      <span className="text-[9px] text-zinc-500 block uppercase font-mono tracking-tight">Valoración interna</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[11.5px] text-zinc-400">
+                  <p className="leading-relaxed">
+                    💡 Hacia el <strong className="text-zinc-200">día 25 de tu período</strong> este contador de visitas te servirá como dato real para comprobar el retorno y la exposición de tu vidriera digital en el barrio.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setPestana('metricas')}
+                    className="shrink-0 text-cyan-400 hover:text-cyan-300 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Ver informe completo</span>
+                    <TrendingUp className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* CENTRO DE SOPORTE PARA COMERCIOS Y RECOMENDACIONES */}
             {comercioActual && (
               <div className="p-4 rounded-3xl bg-zinc-950 border border-zinc-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-lg">
@@ -1334,7 +1420,7 @@ export default function MiComercioPage() {
             {comercioActual && (comercioActual.cerrado_momentaneo || comercioActual.en_vacaciones) && (
               <div className="pt-2 space-y-2">
                 {comercioActual.cerrado_momentaneo && (
-                  <div className="p-3.5 rounded-2xl bg-amber-950/60 border border-amber-500/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-200">
+                  <div className="p-3.5 rounded-2xl bg-amber-950/60 border border-amber-500/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-200 shadow-md">
                     <div className="flex items-start gap-2.5">
                       <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                       <div>
@@ -1350,18 +1436,13 @@ export default function MiComercioPage() {
 
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (confirm('¿Deseas restablecer de inmediato la atención normal del comercio?')) {
-                          await reanudarHorarioNormal(comercioActual.id);
-                          const c = await getComercios();
-                          setComercios(c);
-                          const act = c.find((x) => x.id === comercioActual.id);
-                          if (act) cargarDatosFormulario(act);
-                        }
-                      }}
-                      className="py-1.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-black font-extrabold text-xs shrink-0 cursor-pointer transition-all"
+                      disabled={levantandoUrgencia}
+                      onClick={handleLevantarUrgencia}
+                      className="py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-extrabold text-xs shrink-0 cursor-pointer transition-all shadow-lg shadow-emerald-950/60 flex items-center gap-1.5 disabled:opacity-50"
+                      title="Levantar la urgencia y restablecer de inmediato el local como abierto en el mapa"
                     >
-                      Reabrir Local Ahora
+                      <CheckCircle2 className="w-4 h-4 text-black" />
+                      <span>{levantandoUrgencia ? 'Reabriendo...' : '🟢 Levantar Urgencia y Reabrir Ahora'}</span>
                     </button>
                   </div>
                 )}
@@ -1659,6 +1740,106 @@ export default function MiComercioPage() {
                       </p>
                     </div>
                   </div>
+                </div>
+
+                {/* CALIFICACIONES PRIVADAS DE VECINOS (SOLO COMERCIO Y ADMIN) */}
+                <div className="p-6 bg-zinc-950 border border-zinc-800 rounded-3xl space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                        <Star className="w-5 h-5 fill-amber-400" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                            Calificaciones y Opiniones de Vecinos
+                          </h3>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/10 text-amber-300 border border-amber-500/30 uppercase tracking-wider">
+                            Confidencial
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-zinc-400">
+                          Solo visible para ti y la administración. Los vecinos que navegan la guía no pueden ver las valoraciones de otros.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 bg-zinc-900/90 border border-zinc-800 px-4 py-2.5 rounded-2xl shrink-0">
+                      <div className="text-right">
+                        <div className="text-xl font-black text-amber-400 font-mono">
+                          {comercioActual?.calificacion_promedio ? `${comercioActual.calificacion_promedio.toFixed(1)} / 5.0` : '5.0 / 5.0'}
+                        </div>
+                        <span className="text-[10px] text-zinc-400">
+                          {calificacionesComercio.length || comercioActual?.calificaciones_total || 0} valoraciones
+                        </span>
+                      </div>
+                      <div className="flex gap-0.5">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Star
+                            key={s}
+                            className={`w-4 h-4 ${
+                              s <= Math.round(comercioActual?.calificacion_promedio || 5)
+                                ? 'text-amber-400 fill-amber-400'
+                                : 'text-zinc-600'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Explicación de protección antilinchamiento */}
+                  <div className="p-3.5 rounded-2xl bg-zinc-900/60 border border-zinc-800 text-[11.5px] text-zinc-300 flex items-start gap-2.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <p className="leading-relaxed">
+                      <strong className="text-white">Política de Privacidad NeoFaro:</strong> Las calificaciones se reservan exclusivamente para tu feedback interno y control de calidad administrativo. No se publican en el mapa abierto para prevenir campañas de desprestigio o competencia desleal.
+                    </p>
+                  </div>
+
+                  {/* Listado de comentarios */}
+                  {calificacionesComercio.length === 0 ? (
+                    <div className="text-center py-6 px-4 bg-zinc-900/30 border border-dashed border-zinc-800 rounded-2xl text-xs text-zinc-500">
+                      Aún no registras opiniones escritas de vecinos este mes. A medida que tus clientes califiquen la atención desde el botón de la ficha, aparecerán registradas aquí.
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                      {calificacionesComercio.map((calif) => (
+                        <div
+                          key={calif.id}
+                          className="p-3.5 rounded-2xl bg-zinc-900/70 border border-zinc-800 space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white">{calif.usuario_nombre || 'Vecino del barrio'}</span>
+                              <div className="flex gap-0.5">
+                                {[1, 2, 3, 4, 5].map((s) => (
+                                  <Star
+                                    key={s}
+                                    className={`w-3 h-3 ${
+                                      s <= calif.estrellas ? 'text-amber-400 fill-amber-400' : 'text-zinc-700'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                            <span className="text-[10px] text-zinc-500 font-mono">
+                              {new Date(calif.creado_en || calif.fecha || Date.now()).toLocaleDateString('es-AR', {
+                                day: '2-digit',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                          {calif.comentario && (
+                            <p className="text-xs text-zinc-300 italic bg-zinc-950/60 p-2.5 rounded-xl border border-zinc-800/80">
+                              &ldquo;{calif.comentario}&rdquo;
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2010,6 +2191,23 @@ export default function MiComercioPage() {
                               <p className="text-[10px] text-rose-300 font-semibold pt-1">
                                 ⚠️ Atención: Al alcanzar el 3er uso en el mes, el sistema computará 1 strike disciplinario por reiteración de cierres imprevistos.
                               </p>
+                            )}
+
+                            {comercioActual?.cerrado_momentaneo && (
+                              <div className="pt-2">
+                                <button
+                                  type="button"
+                                  disabled={levantandoUrgencia}
+                                  onClick={handleLevantarUrgencia}
+                                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/60 cursor-pointer transition-all disabled:opacity-50"
+                                >
+                                  <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
+                                  <span>{levantandoUrgencia ? 'Reabriendo local...' : '🟢 Levantar Urgencia y Reabrir Inmediatamente'}</span>
+                                </button>
+                                <p className="text-[10px] text-zinc-400 text-center mt-1">
+                                  Restablece tu estado a abierto en el mapa en tiempo real para todos los vecinos.
+                                </p>
+                              </div>
                             )}
                           </div>
                         </div>

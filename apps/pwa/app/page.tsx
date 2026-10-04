@@ -5,6 +5,7 @@ import DirectorioComercios from '@/components/DirectorioComercios';
 import BarraUsuarioYUbicacion from '@/components/BarraUsuarioYUbicacion';
 import NeoFaroLogo from '@/components/NeoFaroLogo';
 import BotonCompartirApp from '@/components/BotonCompartirApp';
+import BotonInstalarPWA from '@/components/BotonInstalarPWA';
 import { getComercios } from '@/lib/supabase';
 import { Store } from 'lucide-react';
 
@@ -22,16 +23,17 @@ export default async function HomePage() {
           <div className="flex items-center justify-between gap-2">
             <NeoFaroLogo size="md" showSlogan={true} />
 
-            {/* Botones Móvil: Compartir y Mi Comercio */}
+            {/* Botones Móvil: Instalar, Compartir y Mi Comercio */}
             <div className="flex md:hidden items-center gap-1.5">
+              <BotonInstalarPWA />
               <BotonCompartirApp />
               <Link
                 href="/mi-comercio"
                 title="Mi Comercio (Ingresar a tu local o cargarlo)"
-                className="py-1.5 px-3 bg-gradient-to-r from-violet-600 via-purple-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold rounded-xl transition-all shadow-md shadow-violet-950/60 border border-cyan-400/30 flex items-center gap-1.5 text-xs cursor-pointer"
+                className="py-1.5 px-2.5 bg-gradient-to-r from-violet-600 via-purple-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white font-bold rounded-xl transition-all shadow-md shadow-violet-950/60 border border-cyan-400/30 flex items-center gap-1 text-xs cursor-pointer"
               >
                 <Store className="w-3.5 h-3.5 text-cyan-300" />
-                <span>Mi Comercio</span>
+                <span className="hidden xs:inline">Mi Comercio</span>
               </Link>
             </div>
           </div>
@@ -49,7 +51,8 @@ export default async function HomePage() {
               <span>Mi Comercio</span>
             </Link>
 
-            <div className="hidden md:flex">
+            <div className="hidden md:flex items-center gap-2">
+              <BotonInstalarPWA />
               <BotonCompartirApp />
             </div>
           </div>

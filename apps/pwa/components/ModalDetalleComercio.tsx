@@ -32,11 +32,13 @@ import {
   Compass,
   Globe,
   Mail,
+  Star,
 } from 'lucide-react';
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
 import { verificarComercioAbierto } from '@/lib/horarios';
+import { guardarCalificacionVecino } from '@/lib/supabase';
 import ModalCrearDebate from '@/components/ModalCrearDebate';
 import OfertaCountdown from '@/components/OfertaCountdown';
 
@@ -63,6 +65,13 @@ export default function ModalDetalleComercio({
   const [pedidoItems, setPedidoItems] = useState<Record<string, number>>({});
   const [modalidadPedido, setModalidadPedido] = useState<'mostrador' | 'envio'>('mostrador');
 
+  // Estado para la calificación interna de 1 a 5 estrellas (Privada para comercio y admin)
+  const [estrellasSeleccionadas, setEstrellasSeleccionadas] = useState(0);
+  const [hoverEstrellas, setHoverEstrellas] = useState(0);
+  const [comentarioCalificacion, setComentarioCalificacion] = useState('');
+  const [calificacionEnviada, setCalificacionEnviada] = useState(false);
+  const [enviandoCalificacion, setEnviandoCalificacion] = useState(false);
+
   const cambiarCantidad = (prodId: string, delta: number) => {
     setPedidoItems((prev) => {
       const actual = prev[prodId] || 0;
@@ -78,6 +87,10 @@ export default function ModalDetalleComercio({
 
   React.useEffect(() => {
     setPedidoItems({});
+    setEstrellasSeleccionadas(0);
+    setHoverEstrellas(0);
+    setComentarioCalificacion('');
+    setCalificacionEnviada(false);
     if (comercio?.productos?.some((p) => p.es_oferta)) {
       setPestanaActiva('ofertas');
     } else {
@@ -338,6 +351,19 @@ export default function ModalDetalleComercio({
               </div>
             )}
 
+            {/* Banner: Información sin Actualizar (Actividad Pendiente de Confirmación) */}
+            {(comercio.pulso_semanal_estado === 'pendiente' || comercio.pulso_semanal_estado === 'alerta' || comercio.pulso_semanal_estado === 'pausado') && !comercio.cerrado_momentaneo && !comercio.en_vacaciones && (
+              <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-amber-500/40 flex items-start gap-2.5 text-amber-200 text-xs shadow-sm">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-amber-300 block">Información sin actualizar</span>
+                  <p className="text-[11px] text-zinc-300 leading-tight">
+                    Este comercio aún no ha confirmado su actividad semanal. Te sugerimos consultar previamente por WhatsApp antes de acudir físicamente al local.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Tarjeta de Ubicación y Delivery */}
             <div className="p-3.5 rounded-2xl bg-zinc-900/70 border border-zinc-800 space-y-2 text-xs">
               <div className="flex items-start gap-2 text-zinc-300">
@@ -557,6 +583,82 @@ export default function ModalDetalleComercio({
                 <MapPin className="w-3.5 h-3.5" />
                 Ubicar en Mapa
               </button>
+            </div>
+
+            {/* Calificación de 1 a 5 Estrellas para Vecinos (Privado para Comercio y Administración) */}
+            <div className="p-3.5 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                  <span>¿Compraste acá? Dejá tu valoración</span>
+                </span>
+                <span className="text-[10px] font-mono text-zinc-500 bg-zinc-950 px-2 py-0.5 rounded-md border border-zinc-800 uppercase">Privado</span>
+              </div>
+
+              {calificacionEnviada ? (
+                <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-xs text-emerald-300 text-center animate-fadeIn space-y-0.5">
+                  <p className="font-bold">¡Muchas gracias por tu valoración!</p>
+                  <p className="text-[11px] text-emerald-200/80">Fue registrada y enviada de forma privada al comercio y al panel de administración.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-center gap-1.5 py-1">
+                    {[1, 2, 3, 4, 5].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setEstrellasSeleccionadas(val)}
+                        onMouseEnter={() => setHoverEstrellas(val)}
+                        onMouseLeave={() => setHoverEstrellas(0)}
+                        className="p-1 hover:scale-125 transition-transform cursor-pointer"
+                        title={`${val} estrella${val > 1 ? 's' : ''}`}
+                      >
+                        <Star
+                          className={`w-6 h-6 transition-colors ${
+                            (hoverEstrellas || estrellasSeleccionadas) >= val
+                              ? 'text-amber-400 fill-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]'
+                              : 'text-zinc-600 hover:text-zinc-400'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+
+                  {estrellasSeleccionadas > 0 && (
+                    <div className="space-y-2 animate-fadeIn pt-1">
+                      <input
+                        type="text"
+                        value={comentarioCalificacion}
+                        onChange={(e) => setComentarioCalificacion(e.target.value)}
+                        placeholder="Comentario sobre la atención o producto (opcional)"
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-500/60"
+                        maxLength={200}
+                      />
+                      <button
+                        type="button"
+                        disabled={enviandoCalificacion}
+                        onClick={async () => {
+                          setEnviandoCalificacion(true);
+                          await guardarCalificacionVecino(
+                            comercio.id,
+                            estrellasSeleccionadas,
+                            comentarioCalificacion,
+                            'Vecino de la comunidad'
+                          );
+                          setEnviandoCalificacion(false);
+                          setCalificacionEnviada(true);
+                        }}
+                        className="w-full py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-black font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 shadow-md shadow-amber-950/40"
+                      >
+                        {enviandoCalificacion ? 'Enviando...' : `Enviar valoración (${estrellasSeleccionadas} de 5)`}
+                      </button>
+                      <p className="text-[10px] text-zinc-500 text-center leading-tight">
+                        🔒 Tu opinión es confidencial: solo la verán el comercio y la administración para control de calidad.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Botón de Iniciar Debate / Reportar Inconveniente */}
