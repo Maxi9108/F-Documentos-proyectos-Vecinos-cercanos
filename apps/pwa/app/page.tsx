@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import BannerConoceNeoFaro from '@/components/BannerConoceNeoFaro';
 import DirectorioComercios from '@/components/DirectorioComercios';
 import BarraUsuarioYUbicacion from '@/components/BarraUsuarioYUbicacion';
 import NeoFaroLogo from '@/components/NeoFaroLogo';
@@ -56,7 +57,8 @@ export default async function HomePage() {
       </header>
 
       {/* Contenido Principal */}
-      <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-6">
+        <BannerConoceNeoFaro />
         <DirectorioComercios initialComercios={comercios} />
       </div>
 
