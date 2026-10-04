@@ -57,6 +57,7 @@ import {
   actualizarTicketSoporte,
   aplicarAmnistiaZonal,
   getTodasCalificaciones,
+  STORAGE_KEY_COMERCIOS_ELIMINADOS,
 } from '@/lib/supabase';
 import ContadorMembresia from '@/components/ContadorMembresia';
 import { useUser } from '@/context/user-context';
@@ -185,6 +186,9 @@ export default function AdminPage() {
     | 'amnistia'
     | 'calificaciones'
   >('pendientes');
+
+  // Sub-pestaña de Moderación: Comercios Pendientes vs No Aprobados / Rechazados
+  const [subPestanaModeracion, setSubPestanaModeracion] = useState<'pendientes' | 'rechazados'>('pendientes');
 
   // Estados para Amnistía Zonal y Calificaciones Vecinales
   const [zonaAmnistia, setZonaAmnistia] = useState('Todas');
@@ -333,22 +337,30 @@ export default function AdminPage() {
 
     let lista = [...base];
     try {
+      const eliminadosRaw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_COMERCIOS_ELIMINADOS) : null;
+      const eliminadosSet = new Set<string>(eliminadosRaw ? JSON.parse(eliminadosRaw) : []);
+
       const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
       if (localesRaw) {
         const locales: Comercio[] = JSON.parse(localesRaw);
         locales.forEach((loc) => {
+          if (eliminadosSet.has(loc.id)) return; // Nunca resucitar eliminados
+
           const idx = lista.findIndex((c) => c.id === loc.id);
           if (idx >= 0) {
             const serverItem = lista[idx];
-            const esPendiente = serverItem.estado_aprobacion === 'pendiente' || loc.estado_aprobacion === 'pendiente';
-            const esAprobado = serverItem.estado_aprobacion === 'aprobado' && loc.estado_aprobacion !== 'pendiente';
-            const estadoFinal = esAprobado ? 'aprobado' : (esPendiente ? 'pendiente' : 'aprobado');
+            // Respetar estado rechazado si existe en el servidor o local
+            const esRechazado = serverItem.estado_aprobacion === 'rechazado' || loc.estado_aprobacion === 'rechazado';
+            const esPendiente = !esRechazado && (serverItem.estado_aprobacion === 'pendiente' || loc.estado_aprobacion === 'pendiente');
+            const estadoFinal = esRechazado ? 'rechazado' : (esPendiente ? 'pendiente' : 'aprobado');
             lista[idx] = { ...loc, ...serverItem, estado_aprobacion: estadoFinal };
           } else {
             lista.unshift(loc);
           }
         });
       }
+      // Filtrar definitivamente cualquier comercio eliminado
+      lista = lista.filter((c) => !eliminadosSet.has(c.id));
     } catch (e) {
       console.warn(e);
     }
@@ -785,9 +797,13 @@ export default function AdminPage() {
     const extras: Comercio[] = [];
 
     solicitudesMod.forEach((sol) => {
+      // Ignorar solicitudes que estén rechazadas o aprobadas, o comercios que ya están rechazados
       if (sol.estado === 'pendiente' && !ids.has(sol.comercio_id) && sol.cambios) {
         const existente = comercios.find((c) => c.id === sol.comercio_id);
         if (existente) {
+          if (existente.estado_aprobacion === 'rechazado') {
+            return; // Si el comercio fue rechazado, no incluir en pendientes
+          }
           extras.push({
             ...existente,
             ...sol.cambios,
@@ -816,6 +832,11 @@ export default function AdminPage() {
 
     return [...directos, ...extras];
   }, [comercios, solicitudesMod]);
+
+  // Comercios No Aprobados / Rechazados
+  const comerciosRechazados = useMemo(() => {
+    return comercios.filter((c) => c.estado_aprobacion === 'rechazado');
+  }, [comercios]);
 
   const comprobantesPendientes = useMemo(() => {
     return comprobantes.filter((c) => c.estado === 'pendiente');
@@ -1023,8 +1044,17 @@ export default function AdminPage() {
               fecha_vencimiento_nivel: fechaVencimiento,
               aprobado_por: adminActual?.email,
               fecha_aprobacion: fechaAprobacion,
+              motivo_rechazo: undefined,
             }
           : c
+      )
+    );
+
+    setSolicitudesMod((prev) =>
+      prev.map((s) =>
+        s.comercio_id === comercio.id || s.id === comercio.id
+          ? { ...s, estado: 'aprobado', fecha_aprobacion: fechaAprobacion }
+          : s
       )
     );
   };
@@ -1300,9 +1330,10 @@ export default function AdminPage() {
   };
 
   const handleEliminar = async (id: string, nombre: string) => {
-    if (confirm(`¿Estás seguro de que deseas eliminar permanentemente "${nombre}"?`)) {
+    if (confirm(`¿Estás seguro de que deseas eliminar permanentemente "${nombre}"? No volverá a aparecer en el sistema.`)) {
       await eliminarComercio(id);
       setComercios((prev) => prev.filter((c) => c.id !== id));
+      setSolicitudesMod((prev) => prev.filter((s) => s.comercio_id !== id && s.id !== id));
     }
   };
 
@@ -1798,22 +1829,27 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Barra de Pestañas */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-1 overflow-x-auto border-t border-zinc-900 scrollbar-none">
+        {/* Barra de Pestañas Responsiva (envuelve ordenadamente en filas hacia abajo para no ocultar ninguna sección) */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 border-t border-zinc-900 flex flex-wrap items-center gap-1.5 bg-zinc-950/40">
           <button
             type="button"
             onClick={() => setPestanaActiva('pendientes')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'pendientes'
-                ? 'border-amber-500 text-amber-300'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <Clock className="w-4 h-4" />
-            Solicitudes Pendientes
+            <Clock className="w-3.5 h-3.5 text-amber-400" />
+            <span>Moderación & Pendientes</span>
             {solicitudesPendientes.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-black animate-pulse">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-500 text-black animate-pulse">
                 {solicitudesPendientes.length}
+              </span>
+            )}
+            {comerciosRechazados.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500/30 text-rose-300 border border-rose-500/40" title={`${comerciosRechazados.length} no aprobados`}>
+                {comerciosRechazados.length} no aprob.
               </span>
             )}
           </button>
@@ -1821,29 +1857,29 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={() => setPestanaActiva('activos')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'activos'
-                ? 'border-indigo-500 text-white'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-indigo-600/20 border-indigo-500/50 text-white shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <Store className="w-4 h-4" />
-            Comercios Aprobados ({comerciosAprobados.length})
+            <Store className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Aprobados ({comerciosAprobados.length})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setPestanaActiva('transferencias')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'transferencias'
-                ? 'border-emerald-500 text-emerald-300'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300 shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <DollarSign className="w-4 h-4 text-emerald-400" />
-            Transferencias & Membresías
+            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Transferencias</span>
             {comprobantesPendientes.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500 text-black animate-pulse">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-emerald-500 text-black animate-pulse">
                 {comprobantesPendientes.length}
               </span>
             )}
@@ -1852,16 +1888,16 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={() => setPestanaActiva('modificaciones')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'modificaciones'
-                ? 'border-violet-500 text-violet-300'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-violet-600/20 border-violet-500/50 text-violet-300 shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <FileText className="w-4 h-4 text-violet-400" />
-            Modificaciones
+            <FileText className="w-3.5 h-3.5 text-violet-400" />
+            <span>Modificaciones</span>
             {solicitudesModPendientes.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-violet-500 text-white animate-pulse">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-violet-500 text-white animate-pulse">
                 {solicitudesModPendientes.length}
               </span>
             )}
@@ -1870,16 +1906,16 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={() => setPestanaActiva('debates')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'debates'
-                ? 'border-amber-500 text-amber-300'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <AlertTriangle className="w-4 h-4 text-amber-400" />
-            Debates & Reclamos
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+            <span>Debates</span>
             {debatesAbiertos.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500 text-black animate-pulse">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-500 text-black animate-pulse">
                 {debatesAbiertos.length}
               </span>
             )}
@@ -1888,16 +1924,16 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={() => setPestanaActiva('soporte')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'soporte'
-                ? 'border-cyan-500 text-cyan-300'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-cyan-600/20 border-cyan-500/50 text-cyan-300 shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <HelpCircle className="w-4 h-4 text-cyan-400" />
-            Soporte & Sugerencias
+            <HelpCircle className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Soporte</span>
             {ticketsSoportePendientes.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-500 text-black animate-pulse">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-cyan-500 text-black animate-pulse">
                 {ticketsSoportePendientes.length}
               </span>
             )}
@@ -1906,29 +1942,29 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={() => setPestanaActiva('exportar')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'exportar'
-                ? 'border-emerald-500 text-emerald-300'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300 shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            Planilla Pública ({comerciosParaExportar.length})
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Planilla Pública ({comerciosParaExportar.length})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setPestanaActiva('inactivos')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'inactivos'
-                ? 'border-rose-500 text-rose-300'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-rose-600/20 border-rose-500/50 text-rose-300 shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <AlertCircle className="w-4 h-4 text-rose-400" />
-            Tickets Inactividad (&gt;60d)
+            <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+            <span>Inactividad</span>
             {ticketsInactividad.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500 text-white animate-pulse">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-rose-500 text-white animate-pulse">
                 {ticketsInactividad.length}
               </span>
             )}
@@ -1937,80 +1973,81 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={() => setPestanaActiva('metricas')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'metricas'
-                ? 'border-indigo-500 text-white'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-indigo-600/20 border-indigo-500/50 text-white shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <BarChart3 className="w-4 h-4 text-emerald-400" />
-            Informes & Movimientos
+            <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Visitas & Métricas</span>
           </button>
 
           <button
             type="button"
             onClick={() => setPestanaActiva('categorias')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'categorias'
-                ? 'border-indigo-500 text-white'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-indigo-600/20 border-indigo-500/50 text-white shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <Tag className="w-4 h-4 text-indigo-400" />
-            Gestión de Categorías ({categorias.length})
+            <Tag className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Categorías ({categorias.length})</span>
           </button>
 
+          {/* Pestaña de Usuarios Registrados (Claramente destacada en la grilla visual) */}
           <button
             type="button"
             onClick={() => setPestanaActiva('usuarios')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'usuarios'
-                ? 'border-indigo-500 text-white'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-emerald-600/25 border-emerald-400 text-emerald-200 shadow-md ring-1 ring-emerald-500/40'
+                : 'bg-emerald-950/30 border-emerald-800/60 text-emerald-300 hover:bg-emerald-900/40 hover:text-emerald-100'
             }`}
           >
-            <Users className="w-4 h-4 text-emerald-400" />
-            Usuarios Registrados ({usuariosSistema.length})
+            <Users className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Usuarios Registrados ({usuariosSistema.length})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setPestanaActiva('amnistia')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'amnistia'
-                ? 'border-amber-400 text-amber-300'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-amber-500/25 border-amber-400 text-amber-200 shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            Amnistía Zonal
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Amnistía Zonal</span>
           </button>
 
           <button
             type="button"
             onClick={() => setPestanaActiva('calificaciones')}
-            className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+            className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
               pestanaActiva === 'calificaciones'
-                ? 'border-amber-400 text-white'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                ? 'bg-amber-500/25 border-amber-400 text-white shadow-sm'
+                : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
             }`}
           >
-            <Star className="w-4 h-4 text-amber-400" />
-            Calificaciones Vecinales ({calificacionesTodas.length})
+            <Star className="w-3.5 h-3.5 text-amber-400" />
+            <span>Calificaciones ({calificacionesTodas.length})</span>
           </button>
 
           {esSuperAdmin && (
             <button
               type="button"
               onClick={() => setPestanaActiva('equipo')}
-              className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
                 pestanaActiva === 'equipo'
-                  ? 'border-indigo-500 text-white'
-                  : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                  ? 'bg-indigo-600/20 border-indigo-500/50 text-white shadow-sm'
+                  : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
               }`}
             >
-              <Users className="w-4 h-4 text-cyan-400" />
-              Equipo (Admin Nivel 2)
+              <Users className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Equipo Admin</span>
             </button>
           )}
 
@@ -2018,14 +2055,14 @@ export default function AdminPage() {
             <button
               type="button"
               onClick={() => setPestanaActiva('perfil')}
-              className={`py-3 px-3.5 text-xs font-bold border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer ${
+              className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${
                 pestanaActiva === 'perfil'
-                  ? 'border-indigo-500 text-white'
-                  : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                  ? 'bg-indigo-600/20 border-indigo-500/50 text-white shadow-sm'
+                  : 'bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
               }`}
             >
-              <KeyRound className="w-4 h-4 text-amber-400" />
-              Mi Perfil & Contraseña
+              <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+              <span>Mi Perfil</span>
             </button>
           )}
         </div>
@@ -2033,194 +2070,426 @@ export default function AdminPage() {
 
       {/* Contenido Principal */}
       <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* PESTAÑA 1: SOLICITUDES PENDIENTES */}
+        {/* PESTAÑA 1: MODERACIÓN (PENDIENTES Y NO APROBADOS/RECHAZADOS) */}
         {pestanaActiva === 'pendientes' && (
           <div className="space-y-6">
             <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/30 to-zinc-900 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold text-white flex items-center gap-2">
                   <Clock className="w-5 h-5 text-amber-400" />
-                  Cola de Moderación: Comercios Pendientes ({solicitudesPendientes.length})
+                  Centro de Moderación de Comercios
                 </h2>
                 <p className="text-xs text-zinc-400">
-                  Verifica que los datos del negocio, ubicación y teléfonos sean correctos antes de habilitar su publicación en el barrio.
+                  Gestiona solicitudes de alta pendientes y comercios no aprobados. Una vez conversado con el titular, puedes aprobarlo directamente o borrarlo definitivamente sin que vuelva a aparecer.
                 </p>
               </div>
 
               <button
                 type="button"
                 onClick={recargarDatos}
-                className="py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-xl transition-colors shrink-0"
+                className="py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-xl transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
               >
+                <RefreshCw className="w-3.5 h-3.5" />
                 Actualizar lista
               </button>
             </div>
 
-            {solicitudesPendientes.length === 0 ? (
-              <div className="text-center py-16 px-4 rounded-3xl bg-zinc-950 border border-zinc-800/80 space-y-3">
-                <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-                <h3 className="text-lg font-bold text-white">¡No hay solicitudes pendientes!</h3>
-                <p className="text-xs text-zinc-400 max-w-sm mx-auto">
-                  Todos los comercios registrados en el portal ya fueron moderados o aprobados.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {solicitudesPendientes.map((comercio) => {
-                  const rubroActual = rubroAprobacion[comercio.id] || comercio.rubro;
+            {/* Selector de Sub-pestañas: Pendientes vs No Aprobados */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 pb-3">
+              <button
+                type="button"
+                onClick={() => setSubPestanaModeracion('pendientes')}
+                className={`py-2 px-3.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer border ${
+                  subPestanaModeracion === 'pendientes'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                    : 'bg-zinc-900/80 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:bg-zinc-800/80'
+                }`}
+              >
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span>Pendientes de Aprobación</span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    solicitudesPendientes.length > 0
+                      ? 'bg-amber-500 text-black animate-pulse'
+                      : 'bg-zinc-800 text-zinc-400'
+                  }`}
+                >
+                  {solicitudesPendientes.length}
+                </span>
+              </button>
 
-                  return (
-                    <div
-                      key={comercio.id}
-                      className="bg-zinc-950 border border-amber-500/40 rounded-3xl p-5 space-y-4 shadow-xl flex flex-col justify-between"
-                    >
-                      <div className="space-y-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-1.5">
-                              Esperando Aprobación
-                            </span>
-                            <h3 className="text-xl font-bold text-white">{comercio.nombre}</h3>
+              <button
+                type="button"
+                onClick={() => setSubPestanaModeracion('rechazados')}
+                className={`py-2 px-3.5 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer border ${
+                  subPestanaModeracion === 'rechazados'
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-sm'
+                    : 'bg-zinc-900/80 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:bg-zinc-800/80'
+                }`}
+              >
+                <XCircle className="w-4 h-4 text-rose-400" />
+                <span>No Aprobados / Rechazados</span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                    comerciosRechazados.length > 0
+                      ? 'bg-rose-500 text-white'
+                      : 'bg-zinc-800 text-zinc-400'
+                  }`}
+                >
+                  {comerciosRechazados.length}
+                </span>
+              </button>
+            </div>
+
+            {/* SUB-VISTA 1: COMERCIOS PENDIENTES */}
+            {subPestanaModeracion === 'pendientes' && (
+              <>
+                {solicitudesPendientes.length === 0 ? (
+                  <div className="text-center py-16 px-4 rounded-3xl bg-zinc-950 border border-zinc-800/80 space-y-3">
+                    <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
+                    <h3 className="text-lg font-bold text-white">¡No hay solicitudes pendientes!</h3>
+                    <p className="text-xs text-zinc-400 max-w-sm mx-auto">
+                      Todos los comercios registrados en el portal ya fueron moderados o aprobados.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {solicitudesPendientes.map((comercio) => {
+                      const rubroActual = rubroAprobacion[comercio.id] || comercio.rubro;
+
+                      return (
+                        <div
+                          key={comercio.id}
+                          className="bg-zinc-950 border border-amber-500/40 rounded-3xl p-5 space-y-4 shadow-xl flex flex-col justify-between"
+                        >
+                          <div className="space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30 mb-1.5">
+                                  Esperando Aprobación
+                                </span>
+                                <h3 className="text-xl font-bold text-white">{comercio.nombre}</h3>
+                              </div>
+                              {comercio.tipo_atencion === 'solo_envio' && (
+                                <span className="px-2.5 py-1 rounded-xl bg-cyan-950/80 text-cyan-300 border border-cyan-800/80 text-xs font-bold flex items-center gap-1">
+                                  <Bike className="w-3.5 h-3.5" />
+                                  Solo Envíos
+                                </span>
+                              )}
+                            </div>
+
+                            {comercio.descripcion && (
+                              <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-900/50 p-2.5 rounded-xl border border-zinc-800/50">
+                                {comercio.descripcion}
+                              </p>
+                            )}
+
+                            {/* Categoría Solicitada destacada */}
+                            {comercio.categoria_solicitada && (
+                              <div className="p-3 rounded-2xl bg-indigo-950/40 border border-indigo-500/40 space-y-1">
+                                <span className="text-[11px] font-bold text-indigo-300 flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                                  Categoría solicitada por el comerciante:
+                                </span>
+                                <p className="text-sm font-black text-white">
+                                  &quot;{comercio.categoria_solicitada}&quot;
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => handleHomologarCategoria(comercio.categoria_solicitada!)}
+                                  className="text-[11px] text-indigo-400 hover:text-indigo-300 underline font-medium pt-1 block cursor-pointer"
+                                >
+                                  Sumar &quot;{comercio.categoria_solicitada}&quot; a las categorías oficiales del portal
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Datos de contacto y ubicación */}
+                            <div className="space-y-1.5 text-xs text-zinc-400">
+                              <p className="flex items-center gap-2">
+                                <MapPin className="w-4 h-4 text-indigo-400 shrink-0" />
+                                <span>{comercio.direccion}</span>
+                                <a
+                                  href={`https://www.google.com/maps/search/?api=1&query=${comercio.latitud},${comercio.longitud}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[11px] text-indigo-400 hover:underline flex items-center gap-0.5 ml-auto"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  Ver en Mapa
+                                </a>
+                              </p>
+                              <p className="flex items-center gap-2">
+                                <Phone className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <span>Tel: {comercio.telefono} | WhatsApp: {comercio.whatsapp || 'No especificado'}</span>
+                              </p>
+                              {Boolean(comercio.radio_entrega_metros) && (
+                                <p className="flex items-center gap-2 text-cyan-300">
+                                  <Bike className="w-4 h-4 shrink-0" />
+                                  <span>Radio de entrega: {(comercio.radio_entrega_metros! / 1000).toFixed(1)} km</span>
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Selector para asignar o confirmar categoría oficial */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-800">
+                              <div>
+                                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                                  Categoría Oficial a Asignar:
+                                </label>
+                                <select
+                                  value={rubroActual}
+                                  onChange={(e) =>
+                                    setRubroAprobacion((prev) => ({
+                                      ...prev,
+                                      [comercio.id]: e.target.value,
+                                    }))
+                                  }
+                                  className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                >
+                                  {categorias.map((c) => (
+                                    <option key={c.id} value={c.nombre}>
+                                      {c.nombre}
+                                    </option>
+                                  ))}
+                                  {comercio.categoria_solicitada && !categorias.some((c) => c.nombre === comercio.categoria_solicitada) && (
+                                    <option value={comercio.categoria_solicitada}>
+                                      {comercio.categoria_solicitada} (Solicitada)
+                                    </option>
+                                  )}
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center justify-between">
+                                  <span>Nivel de Membresía:</span>
+                                  <span className="text-[10px] text-amber-400 font-bold uppercase">
+                                    Pide: {comercio.nivel_solicitado || 'standar'}
+                                  </span>
+                                </label>
+                                <select
+                                  value={nivelAprobacion[comercio.id] || comercio.nivel_solicitado || 'standar'}
+                                  onChange={(e) =>
+                                    setNivelAprobacion((prev) => ({
+                                      ...prev,
+                                      [comercio.id]: e.target.value as NivelComercio,
+                                    }))
+                                  }
+                                  className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                                >
+                                  <option value="standar">Standar (Catálogo 20 · 0 ofertas)</option>
+                                  <option value="premium">Premium (Catálogo 50 · 2 ofertas/día · 30 días)</option>
+                                  <option value="gold">Gold (Catálogo 100 · 5 ofertas/día · 30 días)</option>
+                                </select>
+                              </div>
+                            </div>
                           </div>
-                          {comercio.tipo_atencion === 'solo_envio' && (
-                            <span className="px-2.5 py-1 rounded-xl bg-cyan-950/80 text-cyan-300 border border-cyan-800/80 text-xs font-bold flex items-center gap-1">
-                              <Bike className="w-3.5 h-3.5" />
-                              Solo Envíos
-                            </span>
-                          )}
-                        </div>
 
-                        {comercio.descripcion && (
-                          <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-900/50 p-2.5 rounded-xl border border-zinc-800/50">
-                            {comercio.descripcion}
-                          </p>
-                        )}
-
-                        {/* Categoría Solicitada destacada */}
-                        {comercio.categoria_solicitada && (
-                          <div className="p-3 rounded-2xl bg-indigo-950/40 border border-indigo-500/40 space-y-1">
-                            <span className="text-[11px] font-bold text-indigo-300 flex items-center gap-1.5">
-                              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                              Categoría solicitada por el comerciante:
-                            </span>
-                            <p className="text-sm font-black text-white">
-                              &quot;{comercio.categoria_solicitada}&quot;
-                            </p>
+                          {/* Botones de Acción */}
+                          <div className="pt-4 border-t border-zinc-800/80 flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => handleHomologarCategoria(comercio.categoria_solicitada!)}
-                              className="text-[11px] text-indigo-400 hover:text-indigo-300 underline font-medium pt-1 block"
+                              onClick={() => handleAprobar(comercio)}
+                              className="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-emerald-950/60 flex items-center justify-center gap-1.5 cursor-pointer"
                             >
-                              Sumar &quot;{comercio.categoria_solicitada}&quot; a las categorías oficiales del portal
+                              <CheckCircle2 className="w-4 h-4" />
+                              Aprobar Comercio
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRechazar(comercio)}
+                              className="py-2.5 px-3 bg-zinc-900 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-300 border border-zinc-800 hover:border-rose-800 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <XCircle className="w-4 h-4" />
+                              Rechazar
                             </button>
                           </div>
-                        )}
-
-                        {/* Datos de contacto y ubicación */}
-                        <div className="space-y-1.5 text-xs text-zinc-400">
-                          <p className="flex items-center gap-2">
-                            <MapPin className="w-4 h-4 text-indigo-400 shrink-0" />
-                            <span>{comercio.direccion}</span>
-                            <a
-                              href={`https://www.google.com/maps/search/?api=1&query=${comercio.latitud},${comercio.longitud}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[11px] text-indigo-400 hover:underline flex items-center gap-0.5 ml-auto"
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              Ver en Mapa
-                            </a>
-                          </p>
-                          <p className="flex items-center gap-2">
-                            <Phone className="w-4 h-4 text-emerald-400 shrink-0" />
-                            <span>Tel: {comercio.telefono} | WhatsApp: {comercio.whatsapp || 'No especificado'}</span>
-                          </p>
-                          {Boolean(comercio.radio_entrega_metros) && (
-                            <p className="flex items-center gap-2 text-cyan-300">
-                              <Bike className="w-4 h-4 shrink-0" />
-                              <span>Radio de entrega: {(comercio.radio_entrega_metros! / 1000).toFixed(1)} km</span>
-                            </p>
-                          )}
                         </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
 
-                        {/* Selector para asignar o confirmar categoría oficial */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-800">
-                          <div>
-                            <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                              Categoría Oficial a Asignar:
-                            </label>
-                            <select
-                              value={rubroActual}
-                              onChange={(e) =>
-                                setRubroAprobacion((prev) => ({
-                                  ...prev,
-                                  [comercio.id]: e.target.value,
-                                }))
-                              }
-                              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                            >
-                              {categorias.map((c) => (
-                                <option key={c.id} value={c.nombre}>
-                                  {c.nombre}
-                                </option>
-                              ))}
-                              {comercio.categoria_solicitada && !categorias.some((c) => c.nombre === comercio.categoria_solicitada) && (
-                                <option value={comercio.categoria_solicitada}>
-                                  {comercio.categoria_solicitada} (Solicitada)
-                                </option>
-                              )}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center justify-between">
-                              <span>Nivel de Membresía:</span>
-                              <span className="text-[10px] text-amber-400 font-bold uppercase">
-                                Pide: {comercio.nivel_solicitado || 'standar'}
-                              </span>
-                            </label>
-                            <select
-                              value={nivelAprobacion[comercio.id] || comercio.nivel_solicitado || 'standar'}
-                              onChange={(e) =>
-                                setNivelAprobacion((prev) => ({
-                                  ...prev,
-                                  [comercio.id]: e.target.value as NivelComercio,
-                                }))
-                              }
-                              className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
-                            >
-                              <option value="standar">Standar (Catálogo 20 · 0 ofertas)</option>
-                              <option value="premium">Premium (Catálogo 50 · 2 ofertas/día · 30 días)</option>
-                              <option value="gold">Gold (Catálogo 100 · 5 ofertas/día · 30 días)</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Botones de Acción */}
-                      <div className="pt-4 border-t border-zinc-800/80 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleAprobar(comercio)}
-                          className="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-emerald-950/60 flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          Aprobar Comercio
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleRechazar(comercio)}
-                          className="py-2.5 px-3 bg-zinc-900 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-300 border border-zinc-800 hover:border-rose-800 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          <XCircle className="w-4 h-4" />
-                          Rechazar
-                        </button>
+            {/* SUB-VISTA 2: COMERCIOS NO APROBADOS / RECHAZADOS */}
+            {subPestanaModeracion === 'rechazados' && (
+              <>
+                {comerciosRechazados.length === 0 ? (
+                  <div className="text-center py-16 px-4 rounded-3xl bg-zinc-950 border border-zinc-800/80 space-y-3">
+                    <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
+                    <h3 className="text-lg font-bold text-white">No hay comercios no aprobados</h3>
+                    <p className="text-xs text-zinc-400 max-w-sm mx-auto">
+                      Actualmente no hay comercios en estado de rechazo. Todos los comercios fueron aprobados o eliminados.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-900/40 text-xs text-rose-300 flex items-start gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-semibold text-rose-200">
+                          Gestión post-notificación de Comercios No Aprobados ({comerciosRechazados.length})
+                        </p>
+                        <p className="text-zinc-400 mt-0.5">
+                          Aquí figuran los locales notificados de no aprobación. Una vez hablado con el titular por teléfono o WhatsApp para consensuar datos o pautas, puedes <strong>Aprobarlo directamente</strong> (pasará a Comercios Aprobados) o <strong>Borrarlo definitivamente</strong> (se eliminará de la base de datos y de la memoria local para que no vuelva a aparecer).
+                        </p>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {comerciosRechazados.map((comercio) => {
+                        const rubroActual = rubroAprobacion[comercio.id] || comercio.rubro;
+                        const telLimpio = (comercio.whatsapp || comercio.telefono || '').replace(/\D/g, '');
+
+                        return (
+                          <div
+                            key={comercio.id}
+                            className="bg-zinc-950 border border-rose-500/40 rounded-3xl p-5 space-y-4 shadow-xl flex flex-col justify-between"
+                          >
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 mb-1.5">
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    No Aprobado / Rechazado
+                                  </span>
+                                  <h3 className="text-xl font-bold text-white">{comercio.nombre}</h3>
+                                  <p className="text-xs text-zinc-400">{comercio.rubro} · {comercio.direccion}</p>
+                                </div>
+                              </div>
+
+                              {/* Alerta Destacada: Motivo del rechazo registrado */}
+                              <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-800/60 space-y-1">
+                                <span className="text-[11px] font-bold text-rose-300 flex items-center gap-1.5">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                  Motivo de No Aprobación registrado:
+                                </span>
+                                <p className="text-xs font-medium text-rose-100">
+                                  &quot;{comercio.motivo_rechazo || 'No cumple con las pautas de moderación o falta información'}&quot;
+                                </p>
+                              </div>
+
+                              {/* Canales directos de contacto para hablar con el comercio */}
+                              <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 space-y-2">
+                                <span className="text-[11px] font-bold text-zinc-300 flex items-center gap-1.5">
+                                  <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                                  Contactar y coordinar con el comercio:
+                                </span>
+                                <div className="flex flex-wrap items-center gap-2 pt-1">
+                                  {telLimpio && (
+                                    <a
+                                      href={`https://wa.me/${telLimpio.startsWith('54') ? telLimpio : `549${telLimpio}`}?text=${encodeURIComponent(`Hola ${comercio.nombre}, nos comunicamos desde la administración de NeoFaro / Vecinos Cercanos respecto a la solicitud de tu comercio.`)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="py-1.5 px-3 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors no-underline"
+                                    >
+                                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                                      Hablar por WhatsApp ({comercio.whatsapp || comercio.telefono})
+                                    </a>
+                                  )}
+                                  {comercio.telefono && (
+                                    <a
+                                      href={`tel:${comercio.telefono}`}
+                                      className="py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors no-underline"
+                                    >
+                                      <Phone className="w-3.5 h-3.5" />
+                                      Llamar Tel: {comercio.telefono}
+                                    </a>
+                                  )}
+                                  <a
+                                    href={`https://www.google.com/maps/search/?api=1&query=${comercio.latitud},${comercio.longitud}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-medium flex items-center gap-1 transition-colors no-underline ml-auto"
+                                  >
+                                    <MapPin className="w-3.5 h-3.5 text-indigo-400" />
+                                    Ver Mapa
+                                  </a>
+                                </div>
+                              </div>
+
+                              {/* Selectores de Categoría y Nivel para cuando se apruebe */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-800/80">
+                                <div>
+                                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                                    Categoría Oficial:
+                                  </label>
+                                  <select
+                                    value={rubroActual}
+                                    onChange={(e) =>
+                                      setRubroAprobacion((prev) => ({
+                                        ...prev,
+                                        [comercio.id]: e.target.value,
+                                      }))
+                                    }
+                                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                  >
+                                    {categorias.map((c) => (
+                                      <option key={c.id} value={c.nombre}>
+                                        {c.nombre}
+                                      </option>
+                                    ))}
+                                    {comercio.categoria_solicitada && !categorias.some((c) => c.nombre === comercio.categoria_solicitada) && (
+                                      <option value={comercio.categoria_solicitada}>
+                                        {comercio.categoria_solicitada} (Solicitada)
+                                      </option>
+                                    )}
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                                    Nivel de Membresía:
+                                  </label>
+                                  <select
+                                    value={nivelAprobacion[comercio.id] || comercio.nivel_solicitado || 'standar'}
+                                    onChange={(e) =>
+                                      setNivelAprobacion((prev) => ({
+                                        ...prev,
+                                        [comercio.id]: e.target.value as NivelComercio,
+                                      }))
+                                    }
+                                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                                  >
+                                    <option value="standar">Standar (Catálogo 20 · 0 ofertas)</option>
+                                    <option value="premium">Premium (Catálogo 50 · 2 ofertas/día · 30 días)</option>
+                                    <option value="gold">Gold (Catálogo 100 · 5 ofertas/día · 30 días)</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Botones de Resolución Post-Diálogo */}
+                            <div className="pt-4 border-t border-zinc-800/80 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleAprobar(comercio)}
+                                className="flex-1 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-emerald-950/60 flex items-center justify-center gap-1.5 cursor-pointer"
+                                title="Habilitar el comercio y pasarlo directamente a Comercios Aprobados"
+                              >
+                                <CheckCircle2 className="w-4 h-4" />
+                                Aprobar Comercio (Habilitar)
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleEliminar(comercio.id, comercio.nombre)}
+                                className="py-2.5 px-4 bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/70 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                                title="Eliminar permanentemente de la base de datos y de la memoria local"
+                              >
+                                <Trash2 className="w-4 h-4 text-rose-400" />
+                                Borrar Definitivamente
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

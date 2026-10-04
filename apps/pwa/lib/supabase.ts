@@ -28,6 +28,8 @@ export const isSupabaseConfigured = Boolean(
 // Cliente de Supabase exportado para uso general
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
+export const STORAGE_KEY_COMERCIOS_ELIMINADOS = 'vecinos_comercios_eliminados';
+
 /**
  * Verifica si los comercios con membresía Premium o Gold tienen su suscripción vencida
  * y los degrada automáticamente a Standar tanto en memoria como en almacenamiento.
@@ -274,13 +276,27 @@ export function verificarYRestaurarEstados(comercios: Comercio[]): Comercio[] {
  * Solo muestra comercios 100% verdaderos cargados en la base de datos o en el dispositivo.
  */
 export async function getComercios(): Promise<Comercio[]> {
+  // Cargar registro de comercios eliminados para que NUNCA vuelvan a aparecer
+  let eliminadosSet = new Set<string>();
+  if (typeof window !== 'undefined') {
+    try {
+      const elimRaw = localStorage.getItem(STORAGE_KEY_COMERCIOS_ELIMINADOS);
+      if (elimRaw) {
+        eliminadosSet = new Set(JSON.parse(elimRaw));
+      }
+    } catch (e) {
+      console.warn('[LocalStorage] Error al leer comercios eliminados:', e);
+    }
+  }
+
   if (!isSupabaseConfigured) {
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('vecinos_comercios_nuevos');
         if (raw) {
           const locales: Comercio[] = JSON.parse(raw);
-          return verificarYRestaurarEstados(verificarYDegradarVencidos(locales));
+          const activos = locales.filter((c) => !eliminadosSet.has(c.id));
+          return verificarYRestaurarEstados(verificarYDegradarVencidos(activos));
         }
       } catch (e) {
         console.warn(e);
@@ -295,11 +311,12 @@ export async function getComercios(): Promise<Comercio[]> {
     try {
       const { data: sols } = await supabase
         .from('solicitudes_modificacion')
-        .select('*')
-        .eq('estado', 'pendiente');
+        .select('*');
       if (sols) {
         sols.forEach((s) => {
-          solsPendientesMap.set(s.comercio_id, s);
+          if (!eliminadosSet.has(s.comercio_id)) {
+            solsPendientesMap.set(s.comercio_id, s);
+          }
         });
       }
     } catch (e) {
@@ -319,20 +336,28 @@ export async function getComercios(): Promise<Comercio[]> {
 
     if (data && data.length > 0) {
       (data as Comercio[]).forEach((dbItem) => {
+        // Si el comercio fue eliminado, ignorarlo
+        if (eliminadosSet.has(dbItem.id)) return;
+
         // Seguridad: eliminar password_comercio para que nunca viaje al cliente
         const safeDb = { ...dbItem };
         delete safeDb.password_comercio;
 
-        // Si existe una solicitud de moderación pendiente en Supabase para este comercio, aplicar sus datos y marcarlo como pendiente
+        // Si existe una solicitud en Supabase para este comercio
         const sol = solsPendientesMap.get(safeDb.id);
         if (sol) {
-          safeDb.estado_aprobacion = 'pendiente';
           if (sol.cambios && typeof sol.cambios === 'object') {
             Object.assign(safeDb, sol.cambios);
+          }
+          if (sol.estado === 'pendiente') {
             safeDb.estado_aprobacion = 'pendiente';
+          } else if (sol.estado === 'rechazado') {
+            safeDb.estado_aprobacion = 'rechazado';
+            safeDb.motivo_rechazo = sol.motivo_rechazo || safeDb.motivo_rechazo;
+          } else if (sol.estado === 'aprobado') {
+            safeDb.estado_aprobacion = 'aprobado';
           }
         } else if (!safeDb.estado_aprobacion) {
-          // Por defecto, si está activo en la tabla principal y no tiene solicitud pendiente, es aprobado
           safeDb.estado_aprobacion = 'aprobado';
         }
 
@@ -340,9 +365,18 @@ export async function getComercios(): Promise<Comercio[]> {
       });
     }
 
-    // 2. Si hay solicitudes pendientes que aún no están en la tabla 'comercios', incorporarlas a la lista
+    // 2. Si hay solicitudes que aún no están en la tabla 'comercios', incorporarlas a la lista
     solsPendientesMap.forEach((sol, comercioId) => {
+      if (eliminadosSet.has(comercioId)) return;
+
       if (!mapa.has(comercioId) && sol.cambios) {
+        const estadoFinal =
+          sol.estado === 'rechazado'
+            ? 'rechazado'
+            : sol.estado === 'aprobado'
+            ? 'aprobado'
+            : 'pendiente';
+
         const item: Comercio = {
           id: comercioId,
           nombre: sol.comercio_nombre || sol.cambios.nombre || 'Nuevo Comercio',
@@ -353,7 +387,8 @@ export async function getComercios(): Promise<Comercio[]> {
           latitud: sol.cambios.latitud || -34.6,
           longitud: sol.cambios.longitud || -58.4,
           esta_abierto: true,
-          estado_aprobacion: 'pendiente',
+          estado_aprobacion: estadoFinal,
+          motivo_rechazo: sol.motivo_rechazo || sol.cambios.motivo_rechazo,
           fecha_solicitud: sol.fecha_solicitud,
           ...sol.cambios,
         };
@@ -368,15 +403,24 @@ export async function getComercios(): Promise<Comercio[]> {
         const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
         if (localesRaw) {
           const locales: Comercio[] = JSON.parse(localesRaw);
-          locales.forEach((loc) => {
+          // Filtrar eliminados del almacenamiento local para que no sigan ocupando espacio
+          const localesFiltrados = locales.filter((loc) => !eliminadosSet.has(loc.id));
+          if (localesFiltrados.length !== locales.length) {
+            localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(localesFiltrados));
+          }
+
+          localesFiltrados.forEach((loc) => {
             if (mapa.has(loc.id)) {
-              // Si localmente o en el servidor está marcado pendiente y no fue aprobado explícitamente, mantener pendiente
               const existente = mapa.get(loc.id)!;
-              const esPendiente =
-                loc.estado_aprobacion === 'pendiente' ||
-                existente.estado_aprobacion === 'pendiente';
-              const esAprobado = existente.estado_aprobacion === 'aprobado' && loc.estado_aprobacion !== 'pendiente';
-              existente.estado_aprobacion = esAprobado ? 'aprobado' : (esPendiente ? 'pendiente' : 'aprobado');
+              // Si fue rechazado explícitamente en el servidor o local, respetarlo firmemente
+              if (existente.estado_aprobacion === 'rechazado' || loc.estado_aprobacion === 'rechazado') {
+                existente.estado_aprobacion = 'rechazado';
+                existente.motivo_rechazo = existente.motivo_rechazo || loc.motivo_rechazo;
+              } else if (existente.estado_aprobacion === 'aprobado' || loc.estado_aprobacion === 'aprobado') {
+                existente.estado_aprobacion = 'aprobado';
+              } else {
+                existente.estado_aprobacion = 'pendiente';
+              }
               mapa.set(loc.id, { ...loc, ...existente, estado_aprobacion: existente.estado_aprobacion });
             } else {
               mapa.set(loc.id, loc);
@@ -790,12 +834,15 @@ export async function rechazarComercio(
           estado: 'rechazado',
           motivo_rechazo: motivo,
         })
-        .eq('comercio_id', id);
+        .or(`comercio_id.eq.${id},id.eq.${id}`);
 
-      await supabase.from('comercios').update({
-        estado_aprobacion: 'rechazado',
-        motivo_rechazo: motivo,
-      }).eq('id', id);
+      const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (esUuid) {
+        await supabase.from('comercios').update({
+          estado_aprobacion: 'rechazado',
+          motivo_rechazo: motivo,
+        }).eq('id', id);
+      }
     } catch (err) {
       console.warn('[Supabase] Error al rechazar en Supabase:', err);
     }
@@ -805,24 +852,21 @@ export async function rechazarComercio(
 }
 
 /**
- * Elimina un comercio por su ID
+ * Elimina un comercio definitivamente por su ID
+ * Se elimina de Supabase (todas las tablas asociadas) y del almacenamiento local,
+ * registrándolo en una lista de exclusión definitiva para que jamás resucite.
  */
 export async function eliminarComercio(id: string): Promise<{ success: boolean; error?: string }> {
-  if (isSupabaseConfigured) {
-    try {
-      await supabase.from('solicitudes_modificacion').delete().eq('comercio_id', id);
-      const { error } = await supabase.from('comercios').delete().eq('id', id);
-      if (error) {
-        return { success: false, error: error.message };
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { success: false, error: msg };
-    }
-  }
-
+  // 1. Registrar siempre en eliminados para que no resucite desde ninguna caché
   if (typeof window !== 'undefined') {
     try {
+      const elimRaw = localStorage.getItem(STORAGE_KEY_COMERCIOS_ELIMINADOS);
+      const eliminados: string[] = elimRaw ? JSON.parse(elimRaw) : [];
+      if (!eliminados.includes(id)) {
+        eliminados.push(id);
+        localStorage.setItem(STORAGE_KEY_COMERCIOS_ELIMINADOS, JSON.stringify(eliminados));
+      }
+
       const guardadosRaw = localStorage.getItem('vecinos_comercios_nuevos');
       if (guardadosRaw) {
         const guardados: Comercio[] = JSON.parse(guardadosRaw);
@@ -830,7 +874,29 @@ export async function eliminarComercio(id: string): Promise<{ success: boolean; 
         localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(filtrados));
       }
     } catch (e) {
-      console.warn('[LocalStorage] Error al eliminar:', e);
+      console.warn('[LocalStorage] Error al registrar eliminación:', e);
+    }
+  }
+
+  // 2. Borrar de Supabase en todas las tablas asociadas
+  if (isSupabaseConfigured) {
+    try {
+      // Eliminar solicitudes de modificación vinculadas
+      await supabase.from('solicitudes_modificacion').delete().or(`comercio_id.eq.${id},id.eq.${id}`);
+      await supabase.from('debates_inconvenientes').delete().eq('comercio_id', id);
+      await supabase.from('calificaciones_comercios').delete().eq('comercio_id', id);
+      await supabase.from('comprobantes_transferencia').delete().eq('comercio_id', id);
+
+      // Eliminar de la tabla principal comercios
+      const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (esUuid) {
+        const { error } = await supabase.from('comercios').delete().eq('id', id);
+        if (error) {
+          console.warn('[Supabase] Error al borrar de comercios:', error.message);
+        }
+      }
+    } catch (err: unknown) {
+      console.warn('[Supabase] Excepción al eliminar comercio:', err);
     }
   }
 
