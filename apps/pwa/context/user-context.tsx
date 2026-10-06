@@ -10,7 +10,12 @@ import {
   cerrarSesionAdmin,
   restablecerPasswordAdminConPregunta,
 } from '@/lib/auth-admin';
-import { getUsuariosSistema, registrarOActualizarUsuario, registrarVisitaUsuario } from '@/lib/usuarios';
+import {
+  getUsuariosSistema,
+  registrarOActualizarUsuario,
+  registrarVisitaUsuario,
+  solicitarBajaYEliminacionCuenta,
+} from '@/lib/usuarios';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import ModalSoporte from '@/components/ModalSoporte';
 
@@ -80,6 +85,10 @@ interface UserContextType {
     respuestaSeguridad: string,
     nuevaClave: string
   ) => Promise<{ ok: boolean; mensaje: string }>;
+  eliminarMiCuenta: (
+    password: string,
+    motivo?: string
+  ) => Promise<{ ok: boolean; mensaje?: string }>;
   cerrarSesion: () => void;
 
   // Locales Favoritos
@@ -685,6 +694,33 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Eliminación definitiva de cuenta y purga de datos por solicitud del usuario
+  const eliminarMiCuenta = async (
+    password: string,
+    motivo?: string
+  ): Promise<{ ok: boolean; mensaje?: string }> => {
+    if (!usuario?.email) {
+      return { ok: false, mensaje: 'No hay ninguna sesión activa para eliminar.' };
+    }
+    const res = await solicitarBajaYEliminacionCuenta({
+      email: usuario.email,
+      password,
+      motivo,
+    });
+    if (res.exito) {
+      cerrarSesion();
+      setFavoritosIds([]);
+      setUbicaciones([]);
+      try {
+        localStorage.removeItem(STORAGE_KEYS.FAVORITOS);
+        localStorage.removeItem(STORAGE_KEYS.UBICACIONES);
+        localStorage.removeItem(STORAGE_KEYS.PREDETERMINADA);
+      } catch (_) {}
+      return { ok: true, mensaje: res.mensaje || 'Tu cuenta ha sido eliminada permanentemente.' };
+    }
+    return { ok: false, mensaje: res.error || 'No se pudo eliminar la cuenta.' };
+  };
+
   // Locales Favoritos
   const toggleFavorito = useCallback(
     (comercioId: string) => {
@@ -857,6 +893,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         iniciarSesionOAuth,
         solicitarRecuperacionAdmin,
         restablecerPasswordAdminDirecto,
+        eliminarMiCuenta,
         cerrarSesion,
         favoritosIds,
         toggleFavorito,

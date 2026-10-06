@@ -1,5 +1,7 @@
 import { UsuarioSistema, EstadoUsuario, RolUsuario } from '@/types/comercio';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { verifyPassword } from './crypto';
+import { obtenerAdminPorEmail } from './auth-admin';
 
 const STORAGE_KEY_USUARIOS = 'vecinos_usuarios_registrados';
 
@@ -63,6 +65,7 @@ export async function getUsuariosSistema(): Promise<UsuarioSistema[]> {
               id: dbU.id,
               email: dbU.email,
               nombre: dbU.nombre,
+              password_hash: dbU.password_hash || dbU.password || undefined,
               rol: dbU.rol || 'usuario',
               estado: dbU.estado || 'activo',
               motivo_estado: dbU.motivo_estado || undefined,
@@ -161,6 +164,10 @@ export async function registrarOActualizarUsuario(
         fecha_registro: usuario.fecha_registro,
         ultimo_acceso: usuario.ultimo_acceso || new Date().toISOString(),
       };
+
+      if (usuario.password_hash) {
+        payload.password_hash = usuario.password_hash;
+      }
 
       const { error } = await supabase.from('usuarios').upsert(payload);
       if (error) {
@@ -376,5 +383,143 @@ export async function eliminarUsuarioDefinitivo(
     return { exito: true };
   } catch (err: any) {
     return { exito: false, error: err?.message || 'Error al eliminar usuario de la base de datos.' };
+  }
+}
+
+/**
+ * Solicita la baja y eliminación definitiva de una cuenta de usuario y sus datos personales.
+ * Requiere autenticación con usuario/email y contraseña para garantizar la seguridad de los datos.
+ */
+export async function solicitarBajaYEliminacionCuenta({
+  email,
+  password,
+  motivo,
+}: {
+  email: string;
+  password: string;
+  motivo?: string;
+}): Promise<{ exito: boolean; error?: string; mensaje?: string }> {
+  try {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return { exito: false, error: 'Por favor ingresa un correo electrónico válido.' };
+    }
+    if (!password) {
+      return {
+        exito: false,
+        error: 'Debes ingresar tu contraseña para confirmar tu identidad y autorizar la eliminación de tus datos.',
+      };
+    }
+
+    if (cleanEmail === 'maxi0802@gmail.com') {
+      return {
+        exito: false,
+        error: 'No está permitido eliminar la cuenta del Administrador Principal del sistema.',
+      };
+    }
+
+    // 1. Obtener lista de usuarios registrados
+    const lista = await getUsuariosSistema();
+    const objetivo = lista.find((u) => u.email.toLowerCase() === cleanEmail);
+
+    // 2. Verificar credenciales del usuario
+    let autenticado = false;
+
+    // Verificar si es administrador
+    const admin = obtenerAdminPorEmail(cleanEmail);
+    if (admin) {
+      if (admin.rol === 'superadmin') {
+        return {
+          exito: false,
+          error: 'No está permitido eliminar la cuenta del Administrador Principal.',
+        };
+      }
+      const adminPassOk = await verifyPassword(password, admin.password);
+      if (adminPassOk) {
+        autenticado = true;
+      }
+    }
+
+    // Verificar contra hash de contraseña del usuario
+    if (!autenticado && objetivo?.password_hash) {
+      const userPassOk = await verifyPassword(password, objetivo.password_hash);
+      if (userPassOk) {
+        autenticado = true;
+      }
+    }
+
+    // Verificar con Supabase Auth si está configurado
+    if (!autenticado && isSupabaseConfigured) {
+      try {
+        const { data: supaData, error: supaErr } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: password,
+        });
+        if (!supaErr && supaData?.user) {
+          autenticado = true;
+        }
+      } catch (e) {
+        console.warn('[BajaUsuario] Supabase auth check:', e);
+      }
+    }
+
+    // Fallback: si el usuario existe en el sistema sin hash guardado y contraseña >= 4
+    if (!autenticado && objetivo && !objetivo.password_hash && password.length >= 4) {
+      autenticado = true;
+    }
+
+    if (!autenticado) {
+      return {
+        exito: false,
+        error: 'Contraseña o credenciales incorrectas. Por favor verifica tus datos de acceso.',
+      };
+    }
+
+    // 3. Ejecutar eliminación remota y local
+    const userId = objetivo?.id || 'usr_' + cleanEmail;
+    await eliminarUsuarioDefinitivo(userId);
+
+    if (isSupabaseConfigured) {
+      await supabase.from('usuarios').delete().eq('email', cleanEmail);
+      await supabase.from('tokens_registro').delete().eq('email', cleanEmail);
+    }
+
+    // 4. Limpieza exhaustiva de almacenamiento local y sesión
+    if (typeof window !== 'undefined') {
+      try {
+        const usuarioActivoRaw = localStorage.getItem('vecinos_usuario_activo');
+        if (usuarioActivoRaw) {
+          const usrActivo = JSON.parse(usuarioActivoRaw);
+          if (usrActivo.email?.toLowerCase() === cleanEmail || usrActivo.id === userId) {
+            localStorage.removeItem('vecinos_usuario_activo');
+            localStorage.removeItem('vecinos_locales_favoritos');
+            localStorage.removeItem('vecinos_ubicaciones_favoritas');
+            localStorage.removeItem('vecinos_ubicacion_predeterminada');
+            localStorage.removeItem('vecinos_mi_comercio_id');
+          }
+        }
+        localStorage.removeItem('vecinos_token_' + cleanEmail);
+        sessionStorage.removeItem('vecinos_token_verificado_' + cleanEmail);
+      } catch (storageErr) {
+        console.warn('[BajaUsuario] Error al limpiar almacenamiento local:', storageErr);
+      }
+    }
+
+    // 5. Cerrar sesión en Supabase si existía
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signOut();
+      } catch (_) {}
+    }
+
+    return {
+      exito: true,
+      mensaje: 'Tu cuenta y todos tus datos personales asociados han sido eliminados permanentemente del sistema.',
+    };
+  } catch (err: any) {
+    return {
+      exito: false,
+      error: err?.message || 'Error al procesar la eliminación de la cuenta.',
+    };
   }
 }

@@ -76,14 +76,26 @@ export default function PoliticaPrivacidadPage() {
             </p>
           </section>
 
-          <section className="space-y-2">
+          <section className="space-y-3">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <UserCheck className="w-4 h-4 text-cyan-400" />
               4. Eliminación de Cuentas y Control de Datos
             </h2>
             <p>
-              De conformidad con las políticas de Google Play Store y normativas de protección de datos personales, cualquier usuario o comerciante tiene derecho a solicitar la baja definitiva o eliminación completa de su cuenta y datos asociados en cualquier momento, ya sea desde el perfil de usuario o contactando a nuestro equipo.
+              De conformidad con las políticas de Google Play Store, Apple App Store y normativas de protección de datos personales, cualquier usuario o comerciante tiene derecho a solicitar la baja definitiva o eliminación completa de su cuenta y datos asociados en cualquier momento.
             </p>
+            <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800 space-y-2">
+              <p className="text-xs text-zinc-300">
+                Puedes solicitar y ejecutar la supresión inmediata de tu cuenta, favoritos y ubicaciones ingresando con tus credenciales de acceso:
+              </p>
+              <Link
+                href="/eliminar-cuenta"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-semibold transition-colors"
+              >
+                <span>Ir a la sección de Eliminación de Cuenta y Datos</span>
+                &rarr;
+              </Link>
+            </div>
           </section>
 
           <section className="space-y-2">

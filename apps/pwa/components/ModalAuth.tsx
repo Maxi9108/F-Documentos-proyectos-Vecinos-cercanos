@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ArrowRight,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 
 export default function ModalAuth() {
@@ -247,6 +248,15 @@ export default function ModalAuth() {
               >
                 Cerrar Sesión
               </button>
+
+              <Link
+                href="/eliminar-cuenta"
+                onClick={cerrarModalAuth}
+                className="pt-1 text-[11px] text-zinc-500 hover:text-rose-400 text-center transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-3 h-3 text-rose-500/70" />
+                <span>Eliminar mi cuenta y datos personales</span>
+              </Link>
             </div>
           </div>
         ) : (
