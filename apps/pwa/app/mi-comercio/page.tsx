@@ -643,9 +643,17 @@ export default function MiComercioPage() {
       return;
     }
 
-    if (tipoAtencion !== 'local_fisico' && !zonaEnvioConfirmada) {
-      alert('Por favor confirma los límites y alcance de tu zona de envíos en el mapa haciendo clic en "Confirmar Este Paso".');
-      return;
+    if (tipoAtencion !== 'local_fisico') {
+      if (coberturaPoligono.length > 0 && coberturaPoligono.length < 3) {
+        alert('El polígono de zona de reparto debe tener al menos 3 puntos para cerrar el área. Agrega más puntos y pulsa "Cerrar Zona", o selecciona "Radio en Kilómetros".');
+        setEnviandoMod(false);
+        return;
+      }
+      if (radioKm <= 0 && (!coberturaPoligono || coberturaPoligono.length < 3)) {
+        alert('Por favor define un radio de entrega en kilómetros válido (mayor a 0).');
+        setEnviandoMod(false);
+        return;
+      }
     }
 
     if (enVacaciones && !vacacionesHasta) {

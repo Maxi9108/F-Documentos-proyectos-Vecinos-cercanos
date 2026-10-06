@@ -152,7 +152,7 @@ import {
 export default function AdminPage() {
   // Estado de Autenticación & 2FA
   const [adminActual, setAdminActual] = useState<Administrador | null>(null);
-  const [emailInput, setEmailInput] = useState('maxi0802@gmail.com');
+  const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [pasoLogin, setPasoLogin] = useState<1 | 2>(1);
@@ -161,7 +161,7 @@ export default function AdminPage() {
 
   // Recuperación In-App de Contraseña de Admin (100% interna sin redirecciones externas)
   const [modoRecuperarPass, setModoRecuperarPass] = useState(false);
-  const [recuperarEmail, setRecuperarEmail] = useState('maxi0802@gmail.com');
+  const [recuperarEmail, setRecuperarEmail] = useState('');
   const [recuperarRespuesta, setRecuperarRespuesta] = useState('');
   const [recuperarNuevaClave, setRecuperarNuevaClave] = useState('');
   const [recuperarConfirmarClave, setRecuperarConfirmarClave] = useState('');
@@ -1449,7 +1449,7 @@ export default function AdminPage() {
           <div className="p-3.5 bg-zinc-900 border border-zinc-800 rounded-2xl text-xs text-zinc-400 text-left space-y-1">
             <p className="font-semibold text-zinc-300">¿Eres el administrador?</p>
             <p className="text-[11px]">
-              Cierra sesión e ingresa con tu cuenta autorizada (ej. <strong>maxi0802@gmail.com</strong>).
+              Cierra sesión e ingresa con tu cuenta autorizada de administrador.
             </p>
           </div>
           <div className="flex flex-col gap-2 pt-2">
@@ -1516,7 +1516,7 @@ export default function AdminPage() {
                   required
                   value={recuperarEmail}
                   onChange={(e) => setRecuperarEmail(e.target.value)}
-                  placeholder="maxi0802@gmail.com"
+                  placeholder="admin@neofaro.com"
                   className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
                 />
               </div>
@@ -1619,7 +1619,7 @@ export default function AdminPage() {
                   required
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="maxi0802@gmail.com"
+                  placeholder="admin@neofaro.com"
                   className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
                 />
               </div>
@@ -1651,7 +1651,7 @@ export default function AdminPage() {
                   className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500"
                 />
                 <p className="text-[11px] text-zinc-500 mt-1">
-                  SuperAdmin configurado para: <strong>maxi0802@gmail.com</strong>
+                  Acceso restringido para cuentas autorizadas.
                 </p>
               </div>
 
@@ -4815,7 +4815,7 @@ export default function AdminPage() {
                     required
                     value={perfilEmail}
                     onChange={(e) => setPerfilEmail(e.target.value)}
-                    placeholder="maxi0802@gmail.com"
+                    placeholder="admin@neofaro.com"
                     className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>

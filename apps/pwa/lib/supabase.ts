@@ -487,6 +487,7 @@ export async function guardarComercio(comercio: Comercio): Promise<{ success: bo
         tiene_catalogo: comercio.tiene_catalogo ?? false,
         tipo_atencion: comercio.tipo_atencion || 'local_fisico',
         radio_entrega_metros: comercio.radio_entrega_metros || 0,
+        cobertura_poligono: comercio.cobertura_poligono || null,
         zona_envio_descripcion: comercio.zona_envio_descripcion || '',
         estado_aprobacion: comercio.estado_aprobacion || 'aprobado',
         categoria_solicitada: comercio.categoria_solicitada || null,

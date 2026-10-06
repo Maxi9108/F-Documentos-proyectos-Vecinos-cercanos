@@ -135,9 +135,15 @@ export default function ComercioModal({
       setErrorValidacion('El correo electrónico es obligatorio y debe tener formato válido.');
       return;
     }
-    if (tipoAtencion !== 'local_fisico' && !zonaEnvioConfirmada) {
-      setErrorValidacion('Por favor confirma la zona de envíos en el mapa antes de guardar este paso.');
-      return;
+    if (tipoAtencion !== 'local_fisico') {
+      if (coberturaPoligono.length > 0 && coberturaPoligono.length < 3) {
+        setErrorValidacion('El polígono de zona de reparto debe tener al menos 3 puntos para cerrar el área.');
+        return;
+      }
+      if (radioKm <= 0 && (!coberturaPoligono || coberturaPoligono.length < 3)) {
+        setErrorValidacion('Por favor define un radio de entrega en kilómetros válido (mayor a 0).');
+        return;
+      }
     }
     if (isNaN(latitud) || isNaN(longitud)) {
       setErrorValidacion('Las coordenadas de latitud y longitud deben ser valores numéricos.');

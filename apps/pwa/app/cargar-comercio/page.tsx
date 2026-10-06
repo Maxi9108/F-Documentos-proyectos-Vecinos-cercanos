@@ -213,9 +213,14 @@ export default function CargarComercioPage() {
       return;
     }
 
-    if (!direccion.trim()) {
-      setErrorMsg('Por favor indica una dirección válida en el mapa.');
-      return;
+    let direccionFinal = direccion.trim();
+    if (!direccionFinal) {
+      if (tipoAtencion === 'solo_envio') {
+        direccionFinal = localidad.trim() ? `Zona de reparto (${localidad.trim()})` : 'Zona de reparto / Despacho a domicilio';
+      } else {
+        setErrorMsg('Por favor indica una dirección válida en el mapa.');
+        return;
+      }
     }
 
     if (!telefono.trim()) {
@@ -238,9 +243,15 @@ export default function CargarComercioPage() {
       return;
     }
 
-    if (tipoAtencion !== 'local_fisico' && !zonaEnvioConfirmada) {
-      setErrorMsg('Por favor confirma los límites y alcance de tu zona de envíos en el mapa haciendo clic en el botón "Confirmar Este Paso".');
-      return;
+    if (tipoAtencion !== 'local_fisico') {
+      if (coberturaPoligono.length > 0 && coberturaPoligono.length < 3) {
+        setErrorMsg('El polígono de zona de reparto debe tener al menos 3 puntos para cerrar el área. Agrega más puntos y pulsa "Cerrar Zona", o selecciona "Radio en Kilómetros".');
+        return;
+      }
+      if (radioKm <= 0 && (!coberturaPoligono || coberturaPoligono.length < 3)) {
+        setErrorMsg('Por favor define un radio de entrega en kilómetros válido (mayor a 0).');
+        return;
+      }
     }
 
     setGuardando(true);
@@ -297,7 +308,7 @@ export default function CargarComercioPage() {
       id: comercioId,
       nombre: nombre.trim(),
       rubro: rubroFinal,
-      direccion: direccion.trim(),
+      direccion: direccionFinal,
       localidad: localidad.trim() || undefined,
       telefono: telefono.trim(),
       whatsapp: whatsapp.trim() || telefono.trim(),
@@ -1145,7 +1156,9 @@ export default function CargarComercioPage() {
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-bold text-white flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-indigo-400" />
-                  3. Ubicación en el Mapa en Tiempo Real
+                  {tipoAtencion === 'solo_envio'
+                    ? '3. Base de Operaciones / Punto de Despacho'
+                    : '3. Ubicación del Local en el Mapa en Tiempo Real'}
                 </h2>
                 <span className="text-[11px] text-zinc-400 font-mono">
                   {latitud.toFixed(4)}, {longitud.toFixed(4)}
@@ -1153,20 +1166,28 @@ export default function CargarComercioPage() {
               </div>
 
               <p className="text-xs text-zinc-400 leading-relaxed">
-                Escribe tu dirección para evaluarla automáticamente en el mapa. También puedes arrastrar el marcador con el mouse o pulsar sobre el mapa para fijar la entrada exacta de tu local.
+                {tipoAtencion === 'solo_envio'
+                  ? 'Fija en el mapa el punto de salida de tus repartos (depósito, cocina o base). No se publicará como local a la calle con atención al público.'
+                  : 'Escribe tu dirección para evaluarla automáticamente en el mapa. También puedes arrastrar el marcador con el mouse o pulsar sobre el mapa para fijar la entrada exacta de tu local.'}
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                    Dirección que verán los vecinos *
+                    {tipoAtencion === 'solo_envio'
+                      ? 'Dirección o Punto de Referencia de Despacho *'
+                      : 'Dirección que verán los vecinos *'}
                   </label>
                   <input
                     type="text"
                     required
                     value={direccion}
                     onChange={(e) => setDireccion(e.target.value)}
-                    placeholder="Calle y número de tu local..."
+                    placeholder={
+                      tipoAtencion === 'solo_envio'
+                        ? 'Ej. Depósito central, taller o punto de partida de envíos...'
+                        : 'Calle y número de tu local...'
+                    }
                     className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
                   />
                 </div>

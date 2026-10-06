@@ -441,7 +441,7 @@ export function generarInformeTextoDiario(comercios: Comercio[]): string {
 
   return `📊 INFORME DIARIO DE ACTIVIDAD - NEOFARO
 📅 Fecha: ${fechaHoy}
-👤 Administrador Principal: maxi0802@gmail.com
+👤 Panel de Administración NeoFaro
 
 ==================================================
 1. RESUMEN DE LOCALES Y SOLICITUDES

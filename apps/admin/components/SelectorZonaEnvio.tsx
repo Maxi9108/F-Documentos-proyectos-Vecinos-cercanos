@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -97,17 +97,65 @@ function AutoAjustarVista({
   modo: 'radio' | 'poligono';
 }) {
   const map = useMap();
+  const prevPointsLength = useRef(polygonPoints.length);
+  const prevRadius = useRef(radiusKm);
+  const prevModo = useRef(modo);
+  const prevCenterLat = useRef(center[0]);
+  const prevCenterLng = useRef(center[1]);
 
   useEffect(() => {
-    if (modo === 'poligono' && polygonPoints.length >= 2) {
-      const bounds = L.latLngBounds(polygonPoints);
-      bounds.extend(center);
-      map.fitBounds(bounds, { padding: [20, 20], maxZoom: 16 });
-    } else if (modo === 'radio') {
-      const circle = L.circle(center, { radius: Math.max(radiusKm, 0.5) * 1000 });
-      map.fitBounds(circle.getBounds(), { padding: [20, 20], maxZoom: 16 });
+    const timer = setTimeout(() => {
+      try {
+        map.invalidateSize();
+      } catch {}
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [map]);
+
+  useEffect(() => {
+    const centerChanged = prevCenterLat.current !== center[0] || prevCenterLng.current !== center[1];
+    const modoChanged = prevModo.current !== modo;
+    const radiusChanged = prevRadius.current !== radiusKm;
+    const pointsChanged = polygonPoints.length !== prevPointsLength.current;
+
+    prevCenterLat.current = center[0];
+    prevCenterLng.current = center[1];
+    prevModo.current = modo;
+    prevRadius.current = radiusKm;
+    prevPointsLength.current = polygonPoints.length;
+
+    try {
+      const size = map.getSize();
+      if (!size || size.x === 0 || size.y === 0) return;
+
+      if (modo === 'poligono' && polygonPoints && polygonPoints.length >= 2) {
+        if (pointsChanged || modoChanged || centerChanged) {
+          const bounds = L.latLngBounds(polygonPoints);
+          bounds.extend(L.latLng(center[0], center[1]));
+          if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [20, 20], maxZoom: 16 });
+          }
+        }
+      } else if (modo === 'radio') {
+        if (radiusChanged || modoChanged || centerChanged) {
+          const rKm = Math.max(radiusKm, 0.5);
+          const deltaLat = rKm / 111.32;
+          const cosLat = Math.cos((center[0] * Math.PI) / 180);
+          const deltaLng = rKm / (111.32 * (Math.abs(cosLat) > 0.0001 ? Math.abs(cosLat) : 1));
+
+          const southWest = L.latLng(center[0] - deltaLat, center[1] - deltaLng);
+          const northEast = L.latLng(center[0] + deltaLat, center[1] + deltaLng);
+          const bounds = L.latLngBounds(southWest, northEast);
+
+          if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [20, 20], maxZoom: 16 });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Admin SelectorZonaEnvio] Error al autoajustar vista:', err);
     }
-  }, [center, radiusKm, polygonPoints, modo, map]);
+  }, [center[0], center[1], radiusKm, polygonPoints.length, modo, map]);
 
   return null;
 }
@@ -121,8 +169,10 @@ export default function SelectorZonaEnvio({
   confirmado,
   onToggleConfirmado,
 }: SelectorZonaEnvioProps) {
+  const safePoligono: [number, number][] = Array.isArray(poligono) ? poligono : [];
+
   const [modo, setModo] = useState<'radio' | 'poligono'>(
-    poligono && poligono.length >= 3 ? 'poligono' : 'radio'
+    safePoligono.length >= 3 ? 'poligono' : 'radio'
   );
 
   const [inputKm, setInputKm] = useState<string>(radioKm ? radioKm.toString() : '3');
@@ -263,7 +313,7 @@ export default function SelectorZonaEnvio({
           <AutoAjustarVista
             center={[validLat, validLng]}
             radiusKm={parseFloat(inputKm) || 3}
-            polygonPoints={poligono}
+            polygonPoints={safePoligono}
             modo={modo}
           />
 
@@ -286,12 +336,12 @@ export default function SelectorZonaEnvio({
 
           {modo === 'poligono' && (
             <>
-              {poligono.map((pt, idx) => (
+              {safePoligono.map((pt, idx) => (
                 <Marker key={`${pt[0]}-${pt[1]}-${idx}`} position={pt} icon={createVertexIcon(idx)} />
               ))}
-              {poligono.length >= 3 && (
+              {safePoligono.length >= 3 && (
                 <Polygon
-                  positions={poligono}
+                  positions={safePoligono}
                   pathOptions={{
                     color: '#f59e0b',
                     fillColor: '#f59e0b',

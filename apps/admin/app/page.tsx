@@ -35,7 +35,7 @@ export default function AdminDashboard() {
   // Autenticación de Administrador (2FA: Contraseña + Pregunta de Seguridad)
   const [adminSesion, setAdminSesion] = useState<AdminSesion | null>(null);
   const [isVerificandoSesion, setIsVerificandoSesion] = useState(true);
-  const [emailInput, setEmailInput] = useState('maxi0802@gmail.com');
+  const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [pasoLogin, setPasoLogin] = useState<1 | 2>(1);
   const [preguntaSeguridad, setPreguntaSeguridad] = useState('');
@@ -472,7 +472,7 @@ export default function AdminDashboard() {
                   required
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="maxi0802@gmail.com"
+                  placeholder="admin@neofaro.com"
                   className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 />
               </div>
@@ -575,7 +575,7 @@ export default function AdminDashboard() {
                   required
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="maxi0802@gmail.com"
+                  placeholder="admin@neofaro.com"
                   className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
                 />
               </div>

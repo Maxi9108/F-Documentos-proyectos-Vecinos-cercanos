@@ -95,7 +95,7 @@ export default function PoliticaPrivacidadPage() {
               Para cualquier consulta sobre esta Política de Privacidad o la gestión de tus datos en NeoFaro, puedes comunicarte con el equipo de soporte y administración:
             </p>
             <p className="text-cyan-400 font-medium">
-              Correo de contacto: maxi0802@gmail.com
+              Correo de contacto: contacto@neofaro.com
             </p>
           </section>
         </div>

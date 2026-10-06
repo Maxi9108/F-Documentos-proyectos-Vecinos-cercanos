@@ -24,6 +24,48 @@ const SelectorZonaEnvio = dynamic(() => import('./SelectorZonaEnvio'), {
   ),
 });
 
+class MapErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.warn('[Admin SelectorZonaEnvioWrapper] Error capturado en mapa de cobertura:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="w-full p-4 rounded-xl bg-zinc-900 border border-zinc-800 text-center space-y-2">
+          <p className="text-xs text-amber-400 font-medium">
+            El mapa de cobertura tuvo una pausa temporal.
+          </p>
+          <button
+            type="button"
+            onClick={() => this.setState({ hasError: false })}
+            className="px-3 py-1 bg-zinc-800 border border-zinc-700 text-xs text-white rounded-lg hover:bg-zinc-700 transition-colors"
+          >
+            Reintentar mapa
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function SelectorZonaEnvioWrapper(props: SelectorZonaEnvioWrapperProps) {
-  return <SelectorZonaEnvio {...props} />;
+  return (
+    <MapErrorBoundary>
+      <SelectorZonaEnvio {...props} />
+    </MapErrorBoundary>
+  );
 }

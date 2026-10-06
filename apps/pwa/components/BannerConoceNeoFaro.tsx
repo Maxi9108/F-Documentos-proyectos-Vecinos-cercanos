@@ -61,7 +61,7 @@ export default function BannerConoceNeoFaro() {
           <div className="truncate">
             <span className="font-bold text-white tracking-wide">¿Primera vez en NeoFaro?</span>
             <span className="text-zinc-400 hidden sm:inline ml-2">
-              Descubrí qué somos, qué hacemos y cómo funciona la red barrial.
+              Descubrí cómo funciona la red barrial (sin necesidad de GPS, buscá directamente por zonas en el mapa).
             </span>
           </div>
         </div>
@@ -207,7 +207,7 @@ export default function BannerConoceNeoFaro() {
               ¿Cómo funciona?
             </h3>
             <p className="text-zinc-300 text-xs leading-relaxed mb-4">
-              En solo 3 pasos encontrás lo que necesitás a la vuelta de tu casa:
+              En solo 3 pasos encontrás lo que necesitás a la vuelta de tu casa (¡no hace falta activar el GPS! podés buscar directamente en el mapa por zonas):
             </p>
           </div>
 
@@ -216,7 +216,7 @@ export default function BannerConoceNeoFaro() {
               <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
                 1
               </span>
-              <span><strong className="text-zinc-200">Activá tu radio:</strong> Usá tu GPS o elegí 1 km, 2 km o 3 km de distancia.</span>
+              <span><strong className="text-zinc-200">Buscá por zonas o activá tu radio:</strong> No hace falta activar el GPS ya que podés navegar libremente y explorar el mapa por zonas y barrios, o encender tu ubicación para filtrar comercios a 1 km, 2 km o 3 km.</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
