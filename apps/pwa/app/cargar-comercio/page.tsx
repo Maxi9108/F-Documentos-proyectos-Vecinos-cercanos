@@ -40,7 +40,9 @@ import { getCategorias } from '@/lib/categorias';
 import { registrarEvento } from '@/lib/analytics';
 import SelectorHorariosAvanzados from '@/components/SelectorHorariosAvanzados';
 import SelectorZonaEnvioWrapper from '@/components/SelectorZonaEnvioWrapper';
+import InputWhatsAppConPais from '@/components/InputWhatsAppConPais';
 import { obtenerHorariosConfigPorDefecto } from '@/lib/horarios';
+import { hashPassword } from '@/lib/crypto';
 
 export default function CargarComercioPage() {
   const router = useRouter();
@@ -304,6 +306,8 @@ export default function CargarComercioPage() {
       return;
     }
 
+    const hashedPassword = await hashPassword(passwordComercio.trim());
+
     const nuevoComercio: Comercio = {
       id: comercioId,
       nombre: nombre.trim(),
@@ -322,11 +326,12 @@ export default function CargarComercioPage() {
       tiktok: tiktok.trim() || undefined,
       facebook: facebook.trim() || undefined,
       otros_links: otrosLinks.trim() || undefined,
-      password_comercio: passwordComercio.trim(),
+      password_comercio: hashedPassword,
       fecha_ultima_modificacion_catalogo: deseaCatalogo && productosValidos.length > 0 ? new Date().toISOString() : undefined,
       esta_abierto: estaAbierto && !cerradoMomentaneo && !enVacaciones,
       latitud,
       longitud,
+
       tiene_catalogo: deseaCatalogo && productosValidos.length > 0,
       productos: productosValidos,
       tipo_atencion: tipoAtencion,
@@ -674,20 +679,13 @@ export default function CargarComercioPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                    WhatsApp para pedidos o consultas
-                  </label>
-                  <div className="relative">
-                    <MessageSquare className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500" />
-                    <input
-                      type="text"
-                      value={whatsapp}
-                      onChange={(e) => setWhatsapp(e.target.value)}
-                      placeholder="+54 9 11 5000-0000"
-                      className="w-full pl-10 pr-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white"
-                    />
-                  </div>
+                <div className="sm:col-span-1">
+                  <InputWhatsAppConPais
+                    value={whatsapp}
+                    onChange={setWhatsapp}
+                    label="WhatsApp para pedidos o consultas"
+                    placeholder="Ej: 9 11 5000-0000"
+                  />
                 </div>
               </div>
 

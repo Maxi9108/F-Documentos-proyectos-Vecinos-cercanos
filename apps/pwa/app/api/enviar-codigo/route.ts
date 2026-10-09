@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+interface EnvioLimit {
+  cuenta: number;
+  resetAt: number;
+}
+const rateLimitsEnvio = new Map<string, EnvioLimit>();
+const MAX_ENVIOS = 5;
+const VENTANA_ENVIO_MS = 10 * 60 * 1000; // 10 minutos
+
 export async function POST(req: NextRequest) {
   try {
     const { email, nombre, token } = await req.json();
@@ -10,6 +18,42 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+
+    // Protección anti-abuso y anti-spam por IP y Email
+    const xForwardedFor = req.headers.get('x-forwarded-for');
+    const xRealIp = req.headers.get('x-real-ip');
+    const cfConnectingIp = req.headers.get('cf-connecting-ip');
+    const clientIp = cfConnectingIp || (xForwardedFor ? xForwardedFor.split(',')[0].trim() : xRealIp) || '127.0.0.1';
+    const limitKey = `${clientIp}:${cleanEmail}`;
+
+    const ahora = Date.now();
+    const entry = rateLimitsEnvio.get(limitKey);
+
+    if (entry && entry.resetAt > ahora) {
+      if (entry.cuenta >= MAX_ENVIOS) {
+        const minRestantes = Math.ceil((entry.resetAt - ahora) / (60 * 1000));
+        return NextResponse.json(
+          {
+            ok: false,
+            error: `Has superado el límite de códigos permitidos. Por favor espera ${minRestantes} minutos antes de volver a solicitar un código.`,
+          },
+          { status: 429 }
+        );
+      }
+      entry.cuenta += 1;
+    } else {
+      rateLimitsEnvio.set(limitKey, { cuenta: 1, resetAt: ahora + VENTANA_ENVIO_MS });
+    }
+
+    // Limpieza de claves vencidas si el mapa crece
+    if (rateLimitsEnvio.size > 500) {
+      for (const [k, v] of rateLimitsEnvio.entries()) {
+        if (v.resetAt < ahora) rateLimitsEnvio.delete(k);
+      }
+    }
+
 
     // Integración opcional de Resend para correo de marca personalizado
     const resendApiKey = process.env.RESEND_API_KEY;

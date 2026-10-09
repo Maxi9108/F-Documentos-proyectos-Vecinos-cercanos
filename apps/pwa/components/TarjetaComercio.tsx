@@ -28,6 +28,7 @@ import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
 import OfertaCountdown from '@/components/OfertaCountdown';
+import { construirEnlaceWhatsApp } from '@/lib/codigos-pais';
 
 interface TarjetaComercioProps {
   comercio: Comercio;
@@ -417,7 +418,7 @@ export default function TarjetaComercio({
 
           {cleanWhatsapp && (
             <a
-              href={`https://wa.me/${cleanWhatsapp.replace('+', '')}`}
+              href={construirEnlaceWhatsApp(cleanWhatsapp)}
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => registrarEvento('clic_whatsapp', comercio.id, comercio.nombre, { canal: 'tarjeta_directa' })}

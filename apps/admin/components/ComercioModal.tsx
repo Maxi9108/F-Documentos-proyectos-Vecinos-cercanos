@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Comercio, CreateComercioInput, RUBROS_PREDEFINIDOS } from '@/types/comercio';
 import SelectorMapaCoordenadasWrapper from './SelectorMapaCoordenadasWrapper';
 import SelectorZonaEnvioWrapper from './SelectorZonaEnvioWrapper';
+import InputWhatsAppConPais from './InputWhatsAppConPais';
 import { X, Store, Tag, MapPin, Phone, Mail, Globe, CheckCircle2, AlertCircle, Save, Bike } from 'lucide-react';
 
 interface ComercioModalProps {
@@ -28,6 +29,7 @@ export default function ComercioModal({
   const [direccion, setDireccion] = useState('');
   const [localidad, setLocalidad] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
   const [email, setEmail] = useState('');
   const [sitioWeb, setSitioWeb] = useState('');
   const [instagram, setInstagram] = useState('');
@@ -63,6 +65,7 @@ export default function ComercioModal({
         setDireccion(comercioToEdit.direccion);
         setLocalidad(comercioToEdit.localidad || '');
         setTelefono(comercioToEdit.telefono || '');
+        setWhatsapp(comercioToEdit.whatsapp || '');
         setEmail(comercioToEdit.email || comercioToEdit.email_comercio || '');
         setSitioWeb(comercioToEdit.sitio_web || '');
         setInstagram(comercioToEdit.instagram || '');
@@ -83,6 +86,7 @@ export default function ComercioModal({
         setDireccion('');
         setLocalidad('');
         setTelefono('');
+        setWhatsapp('');
         setEmail('');
         setSitioWeb('');
         setInstagram('');
@@ -157,6 +161,7 @@ export default function ComercioModal({
       direccion: direccion.trim(),
       localidad: localidad.trim() || undefined,
       telefono: telefono.trim(),
+      whatsapp: whatsapp.trim() || undefined,
       email: email.trim().toLowerCase(),
       email_comercio: email.trim().toLowerCase(),
       sitio_web: sitioWeb.trim() || undefined,
@@ -306,8 +311,8 @@ export default function ComercioModal({
             </div>
           </div>
 
-          {/* Teléfono y Correo Electrónico (AMBOS OBLIGATORIOS) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Teléfono, WhatsApp y Correo Electrónico */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5">
                 Teléfono de Contacto * <span className="text-[10px] text-indigo-500 font-bold uppercase">(Obligatorio)</span>
@@ -323,6 +328,15 @@ export default function ComercioModal({
                   className="w-full pl-9 pr-3 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl text-sm text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
                 />
               </div>
+            </div>
+
+            <div>
+              <InputWhatsAppConPais
+                value={whatsapp}
+                onChange={setWhatsapp}
+                label="WhatsApp Comercial (Opcional)"
+                placeholder="Ej: 9 11 5000-0000"
+              />
             </div>
 
             <div>

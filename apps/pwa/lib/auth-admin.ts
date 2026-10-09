@@ -228,7 +228,10 @@ export function obtenerAdminPorEmail(email: string): Administrador | null {
 export function guardarSesion(admin: Administrador): void {
   if (typeof window !== 'undefined') {
     try {
-      sessionStorage.setItem(STORAGE_KEY_SESION, JSON.stringify(admin));
+      const sanitized = { ...admin };
+      delete sanitized.password;
+      delete sanitized.respuesta_seguridad;
+      sessionStorage.setItem(STORAGE_KEY_SESION, JSON.stringify(sanitized));
       sessionStorage.setItem('vecinos_admin_sesion', 'true');
     } catch (e) {
       console.warn('[AuthAdmin] Error al persistir sesión:', e);

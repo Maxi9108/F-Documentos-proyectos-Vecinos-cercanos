@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
   Comercio,
@@ -38,6 +38,7 @@ import ContadorMembresia from '@/components/ContadorMembresia';
 import NeoFaroLogo from '@/components/NeoFaroLogo';
 import ModalCambiarPassword from '@/components/ModalCambiarPassword';
 import SelectorHorariosAvanzados from '@/components/SelectorHorariosAvanzados';
+import InputWhatsAppConPais from '@/components/InputWhatsAppConPais';
 import {
   Store,
   ArrowLeft,
@@ -89,6 +90,7 @@ import {
   Mail,
   ChevronRight,
   KeyRound,
+  Search,
 } from 'lucide-react';
 import SelectorZonaEnvioWrapper from '@/components/SelectorZonaEnvioWrapper';
 
@@ -106,6 +108,13 @@ export default function MiComercioPage() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [mostrarLoginPass, setMostrarLoginPass] = useState(false);
   const [modalPasswordAbierto, setModalPasswordAbierto] = useState(false);
+  const [modalElegirSucursalAbierto, setModalElegirSucursalAbierto] = useState(false);
+  const [avisoCambioSucursal, setAvisoCambioSucursal] = useState<string | null>(null);
+
+  // Método de identificación: 'email' (con mail registrado) | 'buscar' (por nombre y dirección)
+
+  const [metodoIdentificacionLogin, setMetodoIdentificacionLogin] = useState<'email' | 'buscar'>('email');
+  const [filtroBusquedaLogin, setFiltroBusquedaLogin] = useState('');
 
   // Modo de acceso no autenticado: 'ingresar' (login) | 'cargar' (alta)
   const [tabModoAcceso, setTabModoAcceso] = useState<'ingresar' | 'cargar'>('ingresar');
@@ -215,6 +224,9 @@ export default function MiComercioPage() {
           setComercioSeleccionadoId(sesionGuardada);
           cargarDatosFormulario(inicial);
         } else {
+          if (sesionGuardada && typeof window !== 'undefined') {
+            sessionStorage.removeItem('vecinos_comercio_auth_id');
+          }
           setComercioSeleccionadoId(inicial.id);
           cargarDatosFormulario(inicial);
         }
@@ -225,6 +237,78 @@ export default function MiComercioPage() {
   }, []);
 
   const comercioActual = comercios.find((c) => c.id === comercioSeleccionadoId);
+
+  // Locales que coinciden con el email ingresado en el login
+  const comerciosConMismoMail = useMemo(() => {
+    const mailLimpio = loginEmail.trim().toLowerCase();
+    if (!mailLimpio) return [];
+    return comercios.filter(
+      (c) =>
+        (c.email_comercio && c.email_comercio.trim().toLowerCase() === mailLimpio) ||
+        (c.email && c.email.trim().toLowerCase() === mailLimpio)
+    );
+  }, [loginEmail, comercios]);
+
+  // Comercio identificado en el formulario de login (por mail registrado o selección con dirección)
+  const comercioIdentificado = useMemo(() => {
+    const mailLimpio = loginEmail.trim().toLowerCase();
+    if (metodoIdentificacionLogin === 'email' && mailLimpio) {
+      if (loginComercioId) {
+        const match = comercios.find((c) => c.id === loginComercioId);
+        if (
+          match &&
+          ((match.email_comercio && match.email_comercio.trim().toLowerCase() === mailLimpio) ||
+           (match.email && match.email.trim().toLowerCase() === mailLimpio))
+        ) {
+          return match;
+        }
+      }
+      return (
+        comercios.find(
+          (c) =>
+            (c.email_comercio && c.email_comercio.trim().toLowerCase() === mailLimpio) ||
+            (c.email && c.email.trim().toLowerCase() === mailLimpio)
+        ) || null
+      );
+    }
+    return comercios.find((c) => c.id === loginComercioId) || null;
+  }, [loginEmail, loginComercioId, comercios, metodoIdentificacionLogin]);
+
+  // Locales / Sucursales del comercio autenticado actual (para alternar sucursales con el mismo mail, teléfono o nombre)
+  const misSucursales = useMemo(() => {
+    if (!comercioActual && !comercioAutenticadoId) return [];
+    const base = comercioActual || comercios.find((c) => c.id === comercioAutenticadoId);
+    if (!base) return [];
+
+    const mail = (base.email_comercio || base.email || loginEmail || '').trim().toLowerCase();
+    const tel = (base.whatsapp || base.telefono || '').replace(/\D/g, '');
+    const nombreLimpio = base.nombre.trim().toLowerCase();
+
+    return comercios.filter((c) => {
+      if (c.id === base.id) return true;
+      const cMail = (c.email_comercio || c.email || '').trim().toLowerCase();
+      if (mail && cMail && mail === cMail) return true;
+      const cTel = (c.whatsapp || c.telefono || '').replace(/\D/g, '');
+      if (tel && cTel && tel.length >= 8 && tel === cTel) return true;
+      if (nombreLimpio && c.nombre.trim().toLowerCase() === nombreLimpio) return true;
+      return false;
+    });
+  }, [comercioActual, comercioAutenticadoId, comercios, loginEmail]);
+
+
+
+  // Lista de comercios filtrados con dirección visible para evitar confusión por nombres repetidos
+  const comerciosFiltradosLogin = useMemo(() => {
+    const q = filtroBusquedaLogin.trim().toLowerCase();
+    if (!q) return comercios;
+    return comercios.filter(
+      (c) =>
+        c.nombre.toLowerCase().includes(q) ||
+        c.rubro.toLowerCase().includes(q) ||
+        c.direccion.toLowerCase().includes(q) ||
+        (c.localidad && c.localidad.toLowerCase().includes(q))
+    );
+  }, [comercios, filtroBusquedaLogin]);
 
   // Cargar datos del comercio en los campos del formulario
   const cargarDatosFormulario = (comercio: Comercio) => {
@@ -300,14 +384,33 @@ export default function MiComercioPage() {
     e.preventDefault();
     setLoginError(null);
 
-    const com = comercios.find(
-      (c) =>
-        c.id === loginComercioId ||
-        (loginEmail && c.email_comercio?.trim().toLowerCase() === loginEmail.trim().toLowerCase())
-    );
+    const mailLimpio = loginEmail.trim().toLowerCase();
+    let com: Comercio | null = null;
 
-    if (!com) {
-      setLoginError('No se encontró el comercio seleccionado.');
+    if (metodoIdentificacionLogin === 'email') {
+      if (loginComercioId) {
+        const candidato = comercios.find((c) => c.id === loginComercioId);
+        if (
+          candidato &&
+          ((candidato.email_comercio && candidato.email_comercio.trim().toLowerCase() === mailLimpio) ||
+           (candidato.email && candidato.email.trim().toLowerCase() === mailLimpio))
+        ) {
+          com = candidato;
+        }
+      }
+      if (!com && mailLimpio) {
+        com = comercios.find(
+          (c) =>
+            (c.email_comercio && c.email_comercio.trim().toLowerCase() === mailLimpio) ||
+            (c.email && c.email.trim().toLowerCase() === mailLimpio)
+        ) || null;
+      }
+    } else {
+      com = comercios.find((c) => c.id === loginComercioId) || null;
+    }
+
+    if (!com && !mailLimpio && !loginComercioId) {
+      setLoginError('Por favor ingresa el email registrado de tu comercio o selecciona tu local.');
       return;
     }
 
@@ -316,11 +419,11 @@ export default function MiComercioPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          comercioId: com.id,
-          email: loginEmail || com.email_comercio || undefined,
+          comercioId: com?.id || loginComercioId || undefined,
+          email: mailLimpio || com?.email_comercio || com?.email || undefined,
           password: loginPassword,
-          clientStoredHash: com.password_comercio || undefined,
-          comercioFallback: com,
+          clientStoredHash: com?.password_comercio || undefined,
+          comercioFallback: com || undefined,
         }),
       });
 
@@ -329,6 +432,15 @@ export default function MiComercioPage() {
       if (data.ok && data.comercio) {
         setComercioAutenticadoId(data.comercio.id);
         setComercioSeleccionadoId(data.comercio.id);
+        setComercios((prev) => {
+          const index = prev.findIndex((c) => c.id === data.comercio.id);
+          if (index >= 0) {
+            const copia = [...prev];
+            copia[index] = { ...copia[index], ...data.comercio };
+            return copia;
+          }
+          return [data.comercio, ...prev];
+        });
         if (typeof window !== 'undefined') {
           sessionStorage.setItem('vecinos_comercio_auth_id', data.comercio.id);
         }
@@ -336,18 +448,39 @@ export default function MiComercioPage() {
         setLoginPassword('');
         setLoginError(null);
         setRequiereDefinirClave(false);
+
+
+        // Si el comerciante tiene múltiples sucursales, abrir modal para que pueda elegir de la lista con cuál trabajar
+        const targetMail = (data.comercio.email_comercio || data.comercio.email || mailLimpio || '').trim().toLowerCase();
+        const targetTel = (data.comercio.whatsapp || data.comercio.telefono || '').replace(/\D/g, '');
+        const sucursalesDetectadas = comercios.filter((c) => {
+          if (c.id === data.comercio.id) return true;
+          const cMail = (c.email_comercio || c.email || '').trim().toLowerCase();
+          if (targetMail && cMail && targetMail === cMail) return true;
+          const cTel = (c.whatsapp || c.telefono || '').replace(/\D/g, '');
+          if (targetTel && cTel && targetTel.length >= 8 && targetTel === cTel) return true;
+          return false;
+        });
+        if (sucursalesDetectadas.length > 1) {
+          setModalElegirSucursalAbierto(true);
+        }
         return;
       }
 
+
+
       // Si el comercio no tiene contraseña configurada todavía, solicitar definirla de inmediato
-      if (data.requiereDefinirPassword || !com.password_comercio) {
+      if (data.requiereDefinirPassword || (com && !com.password_comercio)) {
+        if (com) {
+          setLoginComercioId(com.id);
+        }
         setRequiereDefinirClave(true);
         setLoginError(null);
         return;
       }
 
       // Fallback criptográfico SHA-256 local
-      if (com.password_comercio) {
+      if (com?.password_comercio) {
         const esValida = await verifyPassword(loginPassword, com.password_comercio);
         if (esValida) {
           setComercioAutenticadoId(com.id);
@@ -366,7 +499,7 @@ export default function MiComercioPage() {
       setLoginError(data.error || 'Contraseña incorrecta. Por favor ingresa la contraseña que pusiste al registrar tu comercio.');
     } catch (err) {
       // Fallback offline
-      if (com.password_comercio) {
+      if (com?.password_comercio) {
         const esValida = await verifyPassword(loginPassword, com.password_comercio);
         if (esValida) {
           setComercioAutenticadoId(com.id);
@@ -397,7 +530,14 @@ export default function MiComercioPage() {
       return;
     }
 
-    const com = comercios.find((c) => c.id === loginComercioId);
+    const mailLimpio = loginEmail.trim().toLowerCase();
+    const com = comercios.find(
+      (c) =>
+        c.id === loginComercioId ||
+        (mailLimpio &&
+          ((c.email_comercio && c.email_comercio.trim().toLowerCase() === mailLimpio) ||
+           (c.email && c.email.trim().toLowerCase() === mailLimpio)))
+    );
     if (!com) {
       setLoginError('No se encontró el comercio seleccionado.');
       return;
@@ -434,14 +574,21 @@ export default function MiComercioPage() {
   // Manejar cambio de comercio en el selector (para admin o si tiene varios)
   const handleCambiarComercio = (id: string) => {
     setComercioSeleccionadoId(id);
+    setComercioAutenticadoId(id);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('vecinos_comercio_auth_id', id);
+    }
     const encontrado = comercios.find((c) => c.id === id);
     if (encontrado) {
       cargarDatosFormulario(encontrado);
       setMensajeModExito(null);
       setMensajeCompExito(null);
       setMensajeCatalogoExito(null);
+      setAvisoCambioSucursal(`Ahora estás gestionando: ${encontrado.nombre} — 📍 ${encontrado.direccion}`);
+      setTimeout(() => setAvisoCambioSucursal(null), 4000);
     }
   };
+
 
   // Regla de modificación de catálogo (1 vez por mes / 30 días)
   const ultimaModCatalogo = comercioActual?.fecha_ultima_modificacion_catalogo
@@ -903,6 +1050,18 @@ export default function MiComercioPage() {
           <div className="flex items-center gap-2">
             {estaAutenticado && (
               <>
+                {misSucursales.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setModalElegirSucursalAbierto(true)}
+                    className="py-1.5 px-3 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/50 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm shadow-cyan-950/50"
+                    title="Elegir con qué sucursal trabajar de la lista"
+                  >
+                    <Store className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Sucursales ({misSucursales.length})</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setModalPasswordAbierto(true)}
@@ -912,6 +1071,7 @@ export default function MiComercioPage() {
                   <Key className="w-3.5 h-3.5 text-cyan-400" />
                   <span className="hidden sm:inline">Cambiar Clave</span>
                 </button>
+
 
                 {!esSuperAdmin && (
                   <button
@@ -1106,22 +1266,159 @@ export default function MiComercioPage() {
               </form>
             ) : (
               <form onSubmit={handleLoginComercio} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                    Seleccionar Comercio:
-                  </label>
-                  <select
-                    value={loginComercioId}
-                    onChange={(e) => setLoginComercioId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
-                  >
-                    {comercios.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nombre} ({c.rubro})
-                      </option>
-                    ))}
-                  </select>
+                {/* Selector de Método de Identificación: Mail Registrado vs Buscar por Nombre y Dirección */}
+                <div className="space-y-2">
+                  <span className="block text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+                    ¿Cómo deseas ingresar a tu comercio?
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-900 border border-zinc-800 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setMetodoIdentificacionLogin('email')}
+                      className={`py-2 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        metodoIdentificacionLogin === 'email'
+                          ? 'bg-gradient-to-r from-cyan-500 to-violet-600 text-white shadow-sm'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <Mail className="w-3.5 h-3.5" />
+                      <span>Con Mail Registrado</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMetodoIdentificacionLogin('buscar')}
+                      className={`py-2 px-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        metodoIdentificacionLogin === 'buscar'
+                          ? 'bg-gradient-to-r from-cyan-500 to-violet-600 text-white shadow-sm'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      <span>Buscar Comercio</span>
+                    </button>
+                  </div>
                 </div>
+
+                {metodoIdentificacionLogin === 'email' ? (
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-zinc-300">
+                      Correo Electrónico Registrado del Comercio *
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="email"
+                        required
+                        value={loginEmail}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setLoginEmail(val);
+                          const limpio = val.trim().toLowerCase();
+                          const matches = comercios.filter(
+                            (c) =>
+                              (c.email_comercio && c.email_comercio.trim().toLowerCase() === limpio) ||
+                              (c.email && c.email.trim().toLowerCase() === limpio)
+                          );
+                          if (matches.length > 0) {
+                            if (!matches.some((c) => c.id === loginComercioId)) {
+                              setLoginComercioId(matches[0].id);
+                            }
+                          }
+                        }}
+                        placeholder="ejemplo@tucomercio.com"
+                        className="w-full pl-9 pr-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <span className="block text-[11px] text-zinc-500">
+                      Ingresa el correo con el que registraste o diste de alta tu local.
+                    </span>
+
+                    {/* Si existen múltiples sucursales con este mismo correo, permitir elegir el local específico */}
+                    {comerciosConMismoMail.length > 1 && (
+                      <div className="mt-2.5 p-3 bg-zinc-900/90 border border-cyan-500/40 rounded-2xl space-y-1.5 animate-in fade-in">
+                        <label className="block text-[11px] font-bold text-cyan-300">
+                          📍 Tienes {comerciosConMismoMail.length} locales asociados a este correo. Selecciona a cuál ingresar:
+                        </label>
+                        <select
+                          value={loginComercioId}
+                          onChange={(e) => setLoginComercioId(e.target.value)}
+                          className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                        >
+                          {comerciosConMismoMail.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.nombre} ({c.rubro}) — 📍 {c.direccion}{c.localidad ? `, ${c.localidad}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                ) : (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-semibold text-zinc-300">
+                      Buscar y Seleccionar Comercio *
+                    </label>
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={filtroBusquedaLogin}
+                        onChange={(e) => setFiltroBusquedaLogin(e.target.value)}
+                        placeholder="Buscar por nombre, rubro o dirección..."
+                        className="w-full pl-8 pr-3 py-2 bg-zinc-900/90 border border-zinc-800 rounded-xl text-xs text-zinc-200 placeholder:text-zinc-500 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <select
+                      value={loginComercioId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setLoginComercioId(id);
+                        const com = comercios.find((c) => c.id === id);
+                        if (com) {
+                          setLoginEmail(com.email_comercio || com.email || '');
+                        }
+                      }}
+                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                    >
+                      {comerciosFiltradosLogin.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nombre} ({c.rubro}) — 📍 {c.direccion}{c.localidad ? `, ${c.localidad}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Tarjeta de Identificación Clara con Dirección Física para evitar confusiones de nombres repetidos */}
+                {comercioIdentificado && (
+                  <div className="p-3 bg-zinc-900/90 border border-cyan-500/40 rounded-2xl space-y-1.5 text-xs shadow-md shadow-black/40 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 font-bold text-white">
+                        <Store className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>{comercioIdentificado.nombre}</span>
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-semibold">
+                        {comercioIdentificado.rubro}
+                      </span>
+                    </div>
+
+                    <div className="flex items-start gap-1.5 text-zinc-300 text-[11px] bg-zinc-950/60 p-2 rounded-xl border border-zinc-800/80">
+                      <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                      <span>
+                        <strong className="text-zinc-100">Dirección:</strong> {comercioIdentificado.direccion}
+                        {comercioIdentificado.localidad ? `, ${comercioIdentificado.localidad}` : ''}
+                      </span>
+                    </div>
+
+                    {(comercioIdentificado.email_comercio || comercioIdentificado.email) && (
+                      <div className="flex items-center gap-1.5 text-zinc-400 text-[10px] px-1">
+                        <Mail className="w-3 h-3 text-violet-400 shrink-0" />
+                        <span>Mail registrado: {comercioIdentificado.email_comercio || comercioIdentificado.email}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
@@ -1177,8 +1474,50 @@ export default function MiComercioPage() {
       ) : (
         /* Contenido Principal Autenticado */
         <div className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+          {/* Banner Multi-Sucursal con selector desplegable de trabajo */}
+          {misSucursales.length > 1 && (
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 border-2 border-cyan-500/50 rounded-3xl shadow-xl shadow-cyan-950/30 flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+                    <Store className="w-5 h-5" />
+                  </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-sm sm:text-base font-extrabold text-white">
+                      Sucursal de Trabajo Activa
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-cyan-500 text-black shadow-sm">
+                      {misSucursales.length} sucursales
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-zinc-300">
+                  Elige con cuál vas a trabajar. Al cambiar de sucursal verás y editarás de inmediato todos sus datos, catálogo y métricas:
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <div className="relative w-full md:w-80">
+                  <select
+                    value={comercioSeleccionadoId}
+                    onChange={(e) => handleCambiarComercio(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-zinc-950 border-2 border-cyan-400 rounded-2xl text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-4 focus:ring-cyan-500/25 cursor-pointer shadow-lg"
+                    title="Elegir sucursal de la lista desplegable"
+                  >
+                    {misSucursales.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre} ({c.rubro}) — 📍 {c.direccion}{c.localidad ? `, ${c.localidad}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Selector de Comercio y Resumen */}
           <section className="p-5 sm:p-6 bg-zinc-950 border border-zinc-800 rounded-3xl space-y-4 shadow-xl">
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <span className="text-xs text-zinc-400 uppercase tracking-wider font-semibold block mb-1">
@@ -1193,17 +1532,48 @@ export default function MiComercioPage() {
                     >
                       {comercios.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.nombre} ({c.rubro})
+                          {c.nombre} ({c.rubro}) — 📍 {c.direccion}{c.localidad ? `, ${c.localidad}` : ''}
                         </option>
                       ))}
                     </select>
+                  ) : misSucursales.length > 1 ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        value={comercioSeleccionadoId}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          handleCambiarComercio(id);
+                          setComercioAutenticadoId(id);
+                          if (typeof window !== 'undefined') {
+                            sessionStorage.setItem('vecinos_comercio_auth_id', id);
+                          }
+                        }}
+                        className="px-3.5 py-2 bg-zinc-900 border border-cyan-500/50 rounded-2xl text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 cursor-pointer min-w-[240px]"
+                      >
+                        {misSucursales.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.nombre} ({c.rubro}) — 📍 {c.direccion}{c.localidad ? `, ${c.localidad}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-700/60 shrink-0">
+                        {misSucursales.length} sucursales
+                      </span>
+                    </div>
                   ) : (
-                    <div className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-2xl text-sm font-extrabold text-white flex items-center gap-2">
+                    <div className="px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-2xl text-sm font-extrabold text-white flex flex-wrap items-center gap-2">
                       <Store className="w-4 h-4 text-cyan-400" />
                       <span>{comercioActual?.nombre || 'Comercio'}</span>
                       <span className="text-xs text-zinc-400 font-normal">({comercioActual?.rubro})</span>
+                      {comercioActual?.direccion && (
+                        <span className="text-xs text-zinc-400 font-normal flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                          <span>{comercioActual.direccion}{comercioActual.localidad ? `, ${comercioActual.localidad}` : ''}</span>
+                        </span>
+                      )}
                     </div>
                   )}
+
 
                   {esSuperAdmin && (
                     <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-violet-950 text-violet-300 border border-violet-700">
@@ -1981,16 +2351,12 @@ export default function MiComercioPage() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      WhatsApp Comercial
-                    </label>
-                    <input
-                      type="tel"
+                  <div className="sm:col-span-1">
+                    <InputWhatsAppConPais
                       value={whatsapp}
-                      onChange={(e) => setWhatsapp(e.target.value)}
-                      placeholder="+54 9 11 5000-0000"
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                      onChange={setWhatsapp}
+                      label="WhatsApp Comercial"
+                      placeholder="Ej: 9 11 5000-0000"
                     />
                   </div>
 
@@ -3205,6 +3571,107 @@ export default function MiComercioPage() {
         comercioId={comercioActual?.id}
         comercioNombre={comercioActual?.nombre}
       />
+
+      {/* Modal para Elegir con qué Sucursal Trabajar al Ingresar */}
+      {modalElegirSucursalAbierto && misSucursales.length > 1 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <div className="relative w-full max-w-lg bg-zinc-950 border-2 border-cyan-500/70 rounded-3xl p-6 sm:p-7 shadow-2xl shadow-cyan-950/60 space-y-5 animate-in fade-in zoom-in-95">
+            <button
+              type="button"
+              onClick={() => setModalElegirSucursalAbierto(false)}
+              className="absolute top-4 right-4 p-2 rounded-xl text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 flex items-center justify-center shadow-lg shadow-cyan-950/40 shrink-0">
+                <Store className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-white">¿Con qué sucursal vas a trabajar?</h3>
+                <p className="text-xs text-zinc-400">
+                  Tu cuenta administra {misSucursales.length} sucursales. Elige de la lista desplegable para cargar sus datos:
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-cyan-300 uppercase tracking-wider">
+                Elegir Sucursal de la Lista Desplegable:
+              </label>
+              <select
+                value={comercioSeleccionadoId}
+                onChange={(e) => handleCambiarComercio(e.target.value)}
+                className="w-full px-4 py-3 bg-zinc-900 border-2 border-cyan-400 rounded-2xl text-xs sm:text-sm font-bold text-white focus:outline-none focus:ring-4 focus:ring-cyan-500/20 cursor-pointer shadow-md"
+              >
+                {misSucursales.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nombre} ({c.rubro}) — 📍 {c.direccion}{c.localidad ? `, ${c.localidad}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Datos del comercio seleccionado */}
+            {comercioActual && (
+              <div className="p-4 bg-zinc-900/90 border border-zinc-800 rounded-2xl space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-white text-sm flex items-center gap-1.5">
+                    <Store className="w-4 h-4 text-cyan-400" />
+                    {comercioActual.nombre}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px] font-bold">
+                    {comercioActual.rubro}
+                  </span>
+                </div>
+
+                <div className="flex items-start gap-2 text-zinc-300 bg-zinc-950/60 p-2.5 rounded-xl border border-zinc-800">
+                  <MapPin className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Dirección física:</strong> {comercioActual.direccion}{comercioActual.localidad ? `, ${comercioActual.localidad}` : ''}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px] text-zinc-400">
+                  {comercioActual.whatsapp && (
+                    <div className="flex items-center gap-1.5 text-emerald-400">
+                      <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                      <span>WA: {comercioActual.whatsapp}</span>
+                    </div>
+                  )}
+                  {comercioActual.telefono && (
+                    <div className="flex items-center gap-1.5 text-zinc-300">
+                      <Phone className="w-3.5 h-3.5 shrink-0" />
+                      <span>Tel: {comercioActual.telefono}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setModalElegirSucursalAbierto(false)}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 text-white font-extrabold text-sm shadow-xl shadow-cyan-950/60 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>Trabajar con esta Sucursal y Ver sus Datos</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notificación de Cambio de Sucursal */}
+      {avisoCambioSucursal && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-cyan-950 border-2 border-cyan-500 text-cyan-100 text-xs font-bold shadow-2xl flex items-center gap-2.5 animate-in fade-in slide-in-from-bottom-4">
+          <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
+          <span>{avisoCambioSucursal}</span>
+        </div>
+      )}
     </main>
   );
+
 }

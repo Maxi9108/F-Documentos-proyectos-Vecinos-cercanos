@@ -81,7 +81,7 @@ export default function BannerConoceNeoFaro() {
   // Versión desplegada: 3 tarjetas con badges, microdetalles e integración comunitaria
   return (
     <section
-      aria-label="Presentación de NeoFaro: Qué somos, Qué hacemos y Cómo funciona"
+      aria-label="Presentación de NeoFaro: Quiénes somos, Qué hacemos y Cómo funciona"
       className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-zinc-900/95 via-zinc-950 to-zinc-900/95 border border-zinc-800/90 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-xl p-4 sm:p-6 transition-all duration-500"
     >
       {/* Resplandor decorativo de fondo */}
@@ -125,9 +125,9 @@ export default function BannerConoceNeoFaro() {
         </div>
       </div>
 
-      {/* Grid de 3 Tarjetas: Qué somos / Qué hacemos / Cómo funciona */}
+      {/* Grid de 3 Tarjetas: Quiénes somos / Qué hacemos / Cómo funciona */}
       <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4.5 mt-5">
-        {/* Tarjeta 1: ¿Qué somos? */}
+        {/* Tarjeta 1: ¿Quiénes somos? */}
         <div className="group rounded-2xl bg-zinc-900/60 hover:bg-zinc-900/90 border border-zinc-800/80 hover:border-violet-500/40 p-4 sm:p-5 transition-all duration-300 flex flex-col justify-between shadow-md">
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -140,7 +140,7 @@ export default function BannerConoceNeoFaro() {
             </div>
 
             <h3 className="text-sm sm:text-base font-bold text-white mb-2 group-hover:text-violet-200 transition-colors">
-              ¿Qué somos?
+              ¿Quiénes somos?
             </h3>
             <p className="text-zinc-300 text-xs leading-relaxed mb-4">
               Somos una <strong className="text-zinc-100 font-semibold">red comunitaria barrial</strong> nacida para impulsar el comercio de cercanía y reconectar a los vecinos con los locales y oficios de su propia zona.
@@ -175,7 +175,7 @@ export default function BannerConoceNeoFaro() {
               ¿Qué hacemos?
             </h3>
             <p className="text-zinc-300 text-xs leading-relaxed mb-4">
-              Digitalizamos la vida de barrio: te mostramos <strong className="text-zinc-100 font-semibold">quién está abierto ahora</strong>, farmacias de turno, ofertas del día y cómo comunicarte de inmediato con cada negocio.
+              Digitalizamos la vida de barrio: te mostramos <strong className="text-zinc-100 font-semibold">qué está abierto ahora</strong>, farmacias de turno, ofertas del día y cómo comunicarte de inmediato con cada negocio.
             </p>
           </div>
 

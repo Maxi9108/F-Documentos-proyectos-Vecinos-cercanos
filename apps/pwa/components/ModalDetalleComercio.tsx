@@ -41,6 +41,7 @@ import { verificarComercioAbierto } from '@/lib/horarios';
 import { guardarCalificacionVecino } from '@/lib/supabase';
 import ModalCrearDebate from '@/components/ModalCrearDebate';
 import OfertaCountdown from '@/components/OfertaCountdown';
+import { construirEnlaceWhatsApp } from '@/lib/codigos-pais';
 
 interface ModalDetalleComercioProps {
   comercio: Comercio | null;
@@ -122,9 +123,10 @@ export default function ModalDetalleComercio({
   const cleanWhatsapp = comercio.whatsapp ? comercio.whatsapp.replace(/[^0-9+]/g, '') : cleanPhone;
 
   // Enlace directo a WhatsApp con mensaje para el comercio
-  const whatsappGeneralUrl = `https://wa.me/${cleanWhatsapp.replace('+', '')}?text=${encodeURIComponent(
+  const whatsappGeneralUrl = construirEnlaceWhatsApp(
+    cleanWhatsapp,
     `¡Hola ${comercio.nombre}! Te contacto desde la app NeoFaro para hacerte una consulta.`
-  )}`;
+  );
 
   // Enlace directo a WhatsApp para un producto puntual
   const getWhatsappProductoUrl = (producto: Producto) => {
@@ -133,7 +135,7 @@ export default function ModalDetalleComercio({
       : `$${producto.precio.toLocaleString('es-AR')}`;
 
     const mensaje = `¡Hola ${comercio.nombre}! Vi en NeoFaro el producto "${producto.nombre}" (${precioTxt}) y quisiera consultar stock / disponibilidad.`;
-    return `https://wa.me/${cleanWhatsapp.replace('+', '')}?text=${encodeURIComponent(mensaje)}`;
+    return construirEnlaceWhatsApp(cleanWhatsapp, mensaje);
   };
 
   // Cálculo de totales del pedido estructurado
@@ -167,7 +169,7 @@ export default function ModalDetalleComercio({
     lineas.push(`💰 Total estimado: $${totalMontoPedido.toLocaleString('es-AR')} (Precios de referencia)`);
     lineas.push(`\n¿Tienen disponibilidad para prepararlo? ¡Muchas gracias!`);
 
-    return `https://wa.me/${cleanWhatsapp.replace('+', '')}?text=${encodeURIComponent(lineas.join('\n'))}`;
+    return construirEnlaceWhatsApp(cleanWhatsapp, lineas.join('\n'));
   };
 
   // Badge de Estado Operativo en tiempo real con soporte de trasnoche
