@@ -28,6 +28,7 @@ import {
   guardarComercio,
   getCalificacionesComercio,
   reabrirUrgenciaComercio,
+  eliminarComercio,
 } from '@/lib/supabase';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { getCategorias } from '@/lib/categorias';
@@ -110,6 +111,14 @@ export default function MiComercioPage() {
   const [modalPasswordAbierto, setModalPasswordAbierto] = useState(false);
   const [modalElegirSucursalAbierto, setModalElegirSucursalAbierto] = useState(false);
   const [avisoCambioSucursal, setAvisoCambioSucursal] = useState<string | null>(null);
+
+  // Modal de Baja Definitiva del Comercio por el propio comerciante
+  const [modalBajaComercioAbierto, setModalBajaComercioAbierto] = useState(false);
+  const [passBajaComercio, setPassBajaComercio] = useState('');
+  const [motivoBajaComercio, setMotivoBajaComercio] = useState('Cierre de actividad / No deseo continuar en la plataforma');
+  const [confirmarBajaCheckbox, setConfirmarBajaCheckbox] = useState(false);
+  const [procesandoBajaComercio, setProcesandoBajaComercio] = useState(false);
+  const [errorBajaComercio, setErrorBajaComercio] = useState<string | null>(null);
 
   // Método de identificación: 'email' (con mail registrado) | 'buscar' (por nombre y dirección)
 
@@ -568,6 +577,51 @@ export default function MiComercioPage() {
     setComercioAutenticadoId(null);
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('vecinos_comercio_auth_id');
+    }
+  };
+
+  // Dar de baja el comercio por el propio comerciante
+  const handleDarDeBajaComercio = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!comercioActual) return;
+    setErrorBajaComercio(null);
+
+    if (!confirmarBajaCheckbox) {
+      setErrorBajaComercio('Debes marcar la casilla confirmando que comprendes el carácter permanente e irreversible de esta acción.');
+      return;
+    }
+
+    setProcesandoBajaComercio(true);
+    try {
+      // Si el comercio tiene contraseña configurada, verificarla antes de proceder
+      if (comercioActual.password_comercio && passBajaComercio) {
+        const passValida = await verifyPassword(passBajaComercio, comercioActual.password_comercio);
+        if (!passValida && passBajaComercio !== comercioActual.password_comercio) {
+          setErrorBajaComercio('La contraseña ingresada es incorrecta.');
+          setProcesandoBajaComercio(false);
+          return;
+        }
+      }
+
+      await eliminarComercio(comercioActual.id);
+      registrarEvento('visita_comercio', comercioActual.id, comercioActual.nombre, {
+        accion: 'baja_voluntaria_comerciante',
+        motivo: motivoBajaComercio,
+      });
+
+      // Limpiar estados locales
+      setModalBajaComercioAbierto(false);
+      setComercioAutenticadoId(null);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('vecinos_comercio_auth_id');
+      }
+
+      alert(`"${comercioActual.nombre}" ha sido dado de baja permanentemente del sistema.`);
+      window.location.href = '/';
+    } catch (err: any) {
+      setErrorBajaComercio(err?.message || 'Error al procesar la baja del comercio');
+    } finally {
+      setProcesandoBajaComercio(false);
     }
   };
 
@@ -1070,6 +1124,16 @@ export default function MiComercioPage() {
                 >
                   <Key className="w-3.5 h-3.5 text-cyan-400" />
                   <span className="hidden sm:inline">Cambiar Clave</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModalBajaComercioAbierto(true)}
+                  className="py-1.5 px-3 rounded-xl bg-zinc-900 hover:bg-rose-950 text-rose-400 hover:text-rose-200 border border-zinc-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Dar de baja este comercio definitivamente"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span className="hidden sm:inline">Dar de Baja</span>
                 </button>
 
 
@@ -2758,6 +2822,29 @@ export default function MiComercioPage() {
                   </button>
                 </div>
               </form>
+
+              {/* Zona de Peligro: Dar de baja este comercio */}
+              <div className="p-6 bg-gradient-to-r from-rose-950/30 via-zinc-950 to-zinc-900 border border-rose-900/50 rounded-3xl space-y-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-bold text-rose-300 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-400" />
+                      Dar de baja este comercio
+                    </h3>
+                    <p className="text-xs text-zinc-400 max-w-xl">
+                      Si tu local cerró permanentemente o ya no deseas que figure en NeoFaro, puedes darlo de baja definitiva de la plataforma. Esta acción removerá el comercio del mapa público, catálogo y búsquedas comunitarias.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setModalBajaComercioAbierto(true)}
+                    className="py-2.5 px-4 bg-rose-950/80 hover:bg-rose-900 text-rose-200 border border-rose-700/60 text-xs font-bold rounded-xl transition-all shadow-md shadow-rose-950/50 flex items-center gap-1.5 shrink-0 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-400" />
+                    <span>Dar de baja mi comercio</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -3669,6 +3756,114 @@ export default function MiComercioPage() {
         <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-cyan-950 border-2 border-cyan-500 text-cyan-100 text-xs font-bold shadow-2xl flex items-center gap-2.5 animate-in fade-in slide-in-from-bottom-4">
           <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
           <span>{avisoCambioSucursal}</span>
+        </div>
+      )}
+      {/* Modal Confirmación de Baja Definitiva de Comercio */}
+      {modalBajaComercioAbierto && comercioActual && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-zinc-950 border-2 border-rose-500/50 rounded-3xl p-6 sm:p-7 max-w-lg w-full space-y-5 shadow-2xl relative animate-in fade-in zoom-in-95">
+            <button
+              type="button"
+              onClick={() => {
+                setModalBajaComercioAbierto(false);
+                setErrorBajaComercio(null);
+              }}
+              className="absolute top-5 right-5 text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-900 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Dar de baja mi comercio</h3>
+                <p className="text-xs text-rose-300 font-semibold">{comercioActual.nombre}</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-rose-950/40 border border-rose-800/60 rounded-2xl text-xs text-rose-200 space-y-1.5">
+              <p className="font-bold flex items-center gap-1.5 text-rose-300">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                Acción permanente e irreversible:
+              </p>
+              <p className="text-zinc-300 leading-relaxed text-[11px]">
+                Esta acción removerá definitivamente <strong>{comercioActual.nombre}</strong> (ubicado en {comercioActual.direccion}) del mapa vecinal, listados públicos y base de datos de NeoFaro.
+              </p>
+            </div>
+
+            <form onSubmit={handleDarDeBajaComercio} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Motivo de la baja (opcional):
+                </label>
+                <input
+                  type="text"
+                  value={motivoBajaComercio}
+                  onChange={(e) => setMotivoBajaComercio(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-rose-500"
+                  placeholder="Ej: Cierre de local, cambio de titularidad..."
+                />
+              </div>
+
+              {Boolean(comercioActual.password_comercio) && (
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    Contraseña del comercio para autorizar la baja:
+                  </label>
+                  <input
+                    type="password"
+                    value={passBajaComercio}
+                    onChange={(e) => setPassBajaComercio(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-rose-500"
+                    placeholder="Ingresa tu contraseña"
+                  />
+                </div>
+              )}
+
+              <label className="flex items-start gap-2.5 text-xs text-zinc-300 cursor-pointer pt-1">
+                <input
+                  type="checkbox"
+                  checked={confirmarBajaCheckbox}
+                  onChange={(e) => setConfirmarBajaCheckbox(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 rounded border-zinc-700 bg-zinc-900 accent-rose-600"
+                  required
+                />
+                <span>
+                  Confirmo que deseo dar de baja definitiva este comercio y entiendo que se borrará de NeoFaro sin posibilidad de recuperación.
+                </span>
+              </label>
+
+              {errorBajaComercio && (
+                <div className="p-3 bg-rose-950/50 border border-rose-500/40 rounded-xl text-xs text-rose-300 font-medium">
+                  {errorBajaComercio}
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalBajaComercioAbierto(false);
+                    setErrorBajaComercio(null);
+                  }}
+                  className="flex-1 py-3 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={procesandoBajaComercio || !confirmarBajaCheckbox}
+                  className="flex-1 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold transition-colors shadow-lg shadow-rose-950/50 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>{procesandoBajaComercio ? 'Dando de baja...' : 'Confirmar Baja Definitiva'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </main>
