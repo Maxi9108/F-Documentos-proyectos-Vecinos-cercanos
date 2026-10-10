@@ -27,6 +27,8 @@ interface ComerciosTableProps {
   comercios: Comercio[];
   onEdit: (comercio: Comercio) => void;
   onDelete: (comercio: Comercio) => void;
+  onAprobar?: (comercio: Comercio) => void;
+  onRechazar?: (comercio: Comercio) => void;
   onToggleEstado: (id: string, nuevoEstado: boolean) => void;
   onLevantarCuarentena?: (comercio: Comercio) => void;
   isUpdatingEstadoId: string | null;
@@ -36,6 +38,8 @@ export default function ComerciosTable({
   comercios,
   onEdit,
   onDelete,
+  onAprobar,
+  onRechazar,
   onToggleEstado,
   onLevantarCuarentena,
   isUpdatingEstadoId,
@@ -43,7 +47,7 @@ export default function ComerciosTable({
   const [busqueda, setBusqueda] = useState('');
   const [rubroFiltro, setRubroFiltro] = useState('Todos');
   const [estadoFiltro, setEstadoFiltro] = useState<
-    'todos' | 'abiertos' | 'cerrados' | 'cuarentena' | 'emergencia' | 'inactivos' | 'pulso_pendiente'
+    'todos' | 'abiertos' | 'cerrados' | 'pendientes' | 'rechazados' | 'cuarentena' | 'emergencia' | 'inactivos' | 'pulso_pendiente'
   >('todos');
 
   // Obtener rubros únicos disponibles
@@ -54,6 +58,14 @@ export default function ComerciosTable({
   }, [comercios]);
 
   // Métricas operativas de certeza barrial
+  const totalPendientes = useMemo(
+    () => comercios.filter((c) => c.estado_aprobacion === 'pendiente').length,
+    [comercios]
+  );
+  const totalRechazados = useMemo(
+    () => comercios.filter((c) => c.estado_aprobacion === 'rechazado').length,
+    [comercios]
+  );
   const totalCuarentena = useMemo(
     () => comercios.filter((c) => Boolean(c.en_cuarentena)).length,
     [comercios]
@@ -81,7 +93,7 @@ export default function ComerciosTable({
   );
 
   const tieneAlertasOperativas =
-    totalCuarentena > 0 || totalEmergencia > 0 || totalInactivos > 0 || totalPulsoPendiente > 0;
+    totalPendientes > 0 || totalCuarentena > 0 || totalEmergencia > 0 || totalInactivos > 0 || totalPulsoPendiente > 0;
 
   // Filtrado reactivo
   const comerciosFiltrados = useMemo(() => {
@@ -100,6 +112,8 @@ export default function ComerciosTable({
         estadoFiltro === 'todos' ||
         (estadoFiltro === 'abiertos' && c.esta_abierto && !c.en_cuarentena && !c.cerrado_momentaneo) ||
         (estadoFiltro === 'cerrados' && !c.esta_abierto && !c.en_cuarentena) ||
+        (estadoFiltro === 'pendientes' && c.estado_aprobacion === 'pendiente') ||
+        (estadoFiltro === 'rechazados' && c.estado_aprobacion === 'rechazado') ||
         (estadoFiltro === 'cuarentena' && Boolean(c.en_cuarentena)) ||
         (estadoFiltro === 'emergencia' && Boolean(c.cerrado_momentaneo)) ||
         (estadoFiltro === 'inactivos' &&
@@ -284,6 +298,42 @@ export default function ComerciosTable({
               </button>
               <button
                 type="button"
+                onClick={() => setEstadoFiltro('pendientes')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  estadoFiltro === 'pendientes'
+                    ? 'bg-amber-600 text-white shadow-xs font-bold'
+                    : totalPendientes > 0
+                    ? 'text-amber-500 font-extrabold bg-amber-500/10 hover:bg-amber-500/20'
+                    : 'text-zinc-500 dark:text-zinc-400'
+                }`}
+              >
+                <span>Pendientes</span>
+                {totalPendientes > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-500 text-black animate-pulse">
+                    {totalPendientes}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEstadoFiltro('rechazados')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  estadoFiltro === 'rechazados'
+                    ? 'bg-rose-700 text-white shadow-xs font-bold'
+                    : totalRechazados > 0
+                    ? 'text-rose-400 font-bold'
+                    : 'text-zinc-500 dark:text-zinc-400'
+                }`}
+              >
+                <span>Rechazados</span>
+                {totalRechazados > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-600 text-white">
+                    {totalRechazados}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
                 onClick={() => setEstadoFiltro('cuarentena')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
                   estadoFiltro === 'cuarentena'
@@ -374,9 +424,21 @@ export default function ComerciosTable({
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-zinc-400 font-mono truncate max-w-[140px] sm:max-w-xs" title={comercio.id}>
-                        {comercio.id}
-                      </div>
+                      {/* Estado de Aprobación */}
+                      {comercio.estado_aprobacion === 'pendiente' && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                            ⏳ Pendiente de moderación
+                          </span>
+                        </div>
+                      )}
+                      {comercio.estado_aprobacion === 'rechazado' && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                            ✕ Rechazado {comercio.motivo_rechazo ? `(${comercio.motivo_rechazo})` : ''}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Alerta de Cuarentena en Rojo */}
                       {esCuarentena && (
@@ -541,6 +603,32 @@ export default function ComerciosTable({
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>Liberar Cuarentena</span>
                           </button>
+                        )}
+                        {comercio.estado_aprobacion === 'pendiente' && (
+                          <>
+                            {onAprobar && (
+                              <button
+                                type="button"
+                                onClick={() => onAprobar(comercio)}
+                                className="py-1 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                                title="Aprobar comercio"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Aprobar</span>
+                              </button>
+                            )}
+                            {onRechazar && (
+                              <button
+                                type="button"
+                                onClick={() => onRechazar(comercio)}
+                                className="py-1 px-2.5 rounded-xl bg-zinc-800 hover:bg-rose-950/60 text-zinc-300 hover:text-rose-300 border border-zinc-700 hover:border-rose-700 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                title="Rechazar solicitud"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>Rechazar</span>
+                              </button>
+                            )}
+                          </>
                         )}
                         <button
                           type="button"

@@ -7,6 +7,8 @@ import {
   createComercio,
   updateComercio,
   deleteComercio,
+  rechazarComercio,
+  aprobarComercio,
   toggleComercioEstado,
   levantarCuarentena,
 } from '@/lib/supabase';
@@ -24,6 +26,7 @@ import AdminHeader from '@/components/AdminHeader';
 import ComerciosTable from '@/components/ComerciosTable';
 import ComercioModal from '@/components/ComercioModal';
 import DeleteConfirmModal from '@/components/DeleteConfirmModal';
+import RejectConfirmModal from '@/components/RejectConfirmModal';
 import { CheckCircle2, AlertCircle, X, ShieldCheck, Mail, Lock, HelpCircle, ChevronRight, Download, KeyRound } from 'lucide-react';
 
 interface NotificationState {
@@ -69,6 +72,10 @@ export default function AdminDashboard() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [comercioToDelete, setComercioToDelete] = useState<Comercio | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [comercioToReject, setComercioToReject] = useState<Comercio | null>(null);
+  const [isRejecting, setIsRejecting] = useState(false);
 
   // Estado de actualización inline
   const [isUpdatingEstadoId, setIsUpdatingEstadoId] = useState<string | null>(null);
@@ -396,6 +403,59 @@ export default function AdminDashboard() {
       setNotification({
         type: 'error',
         message: `Error al eliminar: ${res.error}`,
+      });
+    }
+  };
+
+  // Abrir modal de rechazo
+  const handleRejectPrompt = (comercio: Comercio) => {
+    setComercioToReject(comercio);
+    setIsRejectModalOpen(true);
+  };
+
+  // Confirmar rechazo
+  const handleConfirmReject = async (id: string, motivo: string) => {
+    setIsRejecting(true);
+    const res = await rechazarComercio(id, motivo);
+    setIsRejecting(false);
+
+    if (res.success) {
+      setComercios((prev) =>
+        prev.map((c) =>
+          c.id === id ? { ...c, estado_aprobacion: 'rechazado', motivo_rechazo: motivo } : c
+        )
+      );
+      setIsRejectModalOpen(false);
+      setComercioToReject(null);
+      setNotification({
+        type: 'success',
+        message: 'Comercio rechazado con éxito.',
+      });
+    } else {
+      setNotification({
+        type: 'error',
+        message: `Error al rechazar: ${res.error}`,
+      });
+    }
+  };
+
+  // Aprobar comercio directamente
+  const handleAprobarPrompt = async (comercio: Comercio) => {
+    const res = await aprobarComercio(comercio.id, comercio.nivel || 'standar');
+    if (res.success) {
+      setComercios((prev) =>
+        prev.map((c) =>
+          c.id === comercio.id ? { ...c, estado_aprobacion: 'aprobado', esta_abierto: true } : c
+        )
+      );
+      setNotification({
+        type: 'success',
+        message: `Comercio "${comercio.nombre}" aprobado exitosamente.`,
+      });
+    } else {
+      setNotification({
+        type: 'error',
+        message: `Error al aprobar: ${res.error}`,
       });
     }
   };
@@ -750,6 +810,8 @@ export default function AdminDashboard() {
           comercios={comercios}
           onEdit={handleEditarComercio}
           onDelete={handleDeletePrompt}
+          onAprobar={handleAprobarPrompt}
+          onRechazar={handleRejectPrompt}
           onToggleEstado={handleToggleEstado}
           onLevantarCuarentena={handleLevantarCuarentena}
           isUpdatingEstadoId={isUpdatingEstadoId}
@@ -774,6 +836,18 @@ export default function AdminDashboard() {
         }}
         onConfirm={handleConfirmDelete}
         isDeleting={isDeleting}
+      />
+
+      {/* Modal de Rechazo de Solicitud */}
+      <RejectConfirmModal
+        isOpen={isRejectModalOpen}
+        comercio={comercioToReject}
+        onClose={() => {
+          setIsRejectModalOpen(false);
+          setComercioToReject(null);
+        }}
+        onConfirm={handleConfirmReject}
+        isRejecting={isRejecting}
       />
 
       {/* Footer */}

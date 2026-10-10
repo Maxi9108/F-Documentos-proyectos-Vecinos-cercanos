@@ -812,6 +812,9 @@ export async function cambiarNivelComercio(
 /**
  * Rechaza una solicitud de comercio
  */
+/**
+ * Rechaza una solicitud de comercio
+ */
 export async function rechazarComercio(
   id: string,
   motivo: string = 'No cumple con las pautas de moderación'
@@ -835,6 +838,7 @@ export async function rechazarComercio(
 
   if (isSupabaseConfigured) {
     try {
+      // 1. Actualizar solicitud de modificación con motivo de rechazo
       await supabase
         .from('solicitudes_modificacion')
         .update({
@@ -843,12 +847,17 @@ export async function rechazarComercio(
         })
         .or(`comercio_id.eq.${id},id.eq.${id}`);
 
+      // 2. Actualizar estado_aprobacion en tabla comercios (sin motivo_rechazo ya que la columna no existe en PostgreSQL)
       const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       if (esUuid) {
-        await supabase.from('comercios').update({
+        const { error } = await supabase.from('comercios').update({
           estado_aprobacion: 'rechazado',
-          motivo_rechazo: motivo,
+          esta_abierto: false,
         }).eq('id', id);
+
+        if (error) {
+          console.warn('[Supabase] Error al marcar comercio rechazado:', error.message);
+        }
       }
     } catch (err) {
       console.warn('[Supabase] Error al rechazar en Supabase:', err);
@@ -888,11 +897,18 @@ export async function eliminarComercio(id: string): Promise<{ success: boolean; 
   // 2. Borrar de Supabase en todas las tablas asociadas
   if (isSupabaseConfigured) {
     try {
-      // Eliminar de solicitudes de modificación vinculadas
+      // Eliminar de solicitudes de modificación y tablas asociadas
       await supabase.from('solicitudes_modificacion').delete().or(`comercio_id.eq.${id},id.eq.${id}`);
       await supabase.from('debates_inconvenientes').delete().eq('comercio_id', id);
-      await supabase.from('calificaciones_comercios').delete().eq('comercio_id', id);
+      await supabase.from('reportes').delete().eq('comercio_id', id);
+      await supabase.from('productos').delete().eq('comercio_id', id);
       await supabase.from('comprobantes_transferencia').delete().eq('comercio_id', id);
+
+      try {
+        await supabase.from('calificaciones_comercios').delete().eq('comercio_id', id);
+      } catch {
+        // Ignorar si la tabla no existe en el esquema
+      }
 
       // Marcar definitivamente como 'eliminado' en la tabla comercios (permitido por política UPDATE)
       await supabase.from('comercios').update({

@@ -271,6 +271,25 @@ export default function AdminPage() {
   const [nivelAprobacion, setNivelAprobacion] = useState<Record<string, NivelComercio>>({});
   const [renovandoId, setRenovandoId] = useState<string | null>(null);
 
+  // Estados para Modal In-App de Rechazo de Comercios (sin window.prompt)
+  const [comercioARechazar, setComercioARechazar] = useState<Comercio | null>(null);
+  const [motivoRechazoInput, setMotivoRechazoInput] = useState('Datos incompletos o fuera de zona barrial');
+  const [procesandoRechazo, setProcesandoRechazo] = useState(false);
+
+  // Estados para Modal In-App de Eliminación Definitiva (sin window.confirm)
+  const [comercioAEliminar, setComercioAEliminar] = useState<{ id: string; nombre: string } | null>(null);
+  const [procesandoEliminar, setProcesandoEliminar] = useState(false);
+
+  // Notificación flotante de confirmación de acción
+  const [notificacionAdminAccion, setNotificacionAdminAccion] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
+
+  useEffect(() => {
+    if (notificacionAdminAccion) {
+      const timer = setTimeout(() => setNotificacionAdminAccion(null), 4500);
+      return () => clearTimeout(timer);
+    }
+  }, [notificacionAdminAccion]);
+
   // Formulario Perfil SuperAdmin
   const [perfilEmail, setPerfilEmail] = useState('');
   const [perfilNombre, setPerfilNombre] = useState('');
@@ -1057,6 +1076,11 @@ export default function AdminPage() {
           : s
       )
     );
+
+    setNotificacionAdminAccion({
+      tipo: 'ok',
+      texto: `Comercio "${comercio.nombre}" aprobado exitosamente como nivel ${nivelFinal.toUpperCase()}.`,
+    });
   };
 
   const handleRenovarMembresia = async (comercio: Comercio) => {
@@ -1304,23 +1328,45 @@ export default function AdminPage() {
     }
   };
 
-  const handleRechazar = async (comercio: Comercio) => {
-    const motivo = prompt(
-      `Indica el motivo de rechazo para "${comercio.nombre}":`,
-      'Datos incompletos o fuera de zona barrial'
-    );
-    if (!motivo) return;
+  const handleAbrirRechazarModal = (comercio: Comercio) => {
+    setComercioARechazar(comercio);
+    setMotivoRechazoInput('Datos incompletos o fuera de zona barrial');
+  };
 
-    await rechazarComercio(comercio.id, motivo);
-    registrarEvento('comercio_rechazado', comercio.id, comercio.nombre, { motivo });
+  const handleConfirmarRechazo = async () => {
+    if (!comercioARechazar) return;
+    setProcesandoRechazo(true);
+    const motivo = motivoRechazoInput.trim() || 'No cumple con las pautas de moderación';
+    const res = await rechazarComercio(comercioARechazar.id, motivo);
+    setProcesandoRechazo(false);
 
-    setComercios((prev) =>
-      prev.map((c) =>
-        c.id === comercio.id
-          ? { ...c, estado_aprobacion: 'rechazado', motivo_rechazo: motivo }
-          : c
-      )
-    );
+    if (res.success) {
+      registrarEvento('comercio_rechazado', comercioARechazar.id, comercioARechazar.nombre, { motivo });
+      setComercios((prev) =>
+        prev.map((c) =>
+          c.id === comercioARechazar.id
+            ? { ...c, estado_aprobacion: 'rechazado', motivo_rechazo: motivo }
+            : c
+        )
+      );
+      setSolicitudesMod((prev) =>
+        prev.map((s) =>
+          s.comercio_id === comercioARechazar.id || s.id === comercioARechazar.id
+            ? { ...s, estado: 'rechazado', motivo_rechazo: motivo }
+            : s
+        )
+      );
+      setNotificacionAdminAccion({
+        tipo: 'ok',
+        texto: `Comercio "${comercioARechazar.nombre}" rechazado con éxito.`
+      });
+      setComercioARechazar(null);
+    } else {
+      setNotificacionAdminAccion({
+        tipo: 'err',
+        texto: res.error || 'Error al rechazar el comercio.'
+      });
+    }
   };
 
   const toggleEstadoComercio = async (comercio: Comercio) => {
@@ -1329,11 +1375,29 @@ export default function AdminPage() {
     setComercios((prev) => prev.map((c) => (c.id === comercio.id ? actualizado : c)));
   };
 
-  const handleEliminar = async (id: string, nombre: string) => {
-    if (confirm(`¿Estás seguro de que deseas eliminar permanentemente "${nombre}"? No volverá a aparecer en el sistema.`)) {
-      await eliminarComercio(id);
-      setComercios((prev) => prev.filter((c) => c.id !== id));
-      setSolicitudesMod((prev) => prev.filter((s) => s.comercio_id !== id && s.id !== id));
+  const handleAbrirEliminarModal = (id: string, nombre: string) => {
+    setComercioAEliminar({ id, nombre });
+  };
+
+  const handleConfirmarEliminacion = async () => {
+    if (!comercioAEliminar) return;
+    setProcesandoEliminar(true);
+    const res = await eliminarComercio(comercioAEliminar.id);
+    setProcesandoEliminar(false);
+
+    if (res.success) {
+      setComercios((prev) => prev.filter((c) => c.id !== comercioAEliminar.id));
+      setSolicitudesMod((prev) => prev.filter((s) => s.comercio_id !== comercioAEliminar.id && s.id !== comercioAEliminar.id));
+      setNotificacionAdminAccion({
+        tipo: 'ok',
+        texto: `Comercio "${comercioAEliminar.nombre}" eliminado definitivamente.`
+      });
+      setComercioAEliminar(null);
+    } else {
+      setNotificacionAdminAccion({
+        tipo: 'err',
+        texto: res.error || 'Error al eliminar el comercio.'
+      });
     }
   };
 
@@ -2298,7 +2362,7 @@ export default function AdminPage() {
 
                             <button
                               type="button"
-                              onClick={() => handleRechazar(comercio)}
+                              onClick={() => handleAbrirRechazarModal(comercio)}
                               className="py-2.5 px-3 bg-zinc-900 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-300 border border-zinc-800 hover:border-rose-800 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
                             >
                               <XCircle className="w-4 h-4" />
@@ -2307,7 +2371,7 @@ export default function AdminPage() {
 
                             <button
                               type="button"
-                              onClick={() => handleEliminar(comercio.id, comercio.nombre)}
+                              onClick={() => handleAbrirEliminarModal(comercio.id, comercio.nombre)}
                               className="py-2.5 px-3 bg-zinc-900 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-800 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
                               title="Borrar definitivamente esta solicitud de la base de datos"
                             >
@@ -2485,7 +2549,7 @@ export default function AdminPage() {
 
                               <button
                                 type="button"
-                                onClick={() => handleEliminar(comercio.id, comercio.nombre)}
+                                onClick={() => handleAbrirEliminarModal(comercio.id, comercio.nombre)}
                                 className="py-2.5 px-4 bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800/70 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                                 title="Eliminar permanentemente de la base de datos y de la memoria local"
                               >
@@ -2887,7 +2951,7 @@ export default function AdminPage() {
 
                       <button
                         type="button"
-                        onClick={() => handleEliminar(comercio.id, comercio.nombre)}
+                        onClick={() => handleAbrirEliminarModal(comercio.id, comercio.nombre)}
                         className="p-2 rounded-xl text-zinc-500 hover:text-rose-400 hover:bg-rose-950/30 transition-colors cursor-pointer"
                         title="Eliminar comercio"
                       >
@@ -5973,6 +6037,207 @@ export default function AdminPage() {
               />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Modal In-App: Rechazar Solicitud de Comercio */}
+      {comercioARechazar && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => !procesandoRechazo && setComercioARechazar(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg bg-zinc-950 border border-zinc-800 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-850">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                  <XCircle className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white">Rechazar Solicitud de Comercio</h3>
+                  <p className="text-xs text-zinc-400">Moderación y control de calidad vecinal</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={procesandoRechazo}
+                onClick={() => setComercioARechazar(null)}
+                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-zinc-900/80 border border-zinc-800 flex items-center gap-3">
+              <Store className="w-5 h-5 text-indigo-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="text-sm font-bold text-white truncate">{comercioARechazar.nombre}</div>
+                <div className="text-xs text-zinc-400 truncate">{comercioARechazar.rubro} · {comercioARechazar.direccion}</div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                Motivo de Rechazo:
+              </label>
+              <textarea
+                value={motivoRechazoInput}
+                onChange={(e) => setMotivoRechazoInput(e.target.value)}
+                rows={3}
+                disabled={procesandoRechazo}
+                placeholder="Indica el motivo por el cual se rechaza la solicitud..."
+                className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-2xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-rose-500 resize-none font-medium"
+              />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {[
+                  'Datos incompletos o fuera de zona barrial',
+                  'Rubro no admitido en el directorio',
+                  'Sin atención al público comprobable',
+                  'Datos de contacto no verificables',
+                ].map((sug) => (
+                  <button
+                    key={sug}
+                    type="button"
+                    onClick={() => setMotivoRechazoInput(sug)}
+                    className="px-2 py-1 bg-zinc-900 hover:bg-zinc-850 text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-800 rounded-lg transition-colors cursor-pointer"
+                  >
+                    {sug}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={procesandoRechazo}
+                onClick={() => setComercioARechazar(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-850 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={procesandoRechazo}
+                onClick={handleConfirmarRechazo}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-50 transition-all shadow-md shadow-rose-950/60 flex items-center gap-1.5 cursor-pointer"
+              >
+                {procesandoRechazo ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Rechazando...</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-4 h-4" />
+                    <span>Confirmar Rechazo</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal In-App: Eliminar Comercio Definitivamente */}
+      {comercioAEliminar && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => !procesandoEliminar && setComercioAEliminar(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-zinc-950 border border-rose-900/50 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-850">
+              <div className="flex items-center gap-2.5">
+                <span className="p-2 rounded-xl bg-rose-600/20 text-rose-400 border border-rose-600/30">
+                  <Trash2 className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-white">Eliminar Definitivamente</h3>
+                  <p className="text-xs text-zinc-400">Acción permanente e irreversible</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={procesandoEliminar}
+                onClick={() => setComercioAEliminar(null)}
+                className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-rose-950/30 border border-rose-900/60 space-y-2 text-xs text-rose-200">
+              <p>
+                ¿Estás seguro de que deseas eliminar permanentemente a{' '}
+                <strong className="text-white font-bold">{comercioAEliminar.nombre}</strong>?
+              </p>
+              <p className="text-[11px] text-rose-300/80">
+                El comercio será dado de baja en la base de datos, se purgarán solicitudes asociadas y no volverá a aparecer en ninguna plataforma.
+              </p>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={procesandoEliminar}
+                onClick={() => setComercioAEliminar(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-850 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={procesandoEliminar}
+                onClick={handleConfirmarEliminacion}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 disabled:opacity-50 transition-all shadow-md shadow-rose-950/60 flex items-center gap-1.5 cursor-pointer"
+              >
+                {procesandoEliminar ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Eliminando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Eliminar Definitivamente</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Flotante de Notificación Inmediata */}
+      {notificacionAdminAccion && (
+        <div
+          role="status"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl backdrop-blur-xl border border-zinc-700 bg-zinc-950/95 animate-in slide-in-from-bottom-5 duration-300"
+        >
+          {notificacionAdminAccion.tipo === 'ok' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+          )}
+          <span className="text-xs font-medium text-white max-w-sm">
+            {notificacionAdminAccion.texto}
+          </span>
+          <button
+            type="button"
+            onClick={() => setNotificacionAdminAccion(null)}
+            className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer ml-1"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
     </main>

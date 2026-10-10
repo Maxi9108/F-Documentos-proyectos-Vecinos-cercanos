@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Comercio, CreateComercioInput, UpdateComercioInput, ReporteComercio } from '@/types/comercio';
+import { Comercio, CreateComercioInput, UpdateComercioInput, ReporteComercio, NivelComercio } from '@/types/comercio';
 import { INITIAL_MOCK_COMERCIOS } from './mock-comercios';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
@@ -18,14 +18,31 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
 let memoryStore: Comercio[] = [...INITIAL_MOCK_COMERCIOS];
 
 /**
- * Obtiene todos los comercios ordenados por nombre
+ * Obtiene todos los comercios ordenados por nombre, incorporando solicitudes de moderación
  */
 export async function getComercios(): Promise<Comercio[]> {
   if (!isSupabaseConfigured) {
-    return [...memoryStore].sort((a, b) => a.nombre.localeCompare(b.nombre));
+    return [...memoryStore]
+      .filter((c) => c.estado_aprobacion !== 'eliminado')
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }
 
   try {
+    // 1. Consultar solicitudes pendientes o registradas en Supabase
+    const solsMap = new Map<string, any>();
+    try {
+      const { data: sols } = await supabase.from('solicitudes_modificacion').select('*');
+      if (sols) {
+        sols.forEach((s) => {
+          if (s.estado !== 'eliminado') {
+            solsMap.set(s.comercio_id, s);
+          }
+        });
+      }
+    } catch {
+      // Continuar si falla solicitudes
+    }
+
     const { data, error } = await supabase
       .from('comercios')
       .select('*')
@@ -36,14 +53,58 @@ export async function getComercios(): Promise<Comercio[]> {
       return [...memoryStore];
     }
 
-    const sanitized = ((data as Comercio[]) || [])
-      .filter((c) => c.estado_aprobacion !== 'eliminado')
-      .map((c) => {
-        const copy = { ...c };
-        delete (copy as Record<string, unknown>).password_comercio;
-        return copy;
-      });
-    return sanitized;
+    const mapa = new Map<string, Comercio>();
+
+    ((data as Comercio[]) || []).forEach((c) => {
+      if (c.estado_aprobacion === 'eliminado') return;
+      const copy = { ...c };
+      delete (copy as unknown as Record<string, unknown>).password_comercio;
+
+      const sol = solsMap.get(copy.id);
+      if (sol) {
+        if (sol.estado === 'eliminado') return;
+        if (sol.cambios && typeof sol.cambios === 'object') {
+          Object.assign(copy, sol.cambios);
+        }
+        if (sol.estado === 'pendiente') {
+          copy.estado_aprobacion = 'pendiente';
+        } else if (sol.estado === 'rechazado') {
+          copy.estado_aprobacion = 'rechazado';
+          copy.motivo_rechazo = sol.motivo_rechazo || copy.motivo_rechazo;
+        } else if (sol.estado === 'aprobado') {
+          copy.estado_aprobacion = 'aprobado';
+        }
+      } else if (!copy.estado_aprobacion) {
+        copy.estado_aprobacion = 'aprobado';
+      }
+
+      mapa.set(copy.id, copy);
+    });
+
+    // Incorporar solicitudes que aún no están en la tabla comercios
+    solsMap.forEach((sol, comercioId) => {
+      if (sol.estado === 'eliminado') return;
+      if (!mapa.has(comercioId) && sol.cambios) {
+        const item: Comercio = {
+          id: comercioId,
+          nombre: sol.comercio_nombre || sol.cambios.nombre || 'Nuevo Comercio',
+          rubro: sol.cambios.rubro || 'General',
+          direccion: sol.cambios.direccion || 'Sin dirección',
+          telefono: sol.cambios.telefono || '',
+          whatsapp: sol.cambios.whatsapp || '',
+          latitud: sol.cambios.latitud || -34.6,
+          longitud: sol.cambios.longitud || -58.4,
+          esta_abierto: true,
+          estado_aprobacion: sol.estado === 'rechazado' ? 'rechazado' : sol.estado === 'aprobado' ? 'aprobado' : 'pendiente',
+          motivo_rechazo: sol.motivo_rechazo,
+          ...sol.cambios,
+        };
+        delete (item as unknown as Record<string, unknown>).password_comercio;
+        mapa.set(comercioId, item);
+      }
+    });
+
+    return Array.from(mapa.values());
   } catch (err) {
     console.error('[Supabase Admin] Error inesperado:', err);
     return [...memoryStore];
@@ -117,7 +178,7 @@ export async function updateComercio(
 }
 
 /**
- * Elimina un comercio por ID
+ * Elimina un comercio por ID definitivamente en todas las tablas asociadas
  */
 export async function deleteComercio(id: string): Promise<{ success: boolean; error: string | null }> {
   if (!isSupabaseConfigured) {
@@ -129,6 +190,15 @@ export async function deleteComercio(id: string): Promise<{ success: boolean; er
     // 1. Limpieza de tablas relacionadas
     await supabase.from('solicitudes_modificacion').delete().or(`comercio_id.eq.${id},id.eq.${id}`);
     await supabase.from('debates_inconvenientes').delete().eq('comercio_id', id);
+    await supabase.from('reportes').delete().eq('comercio_id', id);
+    await supabase.from('productos').delete().eq('comercio_id', id);
+    await supabase.from('comprobantes_transferencia').delete().eq('comercio_id', id);
+
+    try {
+      await supabase.from('calificaciones_comercios').delete().eq('comercio_id', id);
+    } catch {
+      // Ignorar si la tabla no existe en el esquema
+    }
 
     // 2. Marcar como eliminado definitivo en Supabase
     await supabase.from('comercios').update({
@@ -145,6 +215,89 @@ export async function deleteComercio(id: string): Promise<{ success: boolean; er
     return { success: true, error: null };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error al eliminar comercio';
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Rechaza una solicitud de comercio
+ */
+export async function rechazarComercio(
+  id: string,
+  motivo: string = 'No cumple con las pautas de moderación'
+): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured) {
+    const idx = memoryStore.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      memoryStore[idx].estado_aprobacion = 'rechazado';
+      memoryStore[idx].motivo_rechazo = motivo;
+    }
+    return { success: true };
+  }
+
+  try {
+    // 1. Actualizar solicitud de modificación
+    await supabase
+      .from('solicitudes_modificacion')
+      .update({
+        estado: 'rechazado',
+        motivo_rechazo: motivo,
+      })
+      .or(`comercio_id.eq.${id},id.eq.${id}`);
+
+    // 2. Actualizar estado_aprobacion en tabla comercios (sin motivo_rechazo)
+    const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (esUuid) {
+      await supabase.from('comercios').update({
+        estado_aprobacion: 'rechazado',
+        esta_abierto: false,
+      }).eq('id', id);
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error al rechazar comercio';
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Aprueba una solicitud de comercio
+ */
+export async function aprobarComercio(
+  id: string,
+  nivel: NivelComercio = 'standar'
+): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured) {
+    const idx = memoryStore.findIndex((c) => c.id === id);
+    if (idx >= 0) {
+      memoryStore[idx].estado_aprobacion = 'aprobado';
+      memoryStore[idx].nivel = nivel;
+      memoryStore[idx].esta_abierto = true;
+    }
+    return { success: true };
+  }
+
+  try {
+    await supabase
+      .from('solicitudes_modificacion')
+      .update({
+        estado: 'aprobado',
+      })
+      .or(`comercio_id.eq.${id},id.eq.${id}`);
+
+    const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (esUuid) {
+      await supabase.from('comercios').update({
+        estado_aprobacion: 'aprobado',
+        nivel,
+        esta_abierto: true,
+      }).eq('id', id);
+    }
+
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error al aprobar comercio';
     return { success: false, error: msg };
   }
 }

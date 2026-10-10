@@ -59,6 +59,7 @@ export interface Comercio {
   email?: string;
   email_comercio?: string;
   estado_aprobacion?: 'pendiente' | 'aprobado' | 'rechazado' | 'eliminado';
+  motivo_rechazo?: string;
   fecha_creacion?: string;
   fecha_solicitud?: string;
   // Enlaces y redes sociales
