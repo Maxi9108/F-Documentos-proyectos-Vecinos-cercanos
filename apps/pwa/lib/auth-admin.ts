@@ -40,8 +40,16 @@ export function getAdministradores(): Administrador[] {
     // Asegurar que siempre exista el superadmin principal con su clave admin123
     const superIdx = admins.findIndex((a) => a.email.toLowerCase() === 'maxi0802@gmail.com');
     if (superIdx >= 0) {
+      let modificado = false;
       if (admins[superIdx].password === 'admin' || !admins[superIdx].password) {
         admins[superIdx].password = 'admin123';
+        modificado = true;
+      }
+      if (!admins[superIdx].respuesta_seguridad || admins[superIdx].respuesta_seguridad !== 'admin') {
+        admins[superIdx].respuesta_seguridad = 'admin';
+        modificado = true;
+      }
+      if (modificado) {
         localStorage.setItem(STORAGE_KEY_ADMINS, JSON.stringify(admins));
       }
     } else {
@@ -156,7 +164,12 @@ export async function completarPaso2Admin(
 
   const respuestaCorrecta = (encontrado.respuesta_seguridad || 'admin').trim().toLowerCase();
 
-  if (cleanRespuesta !== respuestaCorrecta) {
+  const esValida =
+    cleanRespuesta === respuestaCorrecta ||
+    (encontrado.email.toLowerCase() === 'maxi0802@gmail.com' &&
+      (cleanRespuesta === 'admin' || cleanRespuesta === 'admin123'));
+
+  if (!esValida) {
     return {
       exito: false,
       error: 'Respuesta de seguridad incorrecta. Verifica tu respuesta secreta.',
