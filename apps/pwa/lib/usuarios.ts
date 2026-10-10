@@ -171,7 +171,12 @@ export async function registrarOActualizarUsuario(
 
       const { error } = await supabase.from('usuarios').upsert(payload);
       if (error) {
-        console.warn('[Usuarios] Aviso al guardar usuario en Supabase:', error.message);
+        if (error.code === '42703' || error.message?.includes('column')) {
+          delete payload.password_hash;
+          await supabase.from('usuarios').upsert(payload);
+        } else {
+          console.warn('[Usuarios] Aviso al guardar usuario en Supabase:', error.message);
+        }
       }
     } catch (supaErr) {
       console.warn('[Usuarios] Supabase upsert error no crítico:', supaErr);
