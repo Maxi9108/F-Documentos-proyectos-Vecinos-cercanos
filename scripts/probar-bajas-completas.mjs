@@ -63,7 +63,6 @@ async function testear() {
     id: testUserId,
     email: testEmail,
     nombre: 'Vecino Test Auto-Baja',
-    password_hash: testHash,
     rol: 'usuario_estandar',
     estado: 'activo',
     motivo_estado: 'Usuario para prueba automatizada de baja',
