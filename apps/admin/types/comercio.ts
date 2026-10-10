@@ -58,7 +58,7 @@ export interface Comercio {
   whatsapp?: string;
   email?: string;
   email_comercio?: string;
-  estado_aprobacion?: 'pendiente' | 'aprobado' | 'rechazado';
+  estado_aprobacion?: 'pendiente' | 'aprobado' | 'rechazado' | 'eliminado';
   fecha_creacion?: string;
   fecha_solicitud?: string;
   // Enlaces y redes sociales

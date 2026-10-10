@@ -336,8 +336,8 @@ export async function getComercios(): Promise<Comercio[]> {
 
     if (data && data.length > 0) {
       (data as Comercio[]).forEach((dbItem) => {
-        // Si el comercio fue eliminado, ignorarlo
-        if (eliminadosSet.has(dbItem.id)) return;
+        // Si el comercio fue eliminado, ignorarlo definitivamente
+        if (dbItem.estado_aprobacion === 'eliminado' || eliminadosSet.has(dbItem.id)) return;
 
         // Seguridad: eliminar password_comercio para que nunca viaje al cliente
         const safeDb = { ...dbItem };
@@ -346,6 +346,7 @@ export async function getComercios(): Promise<Comercio[]> {
         // Si existe una solicitud en Supabase para este comercio
         const sol = solsPendientesMap.get(safeDb.id);
         if (sol) {
+          if (sol.estado === 'eliminado') return; // Si la solicitud fue eliminada, ignorarlo
           if (sol.cambios && typeof sol.cambios === 'object') {
             Object.assign(safeDb, sol.cambios);
           }
@@ -367,7 +368,7 @@ export async function getComercios(): Promise<Comercio[]> {
 
     // 2. Si hay solicitudes que aún no están en la tabla 'comercios', incorporarlas a la lista
     solsPendientesMap.forEach((sol, comercioId) => {
-      if (eliminadosSet.has(comercioId)) return;
+      if (eliminadosSet.has(comercioId) || sol.estado === 'eliminado') return;
 
       if (!mapa.has(comercioId) && sol.cambios) {
         const estadoFinal =
@@ -540,40 +541,45 @@ export async function guardarComercio(comercio: Comercio): Promise<{ success: bo
 
       if (error) {
         console.warn('[Supabase] Aviso al guardar comercio en la nube:', error.message);
-        // Si falló por alguna columna que no existe aún en la tabla de Supabase, reintentar con campos base
-        if (error.code === 'PGRST204') {
+        // Si falló por alguna columna que no existe aún en la tabla de Supabase, reintentar con campos base compatibles
+        if (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('column')) {
           const payloadBase = {
             id: comercio.id,
             nombre: comercio.nombre,
             rubro: comercio.rubro,
             direccion: comercio.direccion,
+            telefono: comercio.telefono || null,
             latitud: comercio.latitud,
             longitud: comercio.longitud,
+            esta_abierto: comercio.esta_abierto ?? true,
+            estado_aprobacion: comercio.estado_aprobacion || 'aprobado',
+            nivel: comercio.nivel || 'standar',
+            fecha_solicitud: comercio.fecha_solicitud || new Date().toISOString(),
+            aprobado_por: comercio.aprobado_por || null,
+            fecha_aprobacion: comercio.fecha_aprobacion || null,
           };
           await supabase.from('comercios').upsert([payloadBase]);
         }
       }
 
-      // Si el comercio ingresa como pendiente, registrarlo siempre en solicitudes_modificacion
-      // para que aparezca indefectiblemente en el panel de administración
-      if (comercio.estado_aprobacion === 'pendiente') {
-        try {
-          const solPayload = {
-            id: comercio.id,
-            comercio_id: comercio.id,
-            comercio_nombre: comercio.nombre,
-            cambios: {
-              ...comercio,
-              tipo_solicitud: 'alta_nuevo_comercio',
-              estado_aprobacion: 'pendiente',
-            },
-            estado: 'pendiente',
-            fecha_solicitud: comercio.fecha_solicitud || new Date().toISOString(),
-          };
-          await supabase.from('solicitudes_modificacion').upsert([solPayload]);
-        } catch (eSol) {
-          console.warn('[Supabase] Error al sincronizar solicitud de alta pendiente:', eSol);
-        }
+      // Guardar siempre el registro enriquecido en solicitudes_modificacion para asegurar tipo_atencion y campos extendidos
+      try {
+        const solPayload = {
+          id: comercio.id,
+          comercio_id: comercio.id,
+          comercio_nombre: comercio.nombre,
+          cambios: {
+            ...comercio,
+            tipo_solicitud: comercio.estado_aprobacion === 'pendiente' ? 'alta_nuevo_comercio' : 'actualizacion',
+          },
+          estado: comercio.estado_aprobacion || 'aprobado',
+          fecha_solicitud: comercio.fecha_solicitud || new Date().toISOString(),
+          aprobado_por: comercio.aprobado_por || null,
+          fecha_aprobacion: comercio.fecha_aprobacion || null,
+        };
+        await supabase.from('solicitudes_modificacion').upsert([solPayload]);
+      } catch (eSol) {
+        console.warn('[Supabase] Error al sincronizar solicitud enriquecida:', eSol);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -882,18 +888,24 @@ export async function eliminarComercio(id: string): Promise<{ success: boolean; 
   // 2. Borrar de Supabase en todas las tablas asociadas
   if (isSupabaseConfigured) {
     try {
-      // Eliminar solicitudes de modificación vinculadas
+      // Eliminar de solicitudes de modificación vinculadas
       await supabase.from('solicitudes_modificacion').delete().or(`comercio_id.eq.${id},id.eq.${id}`);
       await supabase.from('debates_inconvenientes').delete().eq('comercio_id', id);
       await supabase.from('calificaciones_comercios').delete().eq('comercio_id', id);
       await supabase.from('comprobantes_transferencia').delete().eq('comercio_id', id);
 
-      // Eliminar de la tabla principal comercios
+      // Marcar definitivamente como 'eliminado' en la tabla comercios (permitido por política UPDATE)
+      await supabase.from('comercios').update({
+        estado_aprobacion: 'eliminado',
+        esta_abierto: false,
+      }).eq('id', id);
+
+      // Eliminar de la tabla principal comercios físicamente si la política lo permite
       const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
       if (esUuid) {
         const { error } = await supabase.from('comercios').delete().eq('id', id);
         if (error) {
-          console.warn('[Supabase] Error al borrar de comercios:', error.message);
+          console.warn('[Supabase] Aviso al borrar físicamente de comercios:', error.message);
         }
       }
     } catch (err: unknown) {

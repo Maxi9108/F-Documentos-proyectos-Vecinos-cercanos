@@ -36,11 +36,13 @@ export async function getComercios(): Promise<Comercio[]> {
       return [...memoryStore];
     }
 
-    const sanitized = ((data as Comercio[]) || []).map((c) => {
-      const copy = { ...c };
-      delete (copy as Record<string, unknown>).password_comercio;
-      return copy;
-    });
+    const sanitized = ((data as Comercio[]) || [])
+      .filter((c) => c.estado_aprobacion !== 'eliminado')
+      .map((c) => {
+        const copy = { ...c };
+        delete (copy as Record<string, unknown>).password_comercio;
+        return copy;
+      });
     return sanitized;
   } catch (err) {
     console.error('[Supabase Admin] Error inesperado:', err);
@@ -124,10 +126,20 @@ export async function deleteComercio(id: string): Promise<{ success: boolean; er
   }
 
   try {
-    const { error } = await supabase.from('comercios').delete().eq('id', id);
+    // 1. Limpieza de tablas relacionadas
+    await supabase.from('solicitudes_modificacion').delete().or(`comercio_id.eq.${id},id.eq.${id}`);
+    await supabase.from('debates_inconvenientes').delete().eq('comercio_id', id);
 
-    if (error) {
-      return { success: false, error: error.message };
+    // 2. Marcar como eliminado definitivo en Supabase
+    await supabase.from('comercios').update({
+      estado_aprobacion: 'eliminado',
+      esta_abierto: false,
+    }).eq('id', id);
+
+    // 3. Intentar hard-delete si está permitido
+    const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    if (esUuid) {
+      await supabase.from('comercios').delete().eq('id', id);
     }
 
     return { success: true, error: null };

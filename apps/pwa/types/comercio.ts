@@ -75,7 +75,7 @@ export const NIVELES_CONFIG: Record<NivelComercio, NivelConfig> = {
 
 export type TipoAtencion = 'local_fisico' | 'solo_envio' | 'ambos';
 
-export type EstadoAprobacion = 'pendiente' | 'aprobado' | 'rechazado';
+export type EstadoAprobacion = 'pendiente' | 'aprobado' | 'rechazado' | 'eliminado';
 
 export interface Comercio {
   id: string;

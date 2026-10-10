@@ -360,7 +360,7 @@ export default function AdminPage() {
         });
       }
       // Filtrar definitivamente cualquier comercio eliminado
-      lista = lista.filter((c) => !eliminadosSet.has(c.id));
+      lista = lista.filter((c) => c.estado_aprobacion !== 'eliminado' && !eliminadosSet.has(c.id));
     } catch (e) {
       console.warn(e);
     }
@@ -2303,6 +2303,16 @@ export default function AdminPage() {
                             >
                               <XCircle className="w-4 h-4" />
                               Rechazar
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleEliminar(comercio.id, comercio.nombre)}
+                              className="py-2.5 px-3 bg-zinc-900 hover:bg-rose-950/60 text-zinc-400 hover:text-rose-400 border border-zinc-800 hover:border-rose-800 text-xs font-semibold rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
+                              title="Borrar definitivamente esta solicitud de la base de datos"
+                            >
+                              <Trash2 className="w-4 h-4 text-rose-400" />
+                              Borrar
                             </button>
                           </div>
                         </div>
