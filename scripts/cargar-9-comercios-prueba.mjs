@@ -205,13 +205,15 @@ async function ejecutar() {
       console.log(`✅ Base guardada: ${c.nombre} [${c.rubro} | ${c.estado_aprobacion}]`);
     }
 
-    // 2. Guardar en solicitudes_modificacion para conservar tipo_atencion y campos extendidos
+    // 2. Guardar en solicitudes_modificacion para conservar tipo_atencion, password y campos extendidos
     const solPayload = {
       id: c.id,
       comercio_id: c.id,
       comercio_nombre: c.nombre,
       cambios: {
         ...c,
+        email_comercio: c.email,
+        password_comercio: '24b31d8ec515cf58e3a0ec20479913266d88595bf139c2b15acc7ea376e1eacc', // hash de '123'
         tipo_solicitud: c.estado_aprobacion === 'pendiente' ? 'alta_nuevo_comercio' : 'actualizacion',
       },
       estado: c.estado_aprobacion,

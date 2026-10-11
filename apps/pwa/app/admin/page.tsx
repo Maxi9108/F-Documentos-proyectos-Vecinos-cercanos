@@ -38,6 +38,7 @@ import {
   cambiarNivelComercio,
   toggleCerradoMomentaneo,
   toggleFarmaciaTurno,
+  toggleCerradoFinDelDia,
   configurarVacaciones,
   reanudarHorarioNormal,
   getComprobantesTransferencia,
@@ -128,6 +129,7 @@ import {
   Palmtree,
   Pill,
   AlertCircle,
+  Power,
   Database,
   Download,
   Upload,
@@ -419,10 +421,7 @@ export default function AdminPage() {
 
   // Manejo de Amnistía Zonal
   const handleEjecutarAmnistia = async () => {
-    if (!motivoAmnistia.trim()) {
-      alert('Por favor indica el motivo de la amnistía zonal (ej: corte general de luz, restablecimiento masivo, temporal climático).');
-      return;
-    }
+    const motivoFinal = motivoAmnistia.trim() || 'Amnistía general administrativa (sin motivo especificado)';
     const zonaTexto = zonaAmnistia === 'Todas' ? 'todas las localidades' : `la localidad de ${zonaAmnistia}`;
     if (!confirm(`¿Confirmas aplicar la Amnistía Zonal para ${zonaTexto}?\n\nAcciones que se ejecutarán:\n- Reactivación de locales suspendidos por falta de confirmación de pulso\n- Levantamiento de cuarentenas preventivas zonales\n- Puesta a cero de contadores de urgencia/strikes temporales\n- Notificación en registro de auditoría institucional.`)) {
       return;
@@ -433,7 +432,7 @@ export default function AdminPage() {
     try {
       const res = await aplicarAmnistiaZonal(
         zonaAmnistia,
-        motivoAmnistia,
+        motivoFinal,
         adminActual?.nombre || 'Administrador General'
       );
       setMensajeAmnistia({
@@ -1192,35 +1191,36 @@ export default function AdminPage() {
     const desde = prompt('Fecha de inicio de vacaciones (AAAA-MM-DD):', comercio.vacaciones_desde || hoy);
     if (!desde) return;
     const hasta = prompt(
-      'Fecha obligatoria de Retorno (AAAA-MM-DD):\nEl comercio volverá a visibilizarse automáticamente llegada esta fecha.',
+      'Fecha de Retorno (AAAA-MM-DD - OPCIONAL):\nEl comercio volverá a visibilizarse automáticamente llegada esta fecha. Deja en blanco para receso a demanda.',
       comercio.vacaciones_hasta || ''
     );
-    if (!hasta) {
-      alert('La fecha de Retorno es obligatoria para programar el periodo de vacaciones.');
-      return;
+    const hastaLimpio = hasta ? hasta.trim() : undefined;
+    let supera60 = false;
+    let dias = 0;
+
+    if (hastaLimpio) {
+      const msDiff = new Date(hastaLimpio).getTime() - new Date(desde).getTime();
+      dias = Math.ceil(msDiff / (1000 * 60 * 60 * 24));
+      if (dias > 60) {
+        const continua = confirm(
+          `Atención: Has indicado un receso de ${dias} días (superior al límite de 60 días).\n` +
+          `Los comercios con más de 60 días continuos en vacaciones se ocultan automáticamente del mapa y generan un ticket de revisión de baja definitiva.\n\n` +
+          `¿Deseas continuar?`
+        );
+        if (!continua) return;
+        supera60 = true;
+      }
     }
 
-    const msDiff = new Date(hasta).getTime() - new Date(desde).getTime();
-    const dias = Math.ceil(msDiff / (1000 * 60 * 60 * 24));
-    if (dias > 60) {
-      const continua = confirm(
-        `Atención: Has indicado un receso de ${dias} días (superior al límite de 60 días).\n` +
-        `Los comercios con más de 60 días continuos en vacaciones se ocultan automáticamente del mapa y generan un ticket de revisión de baja definitiva.\n\n` +
-        `¿Deseas continuar?`
-      );
-      if (!continua) return;
-    }
+    const mensaje = prompt('Mensaje para los clientes (Opcional):', comercio.mensaje_vacaciones || 'Cerrado por descanso anual. ¡Nos vemos pronto!');
 
-    const mensaje = prompt('Mensaje para los clientes:', comercio.mensaje_vacaciones || 'Cerrado por descanso anual. ¡Nos vemos pronto!');
-
-    const res = await configurarVacaciones(comercio.id, true, desde, hasta, mensaje || undefined);
+    const res = await configurarVacaciones(comercio.id, true, desde, hastaLimpio, mensaje || undefined);
     if (res.success) {
       registrarEvento('visita_comercio', comercio.id, comercio.nombre, {
         accion: 'cargar_vacaciones',
         desde,
-        hasta,
+        hasta: hastaLimpio,
       });
-      const supera60 = dias > 60;
       setComercios((prev) =>
         prev.map((c) =>
           c.id === comercio.id
@@ -1228,7 +1228,7 @@ export default function AdminPage() {
                 ...c,
                 en_vacaciones: true,
                 vacaciones_desde: desde,
-                vacaciones_hasta: hasta,
+                vacaciones_hasta: hastaLimpio,
                 mensaje_vacaciones: mensaje || undefined,
                 esta_abierto: false,
                 oculto_por_inactividad: supera60 ? true : c.oculto_por_inactividad,
@@ -2854,6 +2854,33 @@ export default function AdminPage() {
                           >
                             <Pill className="w-3 h-3 text-emerald-400" />
                             {comercio.esta_de_turno ? 'De Turno 24hs' : 'Marcar Turno'}
+                          </button>
+                        )}
+
+                        {!comercio.cerrado_momentaneo && !comercio.en_vacaciones && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const nuevoEstado = !comercio.esta_abierto;
+                              const accionTexto = nuevoEstado ? 'abrir el local' : 'cerrar por fin del día (sin motivo)';
+                              if (confirm(`¿Confirmas ${accionTexto} para "${comercio.nombre}"?`)) {
+                                await toggleCerradoFinDelDia(comercio.id, !nuevoEstado);
+                                setComercios((prev) =>
+                                  prev.map((c) =>
+                                    c.id === comercio.id ? { ...c, esta_abierto: nuevoEstado, cerrado_momentaneo: false } : c
+                                  )
+                                );
+                              }
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors flex items-center gap-1 cursor-pointer ${
+                              comercio.esta_abierto
+                                ? 'bg-zinc-900 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-300 border-zinc-800 hover:border-rose-700/50'
+                                : 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/60'
+                            }`}
+                            title={comercio.esta_abierto ? 'Cerrar sin motivo como fin del día (sin consumo de emergencias ni strikes)' : 'Abrir local y comenzar jornada'}
+                          >
+                            <Power className="w-3 h-3" />
+                            <span>{comercio.esta_abierto ? 'Cerrar Fin del Día' : 'Abrir Local'}</span>
                           </button>
                         )}
 
@@ -5581,13 +5608,13 @@ export default function AdminPage() {
 
                 <div>
                   <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                    Motivo Justificatorio (Auditado):
+                    Motivo Justificatorio (Opcional - Auditado):
                   </label>
                   <textarea
                     value={motivoAmnistia}
                     onChange={(e) => setMotivoAmnistia(e.target.value)}
                     rows={3}
-                    placeholder="Ej: Temporal de lluvia y corte masivo de suministro eléctrico en la zona. Se restablece la operación de todos los comercios afectados."
+                    placeholder="Opcional: Ej. Temporal de lluvia y corte masivo de suministro eléctrico en la zona. (Dejar vacío para amnistía general)"
                     className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-amber-400 resize-none placeholder:text-zinc-500"
                   />
                   <div className="flex flex-wrap gap-1.5 mt-2">

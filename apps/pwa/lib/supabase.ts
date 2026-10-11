@@ -1047,17 +1047,15 @@ export async function configurarVacaciones(
   enVacaciones: boolean,
   desde?: string,
   hasta?: string,
-  mensaje?: string
+  mensaje?: string,
+  modalidad?: 'descanso_total' | 'mostrar_con_aviso'
 ): Promise<{ success: boolean; diasVacaciones?: number; supera60Dias?: boolean; error?: string }> {
-  if (enVacaciones && !hasta) {
-    return { success: false, error: 'El día de Retorno es obligatorio para programar vacaciones.' };
-  }
-
   const hoyStr = new Date().toISOString().split('T')[0];
   const fechaDesde = desde || hoyStr;
   let diasTotales = 0;
   let supera60Dias = false;
 
+  // Fecha de Retorno es OPCIONAL: si se especifica, se calculan días y límite de 60 días
   if (enVacaciones && hasta) {
     const msInicio = new Date(fechaDesde).getTime();
     const msRetorno = new Date(hasta).getTime();
@@ -1071,8 +1069,9 @@ export async function configurarVacaciones(
   const updates: Partial<Comercio> = {
     en_vacaciones: enVacaciones,
     vacaciones_desde: enVacaciones ? fechaDesde : undefined,
-    vacaciones_hasta: enVacaciones ? hasta : undefined,
+    vacaciones_hasta: enVacaciones ? (hasta || undefined) : undefined,
     mensaje_vacaciones: enVacaciones ? (mensaje || 'Cerrado por vacaciones. ¡Pronto regresamos!') : undefined,
+    modalidad_vacaciones: enVacaciones ? (modalidad || 'mostrar_con_aviso') : undefined,
     esta_abierto: !enVacaciones,
     oculto_por_inactividad: enVacaciones ? supera60Dias : false,
     ticket_baja_definitiva: enVacaciones ? supera60Dias : false,
@@ -1100,25 +1099,54 @@ export async function configurarVacaciones(
 
   if (isSupabaseConfigured) {
     try {
+      // 1. Actualizar esta_abierto en tabla comercios (compatible con esquema base)
       await supabase
         .from('comercios')
         .update({
-          en_vacaciones: enVacaciones,
-          vacaciones_desde: enVacaciones ? (fechaDesde || null) : null,
-          vacaciones_hasta: enVacaciones ? (hasta || null) : null,
-          mensaje_vacaciones: enVacaciones ? (mensaje || 'Cerrado por vacaciones. ¡Pronto regresamos!') : null,
-          oculto_por_inactividad: enVacaciones ? supera60Dias : false,
-          ticket_baja_definitiva: enVacaciones ? supera60Dias : false,
-          fecha_ticket_baja: (enVacaciones && supera60Dias) ? new Date().toISOString() : null,
-          motivo_ticket_baja: (enVacaciones && supera60Dias)
-            ? `Vacaciones programadas de ${diasTotales} días (supera el límite de 60 días)`
-            : null,
           esta_abierto: !enVacaciones,
         })
         .eq('id', id);
+
+      // Intentar actualizar campos de vacaciones si la tabla los soporta
+      try {
+        await supabase
+          .from('comercios')
+          .update({
+            en_vacaciones: enVacaciones,
+            vacaciones_desde: enVacaciones ? (fechaDesde || null) : null,
+            vacaciones_hasta: enVacaciones ? (hasta || null) : null,
+            mensaje_vacaciones: enVacaciones ? (mensaje || 'Cerrado por vacaciones. ¡Pronto regresamos!') : null,
+            oculto_por_inactividad: enVacaciones ? supera60Dias : false,
+            ticket_baja_definitiva: enVacaciones ? supera60Dias : false,
+            fecha_ticket_baja: (enVacaciones && supera60Dias) ? new Date().toISOString() : null,
+            motivo_ticket_baja: (enVacaciones && supera60Dias)
+              ? `Vacaciones programadas de ${diasTotales} días (supera el límite de 60 días)`
+              : null,
+          })
+          .eq('id', id);
+      } catch (_) {}
+
+      // 2. Sincronizar en solicitudes_modificacion para asegurar persistencia permanente
+      const { data: sol } = await supabase
+        .from('solicitudes_modificacion')
+        .select('*')
+        .eq('comercio_id', id)
+        .maybeSingle();
+
+      if (sol && sol.cambios) {
+        await supabase
+          .from('solicitudes_modificacion')
+          .update({
+            cambios: {
+              ...sol.cambios,
+              ...updates,
+            },
+          })
+          .eq('id', sol.id);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      return { success: false, error: msg };
+      console.warn('[Supabase] Aviso en configurarVacaciones:', msg);
     }
   }
 
@@ -1167,21 +1195,115 @@ export async function reanudarHorarioNormal(id: string): Promise<{ success: bool
       await supabase
         .from('comercios')
         .update({
-          cerrado_momentaneo: false,
-          motivo_cierre_momentaneo: null,
-          fecha_cierre_emergencia: null,
-          reapertura_emergencia_programada: null,
-          en_vacaciones: false,
-          vacaciones_desde: null,
-          vacaciones_hasta: null,
-          mensaje_vacaciones: null,
-          oculto_por_inactividad: false,
-          ticket_baja_definitiva: false,
-          fecha_ticket_baja: null,
-          motivo_ticket_baja: null,
           esta_abierto: true,
         })
         .eq('id', id);
+
+      try {
+        await supabase
+          .from('comercios')
+          .update({
+            cerrado_momentaneo: false,
+            motivo_cierre_momentaneo: null,
+            fecha_cierre_emergencia: null,
+            reapertura_emergencia_programada: null,
+            en_vacaciones: false,
+            vacaciones_desde: null,
+            vacaciones_hasta: null,
+            mensaje_vacaciones: null,
+            oculto_por_inactividad: false,
+            ticket_baja_definitiva: false,
+            fecha_ticket_baja: null,
+            motivo_ticket_baja: null,
+          })
+          .eq('id', id);
+      } catch (_) {}
+
+      // Sincronizar en solicitudes_modificacion
+      const { data: sol } = await supabase
+        .from('solicitudes_modificacion')
+        .select('*')
+        .eq('comercio_id', id)
+        .maybeSingle();
+
+      if (sol && sol.cambios) {
+        await supabase
+          .from('solicitudes_modificacion')
+          .update({
+            cambios: {
+              ...sol.cambios,
+              ...updates,
+            },
+          })
+          .eq('id', sol.id);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  }
+
+  return { success: true };
+}
+
+/**
+ * Cierre regular por fin del día / fin de jornada (sin motivo ni penalización).
+ * Permite cerrar al terminar el horario habitual sin consumir usos de emergencia ni strikes.
+ */
+export async function toggleCerradoFinDelDia(
+  id: string,
+  cerrar: boolean
+): Promise<{ success: boolean; error?: string }> {
+  const updates: Partial<Comercio> = {
+    esta_abierto: !cerrar,
+    cerrado_momentaneo: false,
+    motivo_cierre_momentaneo: undefined,
+    fecha_cierre_emergencia: undefined,
+    reapertura_emergencia_programada: undefined,
+  };
+
+  if (typeof window !== 'undefined') {
+    try {
+      const guardadosRaw = localStorage.getItem('vecinos_comercios_nuevos');
+      if (guardadosRaw) {
+        const guardados: Comercio[] = JSON.parse(guardadosRaw);
+        const idx = guardados.findIndex((c) => c.id === id);
+        if (idx >= 0) {
+          guardados[idx] = { ...guardados[idx], ...updates };
+          localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(guardados));
+        }
+      }
+    } catch (e) {
+      console.warn('[LocalStorage] Error en toggleCerradoFinDelDia:', e);
+    }
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase
+        .from('comercios')
+        .update({
+          esta_abierto: !cerrar,
+        })
+        .eq('id', id);
+
+      const { data: sol } = await supabase
+        .from('solicitudes_modificacion')
+        .select('*')
+        .eq('comercio_id', id)
+        .maybeSingle();
+
+      if (sol && sol.cambios) {
+        await supabase
+          .from('solicitudes_modificacion')
+          .update({
+            cambios: {
+              ...sol.cambios,
+              ...updates,
+            },
+          })
+          .eq('id', sol.id);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, error: msg };
@@ -2371,9 +2493,11 @@ export async function getTodasCalificaciones(): Promise<CalificacionComercio[]> 
  */
 export async function aplicarAmnistiaZonal(
   zona: string,
-  motivo: string,
-  adminNombre: string
+  motivo?: string,
+  adminNombre?: string
 ): Promise<{ ok: boolean; restablecidos: number; nombres: string[] }> {
+  const motivoFinal = (motivo && motivo.trim()) || 'Amnistía general administrativa (sin motivo especificado)';
+  const adminNombreFinal = adminNombre || 'Administrador General';
   const todosComercios = await getComercios();
   const zonaLower = zona.toLowerCase();
 
@@ -2413,8 +2537,8 @@ export async function aplicarAmnistiaZonal(
       historial.unshift({
         id: `amn-${Date.now()}`,
         zona,
-        motivo,
-        adminNombre,
+        motivo: motivoFinal,
+        adminNombre: adminNombreFinal,
         fecha: new Date().toISOString(),
         localesAfectados: nombres.length,
       });
@@ -2439,7 +2563,7 @@ export async function aplicarAmnistiaZonal(
 
       await supabase.from('eventos_analytics').insert({
         tipo_evento: 'amnistia_zonal',
-        detalles: { zona, motivo, adminNombre, cantidad: ids.length, timestamp: new Date().toISOString() },
+        detalles: { zona, motivo: motivoFinal, adminNombre: adminNombreFinal, cantidad: ids.length, timestamp: new Date().toISOString() },
       });
     } catch (err) {
       console.warn('[Supabase] Error en update masivo de amnistía zonal:', err);

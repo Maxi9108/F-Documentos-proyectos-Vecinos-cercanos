@@ -68,15 +68,69 @@ export async function POST(req: NextRequest) {
         if (!error && data) {
           comercioEncontrado = data;
         }
+
+        // Buscar también en solicitudes_modificacion para asegurar obtención de password y metadatos
+        try {
+          const { data: solData } = await supabase
+            .from('solicitudes_modificacion')
+            .select('*')
+            .eq('comercio_id', comercioId)
+            .maybeSingle();
+
+          if (solData?.cambios) {
+            comercioEncontrado = {
+              ...(comercioEncontrado || {}),
+              ...solData.cambios,
+              id: comercioId,
+              nombre: comercioEncontrado?.nombre || solData.cambios.nombre || solData.comercio_nombre,
+            };
+          }
+        } catch (_) {}
       } else if (email) {
         const cleanMail = String(email).trim().toLowerCase();
-        const { data, error } = await supabase
-          .from('comercios')
-          .select('*')
-          .or(`email_comercio.ilike.${cleanMail},email.ilike.${cleanMail}`)
-          .limit(1);
-        if (!error && data && data.length > 0) {
-          comercioEncontrado = data[0];
+
+        // A. Buscar en solicitudes_modificacion donde se almacena el email y credenciales
+        try {
+          const { data: sols } = await supabase
+            .from('solicitudes_modificacion')
+            .select('*')
+            .limit(150);
+
+          const solMatch = sols?.find((s) => {
+            const m1 = (s.cambios?.email || '').trim().toLowerCase();
+            const m2 = (s.cambios?.email_comercio || '').trim().toLowerCase();
+            return m1 === cleanMail || m2 === cleanMail;
+          });
+
+          if (solMatch?.cambios) {
+            const targetId = solMatch.comercio_id || solMatch.id;
+            const { data: cData } = await supabase
+              .from('comercios')
+              .select('*')
+              .eq('id', targetId)
+              .maybeSingle();
+
+            comercioEncontrado = {
+              ...(cData || {}),
+              ...solMatch.cambios,
+              id: targetId,
+              nombre: cData?.nombre || solMatch.cambios.nombre || solMatch.comercio_nombre,
+            };
+          }
+        } catch (_) {}
+
+        // B. Si aún no se encontró, consultar directamente en comercios
+        if (!comercioEncontrado) {
+          try {
+            const { data } = await supabase
+              .from('comercios')
+              .select('*')
+              .or(`email_comercio.ilike.${cleanMail},email.ilike.${cleanMail}`)
+              .limit(1);
+            if (data && data.length > 0) {
+              comercioEncontrado = data[0];
+            }
+          } catch (_) {}
         }
       }
     }

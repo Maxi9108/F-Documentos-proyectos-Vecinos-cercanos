@@ -29,6 +29,9 @@ import {
   getCalificacionesComercio,
   reabrirUrgenciaComercio,
   eliminarComercio,
+  configurarVacaciones,
+  toggleCerradoFinDelDia,
+  toggleCerradoMomentaneo,
 } from '@/lib/supabase';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { getCategorias } from '@/lib/categorias';
@@ -47,6 +50,7 @@ import {
   Award,
   Upload,
   Clock,
+  Power,
   MapPin,
   Phone,
   MessageSquare,
@@ -165,6 +169,15 @@ export default function MiComercioPage() {
   const [motivoCierreMomentaneo, setMotivoCierreMomentaneo] = useState('');
   const [modalidadVacaciones, setModalidadVacaciones] = useState<'descanso_total' | 'mostrar_con_aviso'>('mostrar_con_aviso');
   const [estaDeTurno, setEstaDeTurno] = useState(false);
+
+  // Estados para Acciones Rápidas Operativas (Fin del Día y Modal de Vacaciones Directo)
+  const [modalVacacionesDirecto, setModalVacacionesDirecto] = useState(false);
+  const [modalVacDesde, setModalVacDesde] = useState('');
+  const [modalVacHasta, setModalVacHasta] = useState('');
+  const [modalVacMensaje, setModalVacMensaje] = useState('');
+  const [modalVacModalidad, setModalVacModalidad] = useState<'descanso_total' | 'mostrar_con_aviso'>('mostrar_con_aviso');
+  const [procesandoVacacionesDirecto, setProcesandoVacacionesDirecto] = useState(false);
+  const [procesandoFinDelDia, setProcesandoFinDelDia] = useState(false);
 
   // Horarios avanzados con soporte para trasnoche y día por día
   const [horariosConfig, setHorariosConfig] = useState<HorariosConfig>(HORARIOS_DEFECTO);
@@ -857,12 +870,6 @@ export default function MiComercioPage() {
       }
     }
 
-    if (enVacaciones && !vacacionesHasta) {
-      alert('Debes indicar obligatoriamente el día de Retorno para programar las vacaciones.');
-      setEnviandoMod(false);
-      return;
-    }
-
     let supera60Dias = false;
     let diasTotalesVac = 0;
     if (enVacaciones && vacacionesHasta) {
@@ -1067,6 +1074,53 @@ export default function MiComercioPage() {
       if (act) cargarDatosFormulario(act);
       setLevantandoUrgencia(false);
     }
+  };
+
+  // Acción directa para alternar cerrado fin del día (sin penalizaciones ni cómputo de strikes)
+  const handleToggleFinDelDia = async (cerrar: boolean) => {
+    if (!comercioActual) return;
+    const accion = cerrar ? 'cerrar tu local por fin del día' : 'abrir tu local';
+    if (!confirm(`¿Confirmas que deseas ${accion}?`)) return;
+    setProcesandoFinDelDia(true);
+    await toggleCerradoFinDelDia(comercioActual.id, cerrar);
+    const c = await getComercios();
+    setComercios(c);
+    const act = c.find((x) => x.id === comercioActual.id);
+    if (act) cargarDatosFormulario(act);
+    setProcesandoFinDelDia(false);
+  };
+
+  // Acción directa para guardar e iniciar modo vacaciones (sin tocar zona de reparto ni mapa)
+  const handleGuardarVacacionesDirecto = async () => {
+    if (!comercioActual) return;
+    setProcesandoVacacionesDirecto(true);
+    await configurarVacaciones(
+      comercioActual.id,
+      true,
+      modalVacDesde || new Date().toISOString().split('T')[0],
+      modalVacHasta || undefined,
+      modalVacMensaje.trim() || undefined,
+      modalVacModalidad
+    );
+    const c = await getComercios();
+    setComercios(c);
+    const act = c.find((x) => x.id === comercioActual.id);
+    if (act) cargarDatosFormulario(act);
+    setProcesandoVacacionesDirecto(false);
+    setModalVacacionesDirecto(false);
+  };
+
+  // Acción directa para finalizar vacaciones y reabrir local
+  const handleFinalizarVacaciones = async () => {
+    if (!comercioActual) return;
+    if (!confirm('¿Deseas finalizar las vacaciones hoy y volver a abrir tu local?')) return;
+    setProcesandoVacacionesDirecto(true);
+    await reanudarHorarioNormal(comercioActual.id);
+    const c = await getComercios();
+    setComercios(c);
+    const act = c.find((x) => x.id === comercioActual.id);
+    if (act) cargarDatosFormulario(act);
+    setProcesandoVacacionesDirecto(false);
   };
 
   const solicitudPendiente = solicitudesMod.find((s) => s.estado === 'pendiente');
@@ -1858,9 +1912,10 @@ export default function MiComercioPage() {
               </div>
             )}
 
-            {/* BANNERS OPERATIVOS: EMERGENCIA Y VACACIONES */}
-            {comercioActual && (comercioActual.cerrado_momentaneo || comercioActual.en_vacaciones) && (
+            {/* BANNERS Y BOTONES OPERATIVOS EN VIVO */}
+            {comercioActual && (
               <div className="pt-2 space-y-2">
+                {/* 1. Emergencia activa */}
                 {comercioActual.cerrado_momentaneo && (
                   <div className="p-3.5 rounded-2xl bg-amber-950/60 border border-amber-500/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-200 shadow-md">
                     <div className="flex items-start gap-2.5">
@@ -1889,14 +1944,15 @@ export default function MiComercioPage() {
                   </div>
                 )}
 
+                {/* 2. Vacaciones activas */}
                 {comercioActual.en_vacaciones && (
                   <div className="p-3.5 rounded-2xl bg-sky-950/60 border border-sky-500/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-sky-200">
                     <div className="flex items-start gap-2.5">
                       <Palmtree className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
                       <div>
-                        <strong className="text-sky-300 block">Receso por Vacaciones Programadas:</strong>
+                        <strong className="text-sky-300 block">Receso por Vacaciones Activo:</strong>
                         <span>
-                          Día de Retorno: {comercioActual.vacaciones_hasta ? new Date(comercioActual.vacaciones_hasta).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }) : 'Sin fecha'}
+                          Día de Retorno: {comercioActual.vacaciones_hasta ? new Date(comercioActual.vacaciones_hasta).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }) : 'Indefinido (hasta reapertura manual)'}
                           {comercioActual.mensaje_vacaciones ? ` — "${comercioActual.mensaje_vacaciones}"` : ''}
                         </span>
                         {comercioActual.oculto_por_inactividad ? (
@@ -1905,7 +1961,9 @@ export default function MiComercioPage() {
                           </p>
                         ) : (
                           <p className="text-[11px] text-sky-400 font-medium mt-0.5">
-                            El sistema volverá a visibilizar y abrir el local automáticamente en la fecha de retorno.
+                            {comercioActual.vacaciones_hasta
+                              ? 'El sistema volverá a visibilizar y abrir el local automáticamente en la fecha de retorno.'
+                              : 'Permanece guardado y en vacaciones hasta que decidas reabrirlo con el botón de tu panel.'}
                           </p>
                         )}
                       </div>
@@ -1913,21 +1971,74 @@ export default function MiComercioPage() {
 
                     <button
                       type="button"
-                      onClick={async () => {
-                        if (confirm('¿Deseas finalizar las vacaciones hoy y volver a abrir el local?')) {
-                          await reanudarHorarioNormal(comercioActual.id);
-                          const c = await getComercios();
-                          setComercios(c);
-                          const act = c.find((x) => x.id === comercioActual.id);
-                          if (act) cargarDatosFormulario(act);
-                        }
-                      }}
-                      className="py-1.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-extrabold text-xs shrink-0 cursor-pointer transition-all"
+                      disabled={procesandoVacacionesDirecto}
+                      onClick={handleFinalizarVacaciones}
+                      className="py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-black font-black text-xs shrink-0 cursor-pointer transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50"
                     >
-                      Finalizar Vacaciones Hoy
+                      <CheckCircle2 className="w-4 h-4 text-black" />
+                      <span>{procesandoVacacionesDirecto ? 'Reabriendo...' : 'Finalizar Vacaciones y Reabrir'}</span>
                     </button>
                   </div>
                 )}
+
+                {/* 3. Barra de acciones operativas rápidas (Fin del día, Vacaciones, Reabrir) */}
+                <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2.5 h-2.5 rounded-full ${comercioActual.esta_abierto ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+                    <span className="text-xs font-bold text-white">
+                      Estado Actual:{' '}
+                      <span className={comercioActual.esta_abierto ? 'text-emerald-400' : 'text-rose-400'}>
+                        {comercioActual.esta_abierto ? 'Abierto para Vecinos' : 'Cerrado para Vecinos'}
+                      </span>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center flex-wrap gap-2">
+                    {/* Botón Cerrar por Fin del Día / Abrir Local */}
+                    {comercioActual.esta_abierto ? (
+                      <button
+                        type="button"
+                        disabled={procesandoFinDelDia}
+                        onClick={() => handleToggleFinDelDia(true)}
+                        className="py-1.5 px-3 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-700/60 text-rose-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                        title="Cerrar sin motivo como fin del día (no consume cupos ni genera strikes)"
+                      >
+                        <Power className="w-3.5 h-3.5 text-rose-400" />
+                        <span>{procesandoFinDelDia ? 'Cerrando...' : 'Cerrado por Fin del Día'}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={procesandoFinDelDia}
+                        onClick={() => handleToggleFinDelDia(false)}
+                        className="py-1.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-black font-black text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-emerald-950/50 disabled:opacity-50"
+                        title="Reabrir local para comenzar la jornada"
+                      >
+                        <Power className="w-3.5 h-3.5 text-black" />
+                        <span>{procesandoFinDelDia ? 'Abriendo...' : '🟢 Abrir Local Ahora (Comenzar Día)'}</span>
+                      </button>
+                    )}
+
+                    {/* Botón Irse de Vacaciones (abre modal directo, nunca toca zona ni mapa) */}
+                    {!comercioActual.en_vacaciones && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalVacDesde(new Date().toISOString().split('T')[0]);
+                          setModalVacHasta('');
+                          setModalVacMensaje('');
+                          setModalVacModalidad('mostrar_con_aviso');
+                          setModalVacacionesDirecto(true);
+                        }}
+                        className="py-1.5 px-3 rounded-xl bg-sky-950/80 hover:bg-sky-900 border border-sky-700/60 text-sky-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                        title="Programar vacaciones sin tocar la zona de reparto ni modificar datos"
+                      >
+                        <Palmtree className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Irse de Vacaciones</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </section>
@@ -2729,11 +2840,10 @@ export default function MiComercioPage() {
 
                             <div>
                               <label className="block text-[11px] font-bold text-sky-300 mb-1">
-                                Día de Retorno (*):
+                                Día de Retorno <span className="text-zinc-400 font-normal">(Opcional)</span>:
                               </label>
                               <input
                                 type="date"
-                                required
                                 value={vacacionesHasta}
                                 onChange={(e) => setVacacionesHasta(e.target.value)}
                                 className="w-full px-2.5 py-1.5 bg-zinc-950 border border-sky-500 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-400"
@@ -2787,7 +2897,7 @@ export default function MiComercioPage() {
                         </div>
                       ) : (
                         <p className="text-[11px] text-zinc-500 leading-tight">
-                          Requiere indicar el día de Retorno. Llegada esa fecha, el local se visibiliza automáticamente sin intervención.
+                          El día de Retorno es opcional. Si se especifica, el local se visibiliza automáticamente llegada la fecha sin intervención manual.
                         </p>
                       )}
                     </div>
@@ -3863,6 +3973,137 @@ export default function MiComercioPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DIRECTO DE VACACIONES: NO TOCA MAPA NI ZONA DE ENTREGA */}
+      {modalVacacionesDirecto && comercioActual && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-zinc-950 border border-sky-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-sky-950 border border-sky-600/40 rounded-2xl text-sky-400">
+                  <Palmtree className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">Programar Modo Vacaciones</h3>
+                  <p className="text-[11px] text-zinc-400">Tu zona de reparto y ubicación quedan 100% guardadas e intactas.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalVacacionesDirecto(false)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-900 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
+                  Modalidad de Atención durante Vacaciones:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalVacModalidad('mostrar_con_aviso')}
+                    className={`p-2.5 rounded-xl text-left border text-xs transition-all cursor-pointer ${
+                      modalVacModalidad === 'mostrar_con_aviso'
+                        ? 'bg-sky-950/80 border-sky-400 text-white font-bold ring-1 ring-sky-400/50'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="block text-[11px]">Mostrar con Aviso</span>
+                    <span className="text-[9.5px] text-zinc-400 font-normal">Ficha visible con fecha de regreso previa al contacto</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setModalVacModalidad('descanso_total')}
+                    className={`p-2.5 rounded-xl text-left border text-xs transition-all cursor-pointer ${
+                      modalVacModalidad === 'descanso_total'
+                        ? 'bg-sky-950/80 border-sky-400 text-white font-bold ring-1 ring-sky-400/50'
+                        : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <span className="block text-[11px]">Descanso Total</span>
+                    <span className="text-[9.5px] text-zinc-400 font-normal">Desactiva contacto por WhatsApp temporalmente</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
+                    Fecha de Inicio:
+                  </label>
+                  <input
+                    type="date"
+                    value={modalVacDesde}
+                    onChange={(e) => setModalVacDesde(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-zinc-900 border border-zinc-700 rounded-xl text-xs text-white focus:outline-none focus:border-sky-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-sky-300 mb-1">
+                    Día de Retorno <span className="text-zinc-400 font-normal">(Opcional)</span>:
+                  </label>
+                  <input
+                    type="date"
+                    value={modalVacHasta}
+                    onChange={(e) => setModalVacHasta(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-zinc-900 border border-sky-500/70 rounded-xl text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
+                  Mensaje para los Vecinos (Opcional):
+                </label>
+                <input
+                  type="text"
+                  value={modalVacMensaje}
+                  onChange={(e) => setModalVacMensaje(e.target.value)}
+                  placeholder="Ej: Nos tomamos unos días de descanso. ¡Pronto regresamos!"
+                  className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-sky-400"
+                />
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-sky-950/40 border border-sky-600/30 text-[11px] text-sky-200">
+                {modalVacHasta ? (
+                  <p>
+                    Llegada la fecha <strong>{new Date(modalVacHasta).toLocaleDateString('es-AR')}</strong>, tu local se reabrirá automáticamente para los vecinos.
+                  </p>
+                ) : (
+                  <p>
+                    Al no indicar fecha de retorno, tu local permanecerá en vacaciones hasta que decidas reabrirlo con el botón de tu panel.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setModalVacacionesDirecto(false)}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={procesandoVacacionesDirecto}
+                onClick={handleGuardarVacacionesDirecto}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 disabled:opacity-50 text-white text-xs font-extrabold transition-all shadow-lg shadow-sky-950/60 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Palmtree className="w-4 h-4" />
+                <span>{procesandoVacacionesDirecto ? 'Activando...' : 'Confirmar e Iniciar Vacaciones'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

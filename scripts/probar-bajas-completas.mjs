@@ -21,7 +21,7 @@ async function testear() {
 
   // Elegimos "Almacén de Barrio El Trébol" (uno de los cargados recientemente)
   const idComercioBaja = '22222222-2222-4222-a222-222222222201';
-  
+
   // Verificamos que existe antes del test
   const { data: comAntes } = await supabase.from('comercios').select('id, nombre, estado_aprobacion').eq('id', idComercioBaja).single();
   console.log('Estado inicial del comercio:', comAntes);
