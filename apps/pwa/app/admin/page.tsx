@@ -60,6 +60,7 @@ import {
   getTodasCalificaciones,
   STORAGE_KEY_COMERCIOS_ELIMINADOS,
 } from '@/lib/supabase';
+import { calcularProximaAperturaComercio } from '@/lib/horarios';
 import ContadorMembresia from '@/components/ContadorMembresia';
 import { useUser } from '@/context/user-context';
 import {
@@ -2862,12 +2863,22 @@ export default function AdminPage() {
                             type="button"
                             onClick={async () => {
                               const nuevoEstado = !comercio.esta_abierto;
-                              const accionTexto = nuevoEstado ? 'abrir el local y comenzar jornada' : 'cerrar por fin del día (modo híbrido: se reabre automáticamente a las 06:00 AM)';
+                              const prox = calcularProximaAperturaComercio(comercio);
+                              const accionTexto = nuevoEstado
+                                ? 'abrir el local y comenzar jornada'
+                                : `cerrar por fin del día (modo híbrido: se reabre automáticamente ${prox.textoLegible})`;
                               if (confirm(`¿Confirmas ${accionTexto} para "${comercio.nombre}"?`)) {
-                                await toggleCerradoFinDelDia(comercio.id, !nuevoEstado);
+                                await toggleCerradoFinDelDia(comercio.id, !nuevoEstado, comercio);
                                 setComercios((prev) =>
                                   prev.map((c) =>
-                                    c.id === comercio.id ? { ...c, esta_abierto: nuevoEstado, cerrado_momentaneo: false } : c
+                                    c.id === comercio.id
+                                      ? {
+                                          ...c,
+                                          esta_abierto: nuevoEstado,
+                                          cerrado_momentaneo: false,
+                                          reapertura_fin_del_dia_programada: nuevoEstado ? undefined : prox.fecha.toISOString(),
+                                        }
+                                      : c
                                   )
                                 );
                               }
@@ -2877,7 +2888,11 @@ export default function AdminPage() {
                                 ? 'bg-zinc-900 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-300 border-zinc-800 hover:border-rose-700/50'
                                 : 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/60'
                             }`}
-                            title={comercio.esta_abierto ? 'Cerrar por fin del día (modo híbrido: reabre a las 06:00 AM automáticamente o manual)' : 'Abrir local y comenzar jornada'}
+                            title={
+                              comercio.esta_abierto
+                                ? `Cerrar por fin del día (modo híbrido: reabre ${calcularProximaAperturaComercio(comercio).textoLegible})`
+                                : 'Abrir local y comenzar jornada'
+                            }
                           >
                             <Power className="w-3 h-3" />
                             <span>{comercio.esta_abierto ? 'Cerrar Fin del Día' : 'Abrir Local'}</span>

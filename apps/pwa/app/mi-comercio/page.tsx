@@ -36,7 +36,7 @@ import {
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { getCategorias } from '@/lib/categorias';
 import { registrarEvento, getMetricasComercio } from '@/lib/analytics';
-import { formatearHorariosLegibles, HORARIOS_DEFECTO } from '@/lib/horarios';
+import { formatearHorariosLegibles, HORARIOS_DEFECTO, calcularProximaAperturaComercio } from '@/lib/horarios';
 import { useUser } from '@/context/user-context';
 import ContadorMembresia from '@/components/ContadorMembresia';
 import NeoFaroLogo from '@/components/NeoFaroLogo';
@@ -1076,15 +1076,16 @@ export default function MiComercioPage() {
     }
   };
 
-  // Acción directa para alternar cerrado fin del día (modo híbrido inteligente: reabre a las 06:00 AM o manual)
+  // Acción directa para alternar cerrado fin del día (modo híbrido inteligente: reabre automáticamente en su próximo turno o manual)
   const handleToggleFinDelDia = async (cerrar: boolean) => {
     if (!comercioActual) return;
+    const prox = calcularProximaAperturaComercio(comercioActual);
     const accion = cerrar
-      ? 'cerrar tu local por fin del día (se reactivará automáticamente a las 06:00 AM de la mañana siguiente o cuando pulses abrir)'
+      ? `cerrar tu local por fin del día (se reactivará automáticamente ${prox.textoLegible} o cuando pulses abrir)`
       : 'abrir tu local ahora y comenzar la jornada';
     if (!confirm(`¿Confirmas que deseas ${accion}?`)) return;
     setProcesandoFinDelDia(true);
-    await toggleCerradoFinDelDia(comercioActual.id, cerrar);
+    await toggleCerradoFinDelDia(comercioActual.id, cerrar, comercioActual);
     const c = await getComercios();
     setComercios(c);
     const act = c.find((x) => x.id === comercioActual.id);
@@ -1997,7 +1998,18 @@ export default function MiComercioPage() {
                       {!comercioActual.esta_abierto && !comercioActual.cerrado_momentaneo && !comercioActual.en_vacaciones && (
                         <span className="text-[10px] text-zinc-400 font-medium flex items-center gap-1 mt-0.5">
                           <Clock className="w-3 h-3 text-cyan-400 inline" />
-                          Modo Híbrido: Reabre automáticamente mañana a las 06:00 AM (o cuando pulses abrir).
+                          Modo Híbrido: Reabre automáticamente{' '}
+                          {comercioActual.reapertura_fin_del_dia_programada ? (
+                            (() => {
+                              const d = new Date(comercioActual.reapertura_fin_del_dia_programada);
+                              const fStr = d.toLocaleDateString('es-AR', { weekday: 'long' });
+                              const hStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                              return `el ${fStr} a las ${hStr} hs`;
+                            })()
+                          ) : (
+                            'en su próximo horario'
+                          )}{' '}
+                          (o cuando pulses abrir).
                         </span>
                       )}
                     </div>

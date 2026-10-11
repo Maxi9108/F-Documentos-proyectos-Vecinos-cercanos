@@ -224,7 +224,15 @@ export default function TarjetaComercio({
             {comercio.reapertura_fin_del_dia_programada && (
               <div className="text-[11px] text-zinc-400 pl-5.5 flex items-center gap-1 font-mono">
                 <Clock className="w-3 h-3 text-cyan-400" />
-                <span>Reapertura automática: {new Date(comercio.reapertura_fin_del_dia_programada).toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' })} 06:00 AM</span>
+                <span>
+                  Reapertura automática:{' '}
+                  {(() => {
+                    const d = new Date(comercio.reapertura_fin_del_dia_programada);
+                    const fechaStr = d.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' });
+                    const horaStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                    return `${fechaStr} a las ${horaStr} hs`;
+                  })()}
+                </span>
               </div>
             )}
           </div>

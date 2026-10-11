@@ -180,11 +180,24 @@ export function verificarComercioAbierto(
     };
   }
 
-  // 1b. Cierre manual por fin del día (modo híbrido: prevalece cerrado hasta la reapertura de la mañana o reapertura manual)
+  // 1b. Cierre manual por fin del día (modo híbrido: prevalece cerrado hasta la reapertura programada o manual)
   if (comercio.esta_abierto === false) {
+    let motivoTexto = 'Cerrado por fin del día';
+    if (comercio.reapertura_fin_del_dia_programada) {
+      const fechaReap = new Date(comercio.reapertura_fin_del_dia_programada);
+      if (!isNaN(fechaReap.getTime())) {
+        const diaSem = fechaReap.toLocaleDateString('es-AR', { weekday: 'long' });
+        const horaMin = fechaReap.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+        motivoTexto = `Cerrado por fin del día (reabre el ${diaSem} a las ${horaMin} hs)`;
+      }
+    } else {
+      const prox = calcularProximaAperturaComercio(comercio, fechaReferencia);
+      motivoTexto = `Cerrado por fin del día (reabre ${prox.textoLegible})`;
+    }
+
     return {
       estaAbierto: false,
-      motivo: 'Cerrado por fin del día (reabre automáticamente a las 06:00 AM)',
+      motivo: motivoTexto,
       badgeTexto: 'Cerrado hoy',
     };
   }
@@ -288,3 +301,121 @@ export function verificarComercioAbierto(
     badgeTexto: 'Cerrado',
   };
 }
+
+export interface ProximaAperturaInfo {
+  fecha: Date;
+  diaNombre: string;
+  horaAbre: string;
+  diasDiferencia: number;
+  esMismoDia: boolean;
+  textoLegible: string;
+}
+
+/**
+ * Calcula el próximo momento exacto de apertura comercial según la configuración del comercio.
+ * Si el comercio cierra por fin del día, busca dinámicamente el siguiente día operativo (mañana, en 2 días, etc.)
+ * y la hora exacta de apertura del primer turno de ese día (ej: 08:00, 08:30, 09:00).
+ */
+export function calcularProximaAperturaComercio(
+  comercio?: Partial<Comercio> | null,
+  fechaBase: Date = new Date()
+): ProximaAperturaInfo {
+  let config = comercio?.horarios_config;
+
+  // Si no cuenta con horarios_config estructurados, inferir desde campos simples o usar defecto
+  if (!config) {
+    let horaAbreLV = '08:30';
+    if (comercio?.horario_manana) {
+      const match = comercio.horario_manana.match(/(\d{1,2}):(\d{2})/);
+      if (match) horaAbreLV = `${match[1].padStart(2, '0')}:${match[2]}`;
+    } else if (comercio?.horario) {
+      const match = comercio.horario.match(/(\d{1,2}):(\d{2})/);
+      if (match) horaAbreLV = `${match[1].padStart(2, '0')}:${match[2]}`;
+    }
+
+    config = {
+      modo: 'bloques',
+      bloques: {
+        lunesViernes: { abierto: true, turnos: [{ abre: horaAbreLV, cierra: '20:30', esTrasnoche: false }] },
+        sabado: { abierto: true, turnos: [{ abre: horaAbreLV, cierra: '13:30', esTrasnoche: false }] },
+        domingoFeriados: { abierto: false, turnos: [] },
+      },
+    };
+  }
+
+  // Si son las primeras horas de la madrugada (00:00 a 05:59), revisar si hoy más tarde tiene turno de apertura
+  const esMadrugada = fechaBase.getHours() < 6;
+  const offsetInicial = esMadrugada ? 0 : 1;
+
+  for (let offset = offsetInicial; offset <= 7; offset++) {
+    const candidata = new Date(fechaBase);
+    candidata.setDate(fechaBase.getDate() + offset);
+
+    const diaSemanaIndex = candidata.getDay(); // 0: Dom, 1: Lun, ..., 6: Sab
+    const diaClave = DIAS_CLAVES[diaSemanaIndex];
+    const confDia = obtenerConfiguracionDia(config, diaClave);
+
+    if (confDia.abierto && confDia.turnos && confDia.turnos.length > 0) {
+      // Ordenar turnos por hora de apertura y tomar el más temprano
+      const turnosOrdenados = [...confDia.turnos].sort((a, b) => a.abre.localeCompare(b.abre));
+
+      let turnoElegido = turnosOrdenados[0];
+      if (offset === 0) {
+        const minutosActuales = fechaBase.getHours() * 60 + fechaBase.getMinutes();
+        const turnoFuturo = turnosOrdenados.find((t) => {
+          const [h, m] = t.abre.split(':').map(Number);
+          return (h * 60 + (m || 0)) > minutosActuales;
+        });
+        if (!turnoFuturo) {
+          // Ya pasaron los turnos de hoy, saltar al siguiente día
+          continue;
+        }
+        turnoElegido = turnoFuturo;
+      }
+
+      const [hAbre, mAbre] = turnoElegido.abre.split(':').map(Number);
+      const horaFinal = isNaN(hAbre) ? 8 : hAbre;
+      const minFinal = isNaN(mAbre) ? 0 : mAbre;
+
+      candidata.setHours(horaFinal, minFinal, 0, 0);
+
+      const diaNombre = DIAS_NOMBRES[diaClave];
+      const horaFormateada = turnoElegido.abre;
+
+      let textoLegible = '';
+      if (offset === 0) {
+        textoLegible = `hoy a las ${horaFormateada} hs`;
+      } else if (offset === 1) {
+        textoLegible = `mañana (${diaNombre}) a las ${horaFormateada} hs`;
+      } else {
+        textoLegible = `el ${diaNombre} a las ${horaFormateada} hs`;
+      }
+
+      return {
+        fecha: candidata,
+        diaNombre,
+        horaAbre: horaFormateada,
+        diasDiferencia: offset,
+        esMismoDia: offset === 0,
+        textoLegible,
+      };
+    }
+  }
+
+  // Fallback seguro: mañana a las 08:00 AM
+  const fallback = new Date(fechaBase);
+  fallback.setDate(fallback.getDate() + 1);
+  fallback.setHours(8, 0, 0, 0);
+  const diaClaveFallback = DIAS_CLAVES[fallback.getDay()];
+  const diaNombreFallback = DIAS_NOMBRES[diaClaveFallback];
+
+  return {
+    fecha: fallback,
+    diaNombre: diaNombreFallback,
+    horaAbre: '08:00',
+    diasDiferencia: 1,
+    esMismoDia: false,
+    textoLegible: `mañana (${diaNombreFallback}) a las 08:00 hs`,
+  };
+}
+

@@ -139,7 +139,7 @@ async function ejecutarResetDiario(req: NextRequest) {
         }
       }
 
-      // 2b. Reapertura de Cierres de Fin del Día Caducados (Modo Híbrido a las 06:00 AM)
+      // 2b. Reapertura de Cierres de Fin del Día Caducados (Modo Híbrido según horario de apertura programado)
       if (!copia.esta_abierto && copia.reapertura_fin_del_dia_programada) {
         const reaperturaFinDiaMs = new Date(copia.reapertura_fin_del_dia_programada).getTime();
         if (!isNaN(reaperturaFinDiaMs) && ahoraMs >= reaperturaFinDiaMs) {

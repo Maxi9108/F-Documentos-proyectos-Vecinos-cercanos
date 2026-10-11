@@ -89,6 +89,9 @@ export interface Comercio {
   // Cierre momentáneo por inconveniente
   cerrado_momentaneo?: boolean;
   motivo_cierre_momentaneo?: string;
+  // Cierre por fin del día (modo híbrido con reapertura automática al horario del próximo día de apertura o manual)
+  fecha_cierre_fin_del_dia?: string;
+  reapertura_fin_del_dia_programada?: string;
   // Modo Vacaciones
   en_vacaciones?: boolean;
   vacaciones_desde?: string;

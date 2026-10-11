@@ -13,6 +13,7 @@ import {
 } from '@/types/comercio';
 import { MOCK_COMERCIOS } from './mock-comercios';
 import { hashPassword } from './crypto';
+import { calcularProximaAperturaComercio } from './horarios';
 
 const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
@@ -1273,15 +1274,34 @@ export async function reanudarHorarioNormal(id: string): Promise<{ success: bool
 /**
  * Cierre regular por fin del día / fin de jornada (modo híbrido inteligente).
  * Permite cerrar al terminar el horario habitual sin penalización ni strikes.
- * Modo híbrido: se reabre automáticamente a las 06:00 AM de la mañana siguiente,
+ * Modo híbrido: se reabre automáticamente al horario exacto de apertura que le corresponde
+ * en su próximo día operativo (ej: mañana a las 08:00 hs, o en dos días si no abre mañana),
  * o manualmente en cualquier momento cuando el comerciante pulsa "Abrir Local".
  */
 export async function toggleCerradoFinDelDia(
   id: string,
-  cerrar: boolean
-): Promise<{ success: boolean; reapertura?: string; error?: string }> {
+  cerrar: boolean,
+  comercio?: Partial<Comercio> | null
+): Promise<{ success: boolean; reapertura?: string; textoLegible?: string; error?: string }> {
   const ahora = new Date();
-  const reapertura = cerrar ? calcularSiguienteManana6AM(ahora).toISOString() : undefined;
+  let reapertura: string | undefined = undefined;
+  let textoLegible: string | undefined = undefined;
+
+  if (cerrar) {
+    let comercioRef = comercio;
+    if (!comercioRef && typeof window !== 'undefined') {
+      try {
+        const guardadosRaw = localStorage.getItem('vecinos_comercios_nuevos');
+        if (guardadosRaw) {
+          const guardados: Comercio[] = JSON.parse(guardadosRaw);
+          comercioRef = guardados.find((c) => c.id === id);
+        }
+      } catch {}
+    }
+    const prox = calcularProximaAperturaComercio(comercioRef, ahora);
+    reapertura = prox.fecha.toISOString();
+    textoLegible = prox.textoLegible;
+  }
 
   const updates: Partial<Comercio> = {
     esta_abierto: !cerrar,
