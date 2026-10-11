@@ -2862,7 +2862,7 @@ export default function AdminPage() {
                             type="button"
                             onClick={async () => {
                               const nuevoEstado = !comercio.esta_abierto;
-                              const accionTexto = nuevoEstado ? 'abrir el local' : 'cerrar por fin del día (sin motivo)';
+                              const accionTexto = nuevoEstado ? 'abrir el local y comenzar jornada' : 'cerrar por fin del día (modo híbrido: se reabre automáticamente a las 06:00 AM)';
                               if (confirm(`¿Confirmas ${accionTexto} para "${comercio.nombre}"?`)) {
                                 await toggleCerradoFinDelDia(comercio.id, !nuevoEstado);
                                 setComercios((prev) =>
@@ -2877,7 +2877,7 @@ export default function AdminPage() {
                                 ? 'bg-zinc-900 hover:bg-rose-950/40 text-zinc-400 hover:text-rose-300 border-zinc-800 hover:border-rose-700/50'
                                 : 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900/60'
                             }`}
-                            title={comercio.esta_abierto ? 'Cerrar sin motivo como fin del día (sin consumo de emergencias ni strikes)' : 'Abrir local y comenzar jornada'}
+                            title={comercio.esta_abierto ? 'Cerrar por fin del día (modo híbrido: reabre a las 06:00 AM automáticamente o manual)' : 'Abrir local y comenzar jornada'}
                           >
                             <Power className="w-3 h-3" />
                             <span>{comercio.esta_abierto ? 'Cerrar Fin del Día' : 'Abrir Local'}</span>

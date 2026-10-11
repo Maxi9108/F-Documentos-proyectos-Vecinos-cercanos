@@ -180,6 +180,15 @@ export function verificarComercioAbierto(
     };
   }
 
+  // 1b. Cierre manual por fin del día (modo híbrido: prevalece cerrado hasta la reapertura de la mañana o reapertura manual)
+  if (comercio.esta_abierto === false) {
+    return {
+      estaAbierto: false,
+      motivo: 'Cerrado por fin del día (reabre automáticamente a las 06:00 AM)',
+      badgeTexto: 'Cerrado hoy',
+    };
+  }
+
   const config = comercio.horarios_config;
 
   // Si no cuenta con horarios estructurados, usar el booleano y texto simple

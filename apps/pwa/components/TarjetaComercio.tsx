@@ -22,6 +22,7 @@ import {
   Clock,
   Heart,
   Flag,
+  Power,
 } from 'lucide-react';
 import { verificarComercioAbierto } from '@/lib/horarios';
 import { registrarEvento } from '@/lib/analytics';
@@ -206,6 +207,24 @@ export default function TarjetaComercio({
               <div className="text-[11px] text-amber-300/90 pl-6 flex items-center gap-1 font-mono">
                 <Clock className="w-3 h-3 text-amber-400" />
                 <span>Reapertura automática: {new Date(comercio.reapertura_emergencia_programada).toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' })} 06:00 AM</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Banner: Cerrado por Fin del Día (Modo Híbrido) */}
+        {!comercio.esta_abierto && !comercio.cerrado_momentaneo && !comercio.en_vacaciones && (
+          <div className="mb-2.5 p-2 rounded-xl bg-zinc-900/90 border border-zinc-700/60 text-zinc-300 text-xs space-y-1 shadow-sm">
+            <div className="flex items-center gap-2">
+              <Power className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <span className="leading-tight font-medium">
+                <strong className="text-zinc-200">Fin de jornada:</strong> Local cerrado por fin del día.
+              </span>
+            </div>
+            {comercio.reapertura_fin_del_dia_programada && (
+              <div className="text-[11px] text-zinc-400 pl-5.5 flex items-center gap-1 font-mono">
+                <Clock className="w-3 h-3 text-cyan-400" />
+                <span>Reapertura automática: {new Date(comercio.reapertura_fin_del_dia_programada).toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short' })} 06:00 AM</span>
               </div>
             )}
           </div>

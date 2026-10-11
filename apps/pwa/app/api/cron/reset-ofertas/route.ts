@@ -139,6 +139,18 @@ async function ejecutarResetDiario(req: NextRequest) {
         }
       }
 
+      // 2b. Reapertura de Cierres de Fin del Día Caducados (Modo Híbrido a las 06:00 AM)
+      if (!copia.esta_abierto && copia.reapertura_fin_del_dia_programada) {
+        const reaperturaFinDiaMs = new Date(copia.reapertura_fin_del_dia_programada).getTime();
+        if (!isNaN(reaperturaFinDiaMs) && ahoraMs >= reaperturaFinDiaMs) {
+          copia.esta_abierto = true;
+          copia.reapertura_fin_del_dia_programada = undefined;
+          copia.fecha_cierre_fin_del_dia = undefined;
+          comerciosReabiertos++;
+          modificado = true;
+        }
+      }
+
       // 3. Reseteo Mensual del Contador de Urgencias (si cambió el mes calendario)
       if (copia.mes_contador_urgencias && copia.mes_contador_urgencias !== mesActualStr) {
         copia.contador_urgencias_mes = 0;

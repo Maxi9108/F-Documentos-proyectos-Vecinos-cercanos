@@ -115,8 +115,20 @@ export function calcularSiguienteDiaHabil6AM(fechaBase: Date = new Date()): Date
 }
 
 /**
+ * Calcula el timestamp del inicio de la siguiente mañana (todos los días a las 06:00 AM).
+ * Utilizado para el modo híbrido de fin del día en comercios (lunes a domingo).
+ */
+export function calcularSiguienteManana6AM(fechaBase: Date = new Date()): Date {
+  const d = new Date(fechaBase);
+  d.setDate(d.getDate() + 1);
+  d.setHours(6, 0, 0, 0);
+  return d;
+}
+
+/**
  * Verifica y procesa automáticamente:
  * 1. Cierre por Emergencia vencido: lo restablece al llegar la fecha de reapertura (06:00 AM del siguiente día hábil).
+ * 1b. Cierre por Fin del Día vencido: reapertura automática híbrida a las 06:00 AM de la mañana siguiente.
  * 2. Vacaciones finalizadas: si llegó el día de retorno obligatorio (vacaciones_hasta), restablece la atención.
  * 3. Vacaciones > 60 días: oculta el local del mapa y genera un ticket en el Panel Admin para revisión de baja definitiva.
  */
@@ -137,6 +149,18 @@ export function verificarYRestaurarEstados(comercios: Comercio[]): Comercio[] {
         modificado.reapertura_emergencia_programada = undefined;
         modificado.fecha_cierre_emergencia = undefined;
         modificado.esta_abierto = true;
+        cambioEsteComercio = true;
+        huboCambios = true;
+      }
+    }
+
+    // 1b. Reapertura automática de Cierre por Fin del Día (Modo Híbrido a las 06:00 AM de la mañana siguiente)
+    if (!modificado.esta_abierto && modificado.reapertura_fin_del_dia_programada) {
+      const tiempoReaperturaFinDia = new Date(modificado.reapertura_fin_del_dia_programada).getTime();
+      if (!isNaN(tiempoReaperturaFinDia) && ahora >= tiempoReaperturaFinDia) {
+        modificado.esta_abierto = true;
+        modificado.reapertura_fin_del_dia_programada = undefined;
+        modificado.fecha_cierre_fin_del_dia = undefined;
         cambioEsteComercio = true;
         huboCambios = true;
       }
@@ -1247,15 +1271,22 @@ export async function reanudarHorarioNormal(id: string): Promise<{ success: bool
 }
 
 /**
- * Cierre regular por fin del día / fin de jornada (sin motivo ni penalización).
- * Permite cerrar al terminar el horario habitual sin consumir usos de emergencia ni strikes.
+ * Cierre regular por fin del día / fin de jornada (modo híbrido inteligente).
+ * Permite cerrar al terminar el horario habitual sin penalización ni strikes.
+ * Modo híbrido: se reabre automáticamente a las 06:00 AM de la mañana siguiente,
+ * o manualmente en cualquier momento cuando el comerciante pulsa "Abrir Local".
  */
 export async function toggleCerradoFinDelDia(
   id: string,
   cerrar: boolean
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; reapertura?: string; error?: string }> {
+  const ahora = new Date();
+  const reapertura = cerrar ? calcularSiguienteManana6AM(ahora).toISOString() : undefined;
+
   const updates: Partial<Comercio> = {
     esta_abierto: !cerrar,
+    fecha_cierre_fin_del_dia: cerrar ? ahora.toISOString() : undefined,
+    reapertura_fin_del_dia_programada: reapertura,
     cerrado_momentaneo: false,
     motivo_cierre_momentaneo: undefined,
     fecha_cierre_emergencia: undefined,

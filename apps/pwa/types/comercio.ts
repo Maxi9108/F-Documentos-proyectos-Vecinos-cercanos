@@ -129,6 +129,9 @@ export interface Comercio {
   motivo_cierre_momentaneo?: string;
   fecha_cierre_emergencia?: string;
   reapertura_emergencia_programada?: string;
+  // Cierre por fin del día (modo híbrido: reapertura automática a la mañana siguiente o manual)
+  fecha_cierre_fin_del_dia?: string;
+  reapertura_fin_del_dia_programada?: string;
   // Modo Vacaciones programadas obligatorias
   en_vacaciones?: boolean;
   vacaciones_desde?: string;

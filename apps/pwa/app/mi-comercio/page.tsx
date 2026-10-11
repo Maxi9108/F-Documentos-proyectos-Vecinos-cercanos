@@ -1076,10 +1076,12 @@ export default function MiComercioPage() {
     }
   };
 
-  // Acción directa para alternar cerrado fin del día (sin penalizaciones ni cómputo de strikes)
+  // Acción directa para alternar cerrado fin del día (modo híbrido inteligente: reabre a las 06:00 AM o manual)
   const handleToggleFinDelDia = async (cerrar: boolean) => {
     if (!comercioActual) return;
-    const accion = cerrar ? 'cerrar tu local por fin del día' : 'abrir tu local';
+    const accion = cerrar
+      ? 'cerrar tu local por fin del día (se reactivará automáticamente a las 06:00 AM de la mañana siguiente o cuando pulses abrir)'
+      : 'abrir tu local ahora y comenzar la jornada';
     if (!confirm(`¿Confirmas que deseas ${accion}?`)) return;
     setProcesandoFinDelDia(true);
     await toggleCerradoFinDelDia(comercioActual.id, cerrar);
@@ -1985,12 +1987,20 @@ export default function MiComercioPage() {
                 <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 flex flex-wrap items-center justify-between gap-2.5">
                   <div className="flex items-center gap-2">
                     <div className={`w-2.5 h-2.5 rounded-full ${comercioActual.esta_abierto ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
-                    <span className="text-xs font-bold text-white">
-                      Estado Actual:{' '}
-                      <span className={comercioActual.esta_abierto ? 'text-emerald-400' : 'text-rose-400'}>
-                        {comercioActual.esta_abierto ? 'Abierto para Vecinos' : 'Cerrado para Vecinos'}
+                    <div>
+                      <span className="text-xs font-bold text-white block">
+                        Estado Actual:{' '}
+                        <span className={comercioActual.esta_abierto ? 'text-emerald-400' : 'text-rose-400'}>
+                          {comercioActual.esta_abierto ? 'Abierto para Vecinos' : 'Cerrado para Vecinos'}
+                        </span>
                       </span>
-                    </span>
+                      {!comercioActual.esta_abierto && !comercioActual.cerrado_momentaneo && !comercioActual.en_vacaciones && (
+                        <span className="text-[10px] text-zinc-400 font-medium flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3 text-cyan-400 inline" />
+                          Modo Híbrido: Reabre automáticamente mañana a las 06:00 AM (o cuando pulses abrir).
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center flex-wrap gap-2">
