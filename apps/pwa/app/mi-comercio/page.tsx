@@ -203,9 +203,9 @@ export default function MiComercioPage() {
   const [prodHoraVencimiento, setProdHoraVencimiento] = useState('');
   const [prodUnidadesLimitadas, setProdUnidadesLimitadas] = useState('');
 
-  // Estados de Carga de Comprobante
+  // Estados de Carga de Comprobante / Solicitud de Membresía
   const [categoriaAbonada, setCategoriaAbonada] = useState<NivelComercio>('gold');
-  const [monto, setMonto] = useState<string>('7900');
+  const [monto, setMonto] = useState<string>('0');
   const [numeroOperacion, setNumeroOperacion] = useState('');
   const [bancoOrigen, setBancoOrigen] = useState('');
   const [notasComprobante, setNotasComprobante] = useState('');
@@ -976,8 +976,8 @@ export default function MiComercioPage() {
     e.preventDefault();
     if (!comercioActual) return;
 
-    if (!comprobanteUrl) {
-      alert('Por favor adjunta la foto o captura del comprobante de transferencia.');
+    if (!comprobanteUrl && !notasComprobante.trim()) {
+      alert('Por favor escribe un mensaje o motivo para tu solicitud al administrador.');
       return;
     }
 
@@ -989,13 +989,13 @@ export default function MiComercioPage() {
       comercio_id: comercioActual.id,
       comercio_nombre: comercioActual.nombre,
       categoria_solicitada: categoriaAbonada,
-      monto: Number(monto) || (categoriaAbonada === 'gold' ? 7900 : 4500),
+      monto: 0, // 100% Bonificado hasta Enero 2027
       fecha_envio: new Date().toISOString(),
-      comprobante_url: comprobanteUrl,
-      comprobante_nombre: comprobanteNombre,
+      comprobante_url: comprobanteUrl || 'solicitud-bonificada',
+      comprobante_nombre: comprobanteNombre || 'Solicitud de membresía bonificada',
       numero_operacion: numeroOperacion.trim() || undefined,
       banco_origen: bancoOrigen.trim() || undefined,
-      notas: notasComprobante.trim() || undefined,
+      notas: notasComprobante.trim() || 'Solicitud de membresía bonificada hasta Enero 2027',
       estado: 'pendiente',
     };
 
@@ -1003,11 +1003,11 @@ export default function MiComercioPage() {
     setEnviandoComprobante(false);
 
     if (res.success) {
-      registrarEvento('comprobante_transferencia_enviado', comercioActual.id, comercioActual.nombre, {
+      registrarEvento('solicitud_membresia_bonificada', comercioActual.id, comercioActual.nombre, {
         categoria: categoriaAbonada,
-        monto: nuevoComp.monto,
+        monto: 0,
       });
-      setMensajeCompExito('¡Comprobante enviado al administrador! Se te acreditará +1 mes extra tan pronto sea verificado.');
+      setMensajeCompExito('¡Solicitud enviada al administrador! Tu nivel bonificado será asignado sin ningún costo.');
       setComprobantesHistorial((prev) => [nuevoComp, ...prev]);
       setNumeroOperacion('');
       setNotasComprobante('');
@@ -2238,14 +2238,14 @@ export default function MiComercioPage() {
             <button
               type="button"
               onClick={() => setPestana('comprobantes')}
-              className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`flex-1 min-w-[150px] py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 pestana === 'comprobantes'
                   ? 'bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md shadow-violet-950/60'
                   : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
               }`}
             >
-              <Upload className="w-4 h-4 text-cyan-400" />
-              <span>Comprobantes</span>
+              <Award className="w-4 h-4 text-amber-400" />
+              <span>Membresías & Planes</span>
             </button>
 
             <button
@@ -3303,10 +3303,24 @@ export default function MiComercioPage() {
           )}
 
           {/* ============================================================== */}
-          {/* PESTAÑA 4: CARGAR COMPROBANTES DE TRANSFERENCIA (MEMBRESÍAS)   */}
+          {/* PESTAÑA 4: MEMBRESÍAS & PLANES BONIFICADOS HASTA ENERO 2027    */}
           {/* ============================================================== */}
           {pestana === 'comprobantes' && (
             <div className="space-y-6">
+              {/* Banner de Promoción Lanzamiento Gratuito */}
+              <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-950/80 via-teal-950/60 to-cyan-950/80 border border-emerald-500/50 shadow-xl space-y-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <h2 className="text-base font-bold text-white">🎉 ¡Todos los Planes son 100% GRATIS hasta Enero de 2027!</h2>
+                </div>
+                <p className="text-xs text-emerald-200 leading-relaxed">
+                  Durante toda la etapa de lanzamiento e impulso barrial en NeoFaro, <strong>todos los planes (Standar, Premium y Gold) están 100% bonificados</strong> sin costo alguno ni cobros automáticos.
+                </p>
+                <div className="p-3 rounded-2xl bg-black/40 border border-emerald-500/30 text-xs text-emerald-300">
+                  📅 <strong>Publicación de Precios:</strong> Los precios oficiales de las membresías se publicarán recién en <strong>Enero de 2027</strong>. En esa fecha, cada comercio podrá evaluar libremente el impacto, las visitas y los resultados obtenidos en su negocio para elegir el plan que mejor se adapte a sus necesidades.
+                </div>
+              </div>
+
               {/* Estado actual de la membresía del comercio y tiempo restante */}
               {comercioActual && (comercioActual.nivel === 'gold' || comercioActual.nivel === 'premium') && (
                 <div className="p-5 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-3 shadow-xl">
@@ -3317,10 +3331,10 @@ export default function MiComercioPage() {
                       ) : (
                         <Award className="w-4 h-4 text-purple-400" />
                       )}
-                      <span>Tiempo restante de tu Membresía {comercioActual.nivel.toUpperCase()}</span>
+                      <span>Tu Membresía Actual: Plan {comercioActual.nivel.toUpperCase()} (Bonificado)</span>
                     </span>
-                    <span className="text-xs text-zinc-400">
-                      Fecha límite: {comercioActual.fecha_vencimiento_nivel ? new Date(comercioActual.fecha_vencimiento_nivel).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }) : '30 días'}
+                    <span className="text-xs text-emerald-400 font-semibold">
+                      Gratis hasta: 31 de Enero de 2027
                     </span>
                   </div>
                   <ContadorMembresia
@@ -3331,18 +3345,22 @@ export default function MiComercioPage() {
                 </div>
               )}
 
-              {/* Comparativa de Categorías y Planes */}
+              {/* Comparativa de Categorías y Planes (SIN PRECIOS) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Standar */}
                 <div className="p-5 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Plan Standar</span>
-                    <span className="text-xs font-bold text-zinc-400">Gratuito</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                      Gratis Siempre
+                    </span>
                   </div>
-                  <div className="text-2xl font-black text-white">$0</div>
-                  <p className="text-[11px] text-zinc-400">Catálogo de hasta 20 productos esenciales. Sin límite de tiempo.</p>
-                  <div className="text-[10px] text-zinc-500 border-t border-zinc-800/80 pt-2">
-                    • 20 productos en catálogo<br />• 0 ofertas destacadas
+                  <div className="text-xl font-black text-white">Base Comunitario</div>
+                  <p className="text-[11px] text-zinc-400">Catálogo de hasta 20 artículos esenciales para tu comercio. Sin costo alguno.</p>
+                  <div className="text-[10px] text-zinc-400 border-t border-zinc-800/80 pt-2 space-y-1">
+                    <div>• 20 productos en catálogo</div>
+                    <div>• Ubicación y ficha en el mapa</div>
+                    <div className="text-zinc-500">• 0 ofertas semanales</div>
                   </div>
                 </div>
 
@@ -3350,14 +3368,18 @@ export default function MiComercioPage() {
                 <div className="p-5 rounded-3xl bg-purple-950/30 border border-purple-500/40 space-y-3 relative overflow-hidden">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1">
-                      <Award className="w-3.5 h-3.5" /> Plan Premium
+                      <Award className="w-3.5 h-3.5 text-purple-400" /> Plan Premium
                     </span>
-                    <span className="text-xs font-bold text-purple-400">Mensual</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                      100% Bonificado
+                    </span>
                   </div>
-                  <div className="text-2xl font-black text-white">$4.500 <span className="text-xs text-zinc-400 font-normal">/ mes</span></div>
-                  <p className="text-[11px] text-zinc-300">Catálogo ampliado y ofertas barriales activas por 30 días.</p>
-                  <div className="text-[10px] text-zinc-400 border-t border-purple-800/40 pt-2">
-                    • 50 productos en catálogo<br />• 5 ofertas semanales (duración 7 días)
+                  <div className="text-xl font-black text-white">Gratis hasta Ene 2027</div>
+                  <p className="text-[11px] text-zinc-300">Catálogo ampliado y ofertas barriales para atraer nuevos clientes.</p>
+                  <div className="text-[10px] text-purple-300 border-t border-purple-800/40 pt-2 space-y-1">
+                    <div>• 50 productos en catálogo</div>
+                    <div>• 5 ofertas semanales (duración 7 días)</div>
+                    <div>• Insignia Premium en mapa y directorio</div>
                   </div>
                 </div>
 
@@ -3365,40 +3387,46 @@ export default function MiComercioPage() {
                 <div className="p-5 rounded-3xl bg-amber-950/30 border border-amber-500/50 space-y-3 relative overflow-hidden shadow-lg shadow-amber-950/20">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1">
-                      <Crown className="w-3.5 h-3.5" /> Plan Gold Destacado
+                      <Crown className="w-3.5 h-3.5 text-amber-400" /> Plan Gold Destacado
                     </span>
-                    <span className="text-xs font-bold text-amber-400">Mensual</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      100% Bonificado
+                    </span>
                   </div>
-                  <div className="text-2xl font-black text-white">$7.900 <span className="text-xs text-zinc-400 font-normal">/ mes</span></div>
-                  <p className="text-[11px] text-zinc-300">Máxima visibilidad, catálogo de 100 productos y 20 ofertas semanales.</p>
-                  <div className="text-[10px] text-zinc-400 border-t border-amber-800/40 pt-2">
-                    • 100 productos en catálogo<br />• 20 ofertas semanales (duración 7 días)<br />• Posicionamiento superior
+                  <div className="text-xl font-black text-white">Gratis hasta Ene 2027</div>
+                  <p className="text-[11px] text-zinc-300">Máxima visibilidad barrial, catálogo completo y mayor cantidad de ofertas.</p>
+                  <div className="text-[10px] text-amber-300 border-t border-amber-800/40 pt-2 space-y-1">
+                    <div>• 100 productos en catálogo</div>
+                    <div>• 20 ofertas semanales (duración 7 días)</div>
+                    <div>• Posicionamiento superior en el mapa</div>
                   </div>
                 </div>
               </div>
 
-              {/* Datos Bancarios de la Plataforma */}
+              {/* Información sobre el período bonificado y evaluación */}
               <div className="p-5 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-3">
                 <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <DollarSign className="w-4 h-4" />
-                  <span>Datos Oficiales para Transferencias Bancarias</span>
+                  <Info className="w-4 h-4" />
+                  <span>¿Cómo funciona el período bonificado hasta Enero de 2027?</span>
                 </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                  <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800/80">
-                    <span className="text-[10px] text-zinc-500 block uppercase font-bold">Banco / Entidad:</span>
-                    <span className="text-white font-semibold">Banco Santander / MP</span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <div className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800/80 space-y-1.5">
+                    <span className="text-[11px] font-bold text-white block">1. Sin Cobros ni Pagos Requeridos</span>
+                    <p className="text-[11px] text-zinc-400 leading-relaxed">
+                      No se requieren tarjetas ni pagos durante todo el año. Todas las herramientas de tu nivel asignado están habilitadas.
+                    </p>
                   </div>
-                  <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800/80">
-                    <span className="text-[10px] text-zinc-500 block uppercase font-bold">Alias CBU:</span>
-                    <span className="text-cyan-300 font-mono font-bold tracking-wider">VECINOS.CERCA.PAGO</span>
+                  <div className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800/80 space-y-1.5">
+                    <span className="text-[11px] font-bold text-white block">2. Publicación Oficial en Enero 2027</span>
+                    <p className="text-[11px] text-zinc-400 leading-relaxed">
+                      Los precios oficiales se publicarán en dicha fecha de manera transparente para toda la comunidad de comercios.
+                    </p>
                   </div>
-                  <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800/80">
-                    <span className="text-[10px] text-zinc-500 block uppercase font-bold">CVU / CBU:</span>
-                    <span className="text-zinc-300 font-mono text-[11px]">0000003100098765432100</span>
-                  </div>
-                  <div className="p-3 rounded-2xl bg-zinc-900 border border-zinc-800/80">
-                    <span className="text-[10px] text-zinc-500 block uppercase font-bold">Titular:</span>
-                    <span className="text-white font-semibold">NeoFaro Plataforma</span>
+                  <div className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800/80 space-y-1.5">
+                    <span className="text-[11px] font-bold text-white block">3. Evaluación de Membresía</span>
+                    <p className="text-[11px] text-zinc-400 leading-relaxed">
+                      En esa fecha podrás evaluar las estadísticas, visitas y ventas de tu negocio para decidir si continúas con tu plan o pasas al plan Standar gratuito.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -3410,71 +3438,75 @@ export default function MiComercioPage() {
                 </div>
               )}
 
-              {/* Formulario de Carga de Comprobante */}
+              {/* Formulario de Solicitud de Membresía Bonificada */}
               <form onSubmit={handleSubmitComprobante} className="p-6 bg-zinc-950 border border-zinc-800 rounded-3xl space-y-4">
-                <h3 className="text-base font-bold text-white flex items-center gap-2 border-b border-zinc-800 pb-3">
-                  <Upload className="w-4 h-4 text-cyan-400" />
-                  <span>Cargar Comprobante de Transferencia para el Administrador</span>
-                </h3>
+                <div className="border-b border-zinc-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    <span>Solicitar Activación o Cambio de Plan Bonificado</span>
+                  </h3>
+                  <span className="text-[11px] font-bold text-emerald-400 bg-emerald-950/50 border border-emerald-800/50 px-2.5 py-1 rounded-full w-fit">
+                    Costo: $0 (100% Bonificado)
+                  </span>
+                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Categoría a Abonar */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Categoría Solicitada */}
                   <div>
                     <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Categoría a Adquirir / Renovar *
+                      Plan a Solicitar (Bonificado) *
                     </label>
                     <select
                       value={categoriaAbonada}
                       onChange={(e) => {
                         const cat = e.target.value as NivelComercio;
                         setCategoriaAbonada(cat);
-                        setMonto(cat === 'gold' ? '7900' : '4500');
+                        setMonto('0');
                       }}
                       className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
                     >
-                      <option value="premium">Categoría Premium ($4.500 / mes)</option>
-                      <option value="gold">Categoría Gold Destacada ($7.900 / mes)</option>
+                      <option value="gold">Plan Gold Destacado (Gratis hasta Enero 2027 - 100 productos, 20 ofertas)</option>
+                      <option value="premium">Plan Premium (Gratis hasta Enero 2027 - 50 productos, 5 ofertas)</option>
+                      <option value="standar">Plan Standar (Gratuito Permanente - 20 productos)</option>
                     </select>
                   </div>
 
-                  {/* Monto */}
+                  {/* Estado del Costo */}
                   <div>
                     <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Monto Abonado ($) *
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      value={monto}
-                      onChange={(e) => setMonto(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white"
-                    />
-                  </div>
-
-                  {/* N° Operación */}
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      N° de Operación / Transacción
+                      Costo Durante el Lanzamiento
                     </label>
                     <input
                       type="text"
-                      value={numeroOperacion}
-                      onChange={(e) => setNumeroOperacion(e.target.value)}
-                      placeholder="Ej: 1982736450"
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white"
+                      disabled
+                      value="100% GRATIS (Precios se publican en Enero 2027)"
+                      className="w-full px-3.5 py-2.5 bg-zinc-900/60 border border-zinc-800 rounded-xl text-xs text-emerald-400 font-bold"
                     />
                   </div>
                 </div>
 
-                {/* Adjuntar archivo */}
+                {/* Notas / Mensaje */}
                 <div>
                   <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                    Adjuntar Comprobante (Foto / Captura de Pantalla) *
+                    Mensaje o Consulta para el Administrador (Opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={notasComprobante}
+                    onChange={(e) => setNotasComprobante(e.target.value)}
+                    placeholder="Ej: Solicito activación de nivel Gold para cargar más promociones y productos..."
+                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                {/* Adjuntar archivo (Opcional) */}
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">
+                    Adjuntar Archivo o Imagen Adicional (Opcional)
                   </label>
                   <input
                     type="file"
                     accept="image/*,application/pdf"
-                    required
                     onChange={handleArchivoComprobante}
                     className="w-full text-xs text-zinc-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-violet-600 file:text-white hover:file:bg-violet-500 file:cursor-pointer cursor-pointer"
                   />
@@ -3482,29 +3514,15 @@ export default function MiComercioPage() {
                     <div className="mt-3 flex items-center gap-3 p-3 bg-zinc-900 rounded-2xl border border-zinc-800">
                       <img
                         src={comprobanteUrl}
-                        alt="Vista previa del comprobante"
+                        alt="Vista previa"
                         className="w-16 h-16 object-cover rounded-xl border border-zinc-700"
                       />
                       <div className="text-xs">
-                        <span className="font-semibold text-white block truncate max-w-xs">{comprobanteNombre || 'Comprobante adjunto'}</span>
+                        <span className="font-semibold text-white block truncate max-w-xs">{comprobanteNombre || 'Archivo adjunto'}</span>
                         <span className="text-emerald-400 font-bold text-[11px]">✓ Listo para enviar</span>
                       </div>
                     </div>
                   )}
-                </div>
-
-                {/* Notas */}
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                    Notas Adicionales (Opcional)
-                  </label>
-                  <input
-                    type="text"
-                    value={notasComprobante}
-                    onChange={(e) => setNotasComprobante(e.target.value)}
-                    placeholder="Ej: Pago de cuota transferido desde cuenta de titular..."
-                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white"
-                  />
                 </div>
 
                 <div className="pt-2 flex justify-end">
@@ -3514,20 +3532,20 @@ export default function MiComercioPage() {
                     className="py-3 px-6 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-lg shadow-emerald-950/60 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     <Send className="w-4 h-4" />
-                    <span>{enviandoComprobante ? 'Enviando...' : 'Enviar Comprobante al Administrador'}</span>
+                    <span>{enviandoComprobante ? 'Enviando...' : 'Enviar Solicitud al Administrador'}</span>
                   </button>
                 </div>
               </form>
 
-              {/* Historial de Comprobantes del Comercio */}
+              {/* Historial de Comprobantes / Solicitudes del Comercio */}
               <div className="p-6 bg-zinc-950 border border-zinc-800 rounded-3xl space-y-4">
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <Clock className="w-4 h-4 text-cyan-400" />
-                  <span>Historial de Comprobantes Enviados</span>
+                  <span>Historial de Solicitudes de Planes</span>
                 </h3>
 
                 {comprobantesHistorial.length === 0 ? (
-                  <p className="text-xs text-zinc-500 py-3">No has cargado comprobantes de pago aún.</p>
+                  <p className="text-xs text-zinc-500 py-3">No has registrado solicitudes de membresía aún.</p>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {comprobantesHistorial.map((comp) => (
@@ -3549,7 +3567,7 @@ export default function MiComercioPage() {
                             }`}
                           >
                             {comp.estado === 'aprobado'
-                              ? 'Acreditado (+1 Mes Extra)'
+                              ? 'Aprobado / Activo'
                               : comp.estado === 'rechazado'
                               ? 'Rechazado'
                               : 'Pendiente de Revisión'}
@@ -3557,18 +3575,20 @@ export default function MiComercioPage() {
                         </div>
 
                         <div className="flex items-center justify-between text-zinc-400 text-[11px]">
-                          <span>${comp.monto?.toLocaleString('es-AR') || '—'}</span>
+                          <span className="text-emerald-400 font-semibold">
+                            {comp.monto && comp.monto > 0 ? `$${comp.monto.toLocaleString('es-AR')}` : 'Bonificado ($0)'}
+                          </span>
                           <span>{new Date(comp.fecha_envio).toLocaleDateString('es-AR')}</span>
                         </div>
 
-                        {comp.comprobante_url && (
+                        {comp.comprobante_url && comp.comprobante_url !== 'solicitud-bonificada' && (
                           <button
                             type="button"
                             onClick={() => setImagenModalUrl(comp.comprobante_url)}
                             className="w-full mt-1 py-1.5 px-2 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-cyan-400 text-[11px] font-semibold flex items-center justify-center gap-1 cursor-pointer border border-zinc-800"
                           >
                             <Eye className="w-3.5 h-3.5" />
-                            <span>Ver Imagen del Comprobante</span>
+                            <span>Ver Archivo Adjunto</span>
                           </button>
                         )}
 

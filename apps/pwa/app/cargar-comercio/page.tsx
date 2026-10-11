@@ -978,7 +978,7 @@ export default function CargarComercioPage() {
               </div>
             </div>
 
-            {/* SECCIÓN 2: Nivel y Plan de Membresía */}
+              {/* SECCIÓN 2: Nivel y Plan de Membresía */}
             <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
@@ -987,12 +987,23 @@ export default function CargarComercioPage() {
                     2. Selecciona el Nivel de tu Comercio *
                   </h2>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Elige el plan que mejor se adapte a tus necesidades. La solicitud queda sujeta a aprobación por el Administrador.
+                    Elige el plan que mejor se adapte a tus necesidades. Durante el lanzamiento todos los planes son 100% bonificados.
                   </p>
                 </div>
                 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 w-fit">
                   Paso 2 de 4
                 </span>
+              </div>
+
+              {/* Banner de Promoción Lanzamiento Gratuito */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-teal-950/60 to-cyan-950/80 border border-emerald-500/50 flex items-start gap-3 text-xs text-emerald-200">
+                <Sparkles className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <strong className="text-white text-sm block">🎉 ¡Todos los planes son 100% GRATIS hasta Enero de 2027!</strong>
+                  <p className="text-emerald-300 leading-relaxed">
+                    Durante la etapa de lanzamiento e impulso barrial, todos los comercios disfrutan de acceso libre a cualquiera de las membresías sin costo alguno. Los precios oficiales se publicarán recién en <strong>Enero de 2027</strong>, momento en el cual podrás evaluar el impacto en tu local y decidir tu suscripción.
+                  </p>
+                </div>
               </div>
 
               {/* Tarjetas de Selección de Niveles */}
@@ -1009,7 +1020,7 @@ export default function CargarComercioPage() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
-                        Nivel Base
+                        Nivel Base Comunitario
                       </span>
                       {nivelSolicitado === 'standar' && (
                         <div className="w-5 h-5 rounded-full bg-zinc-200 text-black flex items-center justify-center">
@@ -1018,7 +1029,10 @@ export default function CargarComercioPage() {
                       )}
                     </div>
                     <div>
-                      <h3 className="text-lg font-black text-white">Standar</h3>
+                      <div className="flex items-baseline justify-between">
+                        <h3 className="text-lg font-black text-white">Standar</h3>
+                        <span className="text-xs font-black text-emerald-400">Gratis Siempre</span>
+                      </div>
                       <p className="text-xs text-zinc-400 mt-0.5">Para negocios de catálogo esencial.</p>
                     </div>
                     <ul className="space-y-2 text-xs text-zinc-300 pt-2 border-t border-zinc-800/80">
@@ -1036,7 +1050,7 @@ export default function CargarComercioPage() {
                       </li>
                       <li className="flex items-center gap-2 text-zinc-400">
                         <Clock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                        <span>Permanente (no expira)</span>
+                        <span>Permanente (sin costo)</span>
                       </li>
                     </ul>
                   </div>
@@ -1053,8 +1067,9 @@ export default function CargarComercioPage() {
                 >
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                        Recomendado
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-purple-400" />
+                        100% Bonificado
                       </span>
                       {nivelSolicitado === 'premium' && (
                         <div className="w-5 h-5 rounded-full bg-purple-500 text-white flex items-center justify-center">
@@ -1063,10 +1078,13 @@ export default function CargarComercioPage() {
                       )}
                     </div>
                     <div>
-                      <h3 className="text-lg font-black text-white flex items-center gap-1.5">
-                        Premium
-                        <Award className="w-4 h-4 text-purple-400" />
-                      </h3>
+                      <div className="flex items-baseline justify-between">
+                        <h3 className="text-lg font-black text-white flex items-center gap-1.5">
+                          Premium
+                          <Award className="w-4 h-4 text-purple-400" />
+                        </h3>
+                        <span className="text-xs font-black text-purple-300">Gratis hasta Ene 2027</span>
+                      </div>
                       <p className="text-xs text-zinc-400 mt-0.5">Mayor variedad y descuentos barriales.</p>
                     </div>
                     <ul className="space-y-2 text-xs text-zinc-300 pt-2 border-t border-zinc-800/80">
@@ -1082,9 +1100,9 @@ export default function CargarComercioPage() {
                         <Check className="w-3.5 h-3.5 text-purple-400 shrink-0" />
                         <span>Insignia Premium en el directorio</span>
                       </li>
-                      <li className="flex items-center gap-2 text-purple-300">
-                        <Calendar className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                        <span>Renovación cada 30 días</span>
+                      <li className="flex items-center gap-2 text-purple-300 font-semibold">
+                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>Bonificado hasta Enero 2027</span>
                       </li>
                     </ul>
                   </div>
@@ -1103,7 +1121,7 @@ export default function CargarComercioPage() {
                     <div className="flex items-center justify-between">
                       <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
                         <Crown className="w-3 h-3 text-amber-400" />
-                        Máxima Visibilidad
+                        Máxima Visibilidad • Bonificado
                       </span>
                       {nivelSolicitado === 'gold' && (
                         <div className="w-5 h-5 rounded-full bg-amber-500 text-black flex items-center justify-center">
@@ -1112,10 +1130,13 @@ export default function CargarComercioPage() {
                       )}
                     </div>
                     <div>
-                      <h3 className="text-lg font-black text-white flex items-center gap-1.5">
-                        Gold
-                        <Crown className="w-4 h-4 text-amber-400" />
-                      </h3>
+                      <div className="flex items-baseline justify-between">
+                        <h3 className="text-lg font-black text-white flex items-center gap-1.5">
+                          Gold
+                          <Crown className="w-4 h-4 text-amber-400" />
+                        </h3>
+                        <span className="text-xs font-black text-amber-400">Gratis hasta Ene 2027</span>
+                      </div>
                       <p className="text-xs text-zinc-400 mt-0.5">Para comercios líderes del barrio.</p>
                     </div>
                     <ul className="space-y-2 text-xs text-zinc-300 pt-2 border-t border-zinc-800/80">
@@ -1131,9 +1152,9 @@ export default function CargarComercioPage() {
                         <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                         <span>Insignia Gold destacada en mapa y lista</span>
                       </li>
-                      <li className="flex items-center gap-2 text-amber-300">
-                        <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span>Renovación mensual (30 días)</span>
+                      <li className="flex items-center gap-2 text-amber-300 font-semibold">
+                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>Bonificado hasta Enero 2027</span>
                       </li>
                     </ul>
                   </div>
@@ -1144,7 +1165,7 @@ export default function CargarComercioPage() {
               <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-400 flex items-start gap-2.5">
                 <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                 <p className="leading-relaxed">
-                  <strong>Condición de membresía:</strong> Los niveles Premium y Gold requieren ser aceptados por el administrador. Duran un mes (30 días). En caso de no renovarse al término del mes, el comercio pasa automáticamente al nivel Standar sin perder sus datos.
+                  <strong className="text-white">Condición de membresía:</strong> Durante la etapa de lanzamiento e impulso barrial, todos los planes son 100% gratuitos hasta Enero de 2027. Los precios oficiales se publicarán en dicha fecha y cada comercio podrá evaluar libremente sus membresías en función de las visitas y resultados obtenidos.
                 </p>
               </div>
             </div>

@@ -276,6 +276,7 @@ export type TipoEvento =
   | 'comercio_aprobado'
   | 'comercio_rechazado'
   | 'comprobante_transferencia_enviado'
+  | 'solicitud_membresia_bonificada'
   | 'comprobante_aprobado'
   | 'comprobante_rechazado'
   | 'solicitud_modificacion_comercio'

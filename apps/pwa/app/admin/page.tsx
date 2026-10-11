@@ -3071,10 +3071,10 @@ export default function AdminPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-emerald-400" />
-                  <h2 className="text-base font-bold text-white">Comprobantes de Transferencias Bancarias</h2>
+                  <h2 className="text-base font-bold text-white">Solicitudes de Membresías & Planes</h2>
                 </div>
                 <p className="text-xs text-zinc-300 max-w-2xl mt-1 leading-relaxed">
-                  Los comercios que abonan su suscripción Premium o Gold envían sus comprobantes aquí. Al hacer clic en <strong>&ldquo;Acreditar +1 Mes Extra&rdquo;</strong>, la vigencia se extiende automáticamente por 30 días. Si la membresía aún está activa, el mes extra se encadena al finalizar el período actual para que nunca pierda su categoría.
+                  <strong>🎉 Bonificación de Lanzamiento:</strong> Todos los planes (Standar, Premium y Gold) son <strong>100% GRATIS hasta Enero de 2027</strong>. Los precios se publicarán recién en dicha fecha para que los comercios evalúen su membresía. Desde aquí podés aprobar solicitudes de pases de nivel bonificados o gestionar extensiones.
                 </p>
               </div>
 

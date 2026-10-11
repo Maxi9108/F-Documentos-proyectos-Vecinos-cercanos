@@ -29,19 +29,18 @@ export default function ContadorMembresia({
   const [tiempo, setTiempo] = useState<TiempoRestante | null>(null);
 
   useEffect(() => {
-    if (!fechaVencimiento || (nivel !== 'premium' && nivel !== 'gold')) {
+    if (nivel !== 'premium' && nivel !== 'gold') {
       setTiempo(null);
       return;
     }
 
+    const META_LANZAMIENTO = new Date('2027-01-31T23:59:59.999Z').getTime();
+
     const calcular = () => {
       const ahora = Date.now();
-      const meta = new Date(fechaVencimiento).getTime();
-
-      if (isNaN(meta)) {
-        setTiempo(null);
-        return;
-      }
+      // Si la fecha configurada es posterior a enero 2027, usarla; si no, usar la meta de enero 2027
+      const fv = fechaVencimiento ? new Date(fechaVencimiento).getTime() : 0;
+      const meta = !isNaN(fv) && fv > META_LANZAMIENTO ? fv : META_LANZAMIENTO;
 
       const diferencia = meta - ahora;
 
@@ -88,41 +87,11 @@ export default function ContadorMembresia({
     return null;
   }
 
-  // Si está vencido
-  if (tiempo.estaVencido) {
-    if (formato === 'badge') {
-      return (
-        <span
-          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/60 text-rose-300 border border-rose-800/60 ${className}`}
-        >
-          <AlertTriangle className="w-3 h-3 text-rose-400" />
-          <span>Membresía {nombreNivel} vencida</span>
-        </span>
-      );
-    }
-
-    return (
-      <div
-        className={`p-3 rounded-2xl bg-rose-950/40 border border-rose-800/60 text-rose-200 text-xs flex items-center justify-between gap-3 ${className}`}
-      >
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-          <div>
-            <span className="font-bold block">Membresía {nombreNivel} expirada</span>
-            <span className="text-[11px] text-rose-300/80">
-              Carga tu comprobante de pago para reactivar tu mes extra sin perder beneficios.
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Formato 1: Badge compacto (para listados y tarjetas)
   if (formato === 'badge') {
     return (
       <span
-        title={`Tiempo restante en categoría ${nombreNivel}: ${tiempo.dias}d ${tiempo.horas}h ${tiempo.minutos}m ${tiempo.segundos}s`}
+        title={`Categoría ${nombreNivel} 100% bonificada hasta Enero de 2027`}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${
           esGold
             ? 'bg-amber-950/70 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-950/40'
@@ -135,7 +104,7 @@ export default function ContadorMembresia({
           <Award className="w-3 h-3 text-purple-400 shrink-0" />
         )}
         <span className="tracking-wide">
-          {nombreNivel}: {tiempo.dias}d {tiempo.horas}h restantes
+          {nombreNivel}: Gratis hasta Enero 2027
         </span>
       </span>
     );
@@ -159,12 +128,12 @@ export default function ContadorMembresia({
               <Award className="w-4 h-4 text-purple-400" />
             )}
             <span className="text-xs font-bold uppercase tracking-wider">
-              Categoría Destacada {nombreNivel}
+              Categoría {nombreNivel} (100% Bonificada)
             </span>
           </div>
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-zinc-900/80 border border-zinc-700/60 text-zinc-300 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-cyan-400" />
-            <span>1 Mes de Vigencia</span>
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-emerald-400" />
+            <span>Gratis hasta Enero 2027</span>
           </span>
         </div>
 
@@ -187,8 +156,8 @@ export default function ContadorMembresia({
           </div>
         </div>
 
-        <p className="text-[10px] text-zinc-400 mt-2 text-center">
-          Tiempo restante del mes en esta sección. Al acreditarse una transferencia, se acumula +1 mes extra.
+        <p className="text-[10px] text-zinc-400 mt-2 text-center leading-relaxed">
+          Plan 100% gratuito por etapa de lanzamiento. Los precios oficiales se publicarán en Enero de 2027 para que evalúes tu membresía.
         </p>
       </div>
     );
@@ -217,17 +186,19 @@ export default function ContadorMembresia({
           <div>
             <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
               <span>Membresía {nombreNivel} Activa</span>
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                100% Gratis
+              </span>
             </h4>
             <p className="text-[11px] text-zinc-400">
-              Contador de tiempo restante en la sección de 1 mes:
+              Período de lanzamiento sin costo para comercios del barrio:
             </p>
           </div>
         </div>
 
         <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-          <span>En Curso</span>
+          <span>Bonificado hasta Enero 2027</span>
         </span>
       </div>
 
@@ -257,12 +228,12 @@ export default function ContadorMembresia({
       </div>
 
       <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between text-[11px] text-zinc-400 gap-1.5">
-        <span className="flex items-center gap-1 text-zinc-300">
-          <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Vence el: {fechaVencimiento ? new Date(fechaVencimiento).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' }) : 'Activo'}</span>
+        <span className="flex items-center gap-1 text-emerald-300 font-medium">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Bonificado hasta Enero de 2027</span>
         </span>
-        <span className="text-zinc-500 text-[10.5px]">
-          Los meses extras acreditados comenzarán a correr al finalizar el período actual.
+        <span className="text-zinc-400 text-[10.5px]">
+          Los precios se publicarán en esa fecha para evaluar tu membresía según las visitas recibidas.
         </span>
       </div>
     </div>
