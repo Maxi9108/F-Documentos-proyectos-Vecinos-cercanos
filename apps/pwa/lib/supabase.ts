@@ -1131,32 +1131,32 @@ export async function configurarVacaciones(
   if (isSupabaseConfigured) {
     try {
       // Sincronizar en solicitudes_modificacion para asegurar persistencia permanente
-      const { data: sol } = await supabase
+      const { data: sols } = await supabase
         .from('solicitudes_modificacion')
         .select('*')
-        .eq('comercio_id', id)
-        .maybeSingle();
+        .eq('comercio_id', id);
 
-      const cambiosActualizados = {
-        ...(sol?.cambios || {}),
-        ...updates,
-      };
-
-      if (sol) {
-        await supabase
-          .from('solicitudes_modificacion')
-          .update({
-            cambios: cambiosActualizados,
-          })
-          .eq('id', sol.id);
+      if (sols && sols.length > 0) {
+        for (const sol of sols) {
+          const cambiosActualizados = {
+            ...(sol?.cambios || {}),
+            ...updates,
+          };
+          await supabase
+            .from('solicitudes_modificacion')
+            .update({
+              cambios: cambiosActualizados,
+            })
+            .eq('id', sol.id);
+        }
       } else {
         await supabase
           .from('solicitudes_modificacion')
           .insert({
             comercio_id: id,
-            tipo: 'datos',
             estado: 'aprobado',
-            cambios: cambiosActualizados,
+            fecha_solicitud: new Date().toISOString(),
+            cambios: { ...updates },
           });
       }
     } catch (err: unknown) {
@@ -1224,39 +1224,43 @@ export async function reanudarHorarioNormal(id: string): Promise<{ success: bool
         .eq('id', id);
 
       // Sincronizar en solicitudes_modificacion limpiando explícitamente los campos de vacaciones
-      const { data: sol } = await supabase
+      const { data: sols } = await supabase
         .from('solicitudes_modificacion')
         .select('*')
-        .eq('comercio_id', id)
-        .maybeSingle();
+        .eq('comercio_id', id);
 
-      const cambiosLimpios = { ...(sol?.cambios || {}) };
-      delete cambiosLimpios.vacaciones_desde;
-      delete cambiosLimpios.vacaciones_hasta;
-      delete cambiosLimpios.mensaje_vacaciones;
-      delete cambiosLimpios.modalidad_vacaciones;
-      delete cambiosLimpios.oculto_por_inactividad;
-      delete cambiosLimpios.ticket_baja_definitiva;
-      delete cambiosLimpios.fecha_ticket_baja;
-      delete cambiosLimpios.motivo_ticket_baja;
-      cambiosLimpios.en_vacaciones = false;
-      cambiosLimpios.esta_abierto = true;
+      if (sols && sols.length > 0) {
+        for (const sol of sols) {
+          const cambiosLimpios = { ...(sol?.cambios || {}) };
+          delete cambiosLimpios.vacaciones_desde;
+          delete cambiosLimpios.vacaciones_hasta;
+          delete cambiosLimpios.mensaje_vacaciones;
+          delete cambiosLimpios.modalidad_vacaciones;
+          delete cambiosLimpios.oculto_por_inactividad;
+          delete cambiosLimpios.ticket_baja_definitiva;
+          delete cambiosLimpios.fecha_ticket_baja;
+          delete cambiosLimpios.motivo_ticket_baja;
+          cambiosLimpios.en_vacaciones = false;
+          cambiosLimpios.esta_abierto = true;
 
-      if (sol) {
-        await supabase
-          .from('solicitudes_modificacion')
-          .update({
-            cambios: cambiosLimpios,
-          })
-          .eq('id', sol.id);
+          await supabase
+            .from('solicitudes_modificacion')
+            .update({
+              cambios: cambiosLimpios,
+            })
+            .eq('id', sol.id);
+        }
       } else {
         await supabase
           .from('solicitudes_modificacion')
           .insert({
             comercio_id: id,
-            tipo: 'datos',
             estado: 'aprobado',
-            cambios: cambiosLimpios,
+            fecha_solicitud: new Date().toISOString(),
+            cambios: {
+              en_vacaciones: false,
+              esta_abierto: true,
+            },
           });
       }
     } catch (err: unknown) {
@@ -1335,36 +1339,36 @@ export async function toggleCerradoFinDelDia(
         })
         .eq('id', id);
 
-      const { data: sol } = await supabase
+      const { data: sols } = await supabase
         .from('solicitudes_modificacion')
         .select('*')
-        .eq('comercio_id', id)
-        .maybeSingle();
+        .eq('comercio_id', id);
 
-      const cambiosActualizados = {
-        ...(sol?.cambios || {}),
-        ...updates,
-      };
-      if (!cerrar) {
-        delete cambiosActualizados.fecha_cierre_fin_del_dia;
-        delete cambiosActualizados.reapertura_fin_del_dia_programada;
-      }
-
-      if (sol) {
-        await supabase
-          .from('solicitudes_modificacion')
-          .update({
-            cambios: cambiosActualizados,
-          })
-          .eq('id', sol.id);
+      if (sols && sols.length > 0) {
+        for (const sol of sols) {
+          const cambiosActualizados = {
+            ...(sol?.cambios || {}),
+            ...updates,
+          };
+          if (!cerrar) {
+            delete cambiosActualizados.fecha_cierre_fin_del_dia;
+            delete cambiosActualizados.reapertura_fin_del_dia_programada;
+          }
+          await supabase
+            .from('solicitudes_modificacion')
+            .update({
+              cambios: cambiosActualizados,
+            })
+            .eq('id', sol.id);
+        }
       } else {
         await supabase
           .from('solicitudes_modificacion')
           .insert({
             comercio_id: id,
-            tipo: 'datos',
             estado: 'aprobado',
-            cambios: cambiosActualizados,
+            fecha_solicitud: new Date().toISOString(),
+            cambios: { ...updates },
           });
       }
     } catch (err: unknown) {

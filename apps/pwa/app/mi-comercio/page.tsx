@@ -1080,26 +1080,23 @@ export default function MiComercioPage() {
   const handleToggleFinDelDia = async (cerrar: boolean) => {
     if (!comercioActual) return;
     const prox = calcularProximaAperturaComercio(comercioActual);
-    let accion = cerrar
-      ? `cerrar tu local por fin del día (se reactivará automáticamente ${prox.textoLegible} o cuando pulses abrir)`
-      : 'abrir tu local ahora y comenzar la jornada';
 
-    let finalizarVacacionesTambien = false;
-    if (!cerrar && comercioActual.en_vacaciones) {
-      if (confirm('Tu local está actualmente en Modo Vacaciones. ¿Deseas finalizar también las vacaciones y comenzar la jornada hoy?')) {
-        finalizarVacacionesTambien = true;
-      } else {
-        return;
-      }
-    } else {
-      if (!confirm(`¿Confirmas que deseas ${accion}?`)) return;
-    }
+    // Actualización optimista inmediata en la interfaz
+    setComercios((prev) =>
+      prev.map((c) =>
+        c.id === comercioActual.id
+          ? {
+              ...c,
+              esta_abierto: !cerrar,
+              fecha_cierre_fin_del_dia: cerrar ? new Date().toISOString() : undefined,
+              reapertura_fin_del_dia_programada: cerrar ? prox.fecha.toISOString() : undefined,
+            }
+          : c
+      )
+    );
 
     setProcesandoFinDelDia(true);
     try {
-      if (finalizarVacacionesTambien) {
-        await reanudarHorarioNormal(comercioActual.id);
-      }
       await toggleCerradoFinDelDia(comercioActual.id, cerrar, comercioActual);
       const c = await getComercios();
       setComercios(c);
@@ -1115,26 +1112,44 @@ export default function MiComercioPage() {
   // Acción directa para guardar e iniciar modo vacaciones (sin tocar zona de reparto ni mapa)
   const handleGuardarVacacionesDirecto = async () => {
     if (!comercioActual) return;
+    const desde = modalVacDesde || new Date().toISOString().split('T')[0];
+    const hasta = modalVacHasta || undefined;
+    const msg = modalVacMensaje.trim() || undefined;
+
+    // Actualización optimista inmediata
+    setComercios((prev) =>
+      prev.map((c) =>
+        c.id === comercioActual.id
+          ? {
+              ...c,
+              en_vacaciones: true,
+              vacaciones_desde: desde,
+              vacaciones_hasta: hasta,
+              mensaje_vacaciones: msg,
+              modalidad_vacaciones: modalVacModalidad,
+            }
+          : c
+      )
+    );
+    setModalVacacionesDirecto(false);
+
     setProcesandoVacacionesDirecto(true);
     try {
       const res = await configurarVacaciones(
         comercioActual.id,
         true,
-        modalVacDesde || new Date().toISOString().split('T')[0],
-        modalVacHasta || undefined,
-        modalVacMensaje.trim() || undefined,
+        desde,
+        hasta,
+        msg,
         modalVacModalidad
       );
       if (!res.success) {
         alert(res.error || 'Ocurrió un error al activar vacaciones.');
-        return;
       }
       const c = await getComercios();
       setComercios(c);
       const act = c.find((x) => x.id === comercioActual.id);
       if (act) cargarDatosFormulario(act);
-      setModalVacacionesDirecto(false);
-      alert('¡Modo Vacaciones activado! Tu local permanecerá en pausa hasta su regreso o hasta que pulses "Reabrir de Vacaciones".');
     } catch (err) {
       console.error('Error en handleGuardarVacacionesDirecto:', err);
       alert('Error de conexión al guardar vacaciones. Por favor reintenta.');
@@ -1143,22 +1158,37 @@ export default function MiComercioPage() {
     }
   };
 
-  // Acción directa para finalizar vacaciones y reabrir local
+  // Acción directa para finalizar vacaciones y reabrir local (totalmente independiente de fin del día)
   const handleFinalizarVacaciones = async () => {
     if (!comercioActual) return;
-    if (!confirm('¿Deseas finalizar las vacaciones hoy y volver a abrir tu local para los vecinos?')) return;
+    
+    // Actualización optimista inmediata
+    setComercios((prev) =>
+      prev.map((c) =>
+        c.id === comercioActual.id
+          ? {
+              ...c,
+              en_vacaciones: false,
+              vacaciones_desde: undefined,
+              vacaciones_hasta: undefined,
+              mensaje_vacaciones: undefined,
+              modalidad_vacaciones: undefined,
+              esta_abierto: true,
+            }
+          : c
+      )
+    );
+
     setProcesandoVacacionesDirecto(true);
     try {
       const res = await reanudarHorarioNormal(comercioActual.id);
       if (!res.success) {
         alert(res.error || 'Ocurrió un error al reabrir el local.');
-        return;
       }
       const c = await getComercios();
       setComercios(c);
       const act = c.find((x) => x.id === comercioActual.id);
       if (act) cargarDatosFormulario(act);
-      alert('¡Vacaciones finalizadas con éxito! Tu comercio volvió a estar abierto.');
     } catch (err) {
       console.error('Error en handleFinalizarVacaciones:', err);
       alert('Error de conexión al finalizar vacaciones. Por favor reintenta.');
@@ -2025,18 +2055,16 @@ export default function MiComercioPage() {
                   </div>
                 )}
 
-                {/* 3. Barra de acciones operativas rápidas (Fin del día y Vacaciones independientes) */}
+                {/* 3. Barra de acciones operativas rápidas (Fin del día y Vacaciones 100% independientes) */}
                 {(() => {
                   const estaEnVacaciones = Boolean(comercioActual.en_vacaciones);
                   const estaCerradoFinDelDia = Boolean(
-                    !comercioActual.esta_abierto &&
-                    !estaEnVacaciones &&
-                    !comercioActual.cerrado_momentaneo &&
-                    (comercioActual.fecha_cierre_fin_del_dia || comercioActual.reapertura_fin_del_dia_programada)
+                    comercioActual.fecha_cierre_fin_del_dia || comercioActual.reapertura_fin_del_dia_programada
                   );
                   const estaRealmenteAbierto = Boolean(
                     comercioActual.esta_abierto &&
                     !estaEnVacaciones &&
+                    !estaCerradoFinDelDia &&
                     !comercioActual.cerrado_momentaneo
                   );
 
