@@ -1075,13 +1075,19 @@ export async function configurarVacaciones(
   mensaje?: string,
   modalidad?: 'descanso_total' | 'mostrar_con_aviso'
 ): Promise<{ success: boolean; diasVacaciones?: number; supera60Dias?: boolean; error?: string }> {
+  // Si se solicita finalizar vacaciones, delegar a reanudarHorarioNormal
+  if (!enVacaciones) {
+    const res = await reanudarHorarioNormal(id);
+    return { success: res.success, error: res.error };
+  }
+
   const hoyStr = new Date().toISOString().split('T')[0];
   const fechaDesde = desde || hoyStr;
   let diasTotales = 0;
   let supera60Dias = false;
 
   // Fecha de Retorno es OPCIONAL: si se especifica, se calculan días y límite de 60 días
-  if (enVacaciones && hasta) {
+  if (hasta) {
     const msInicio = new Date(fechaDesde).getTime();
     const msRetorno = new Date(hasta).getTime();
     if (msRetorno <= msInicio) {
@@ -1091,17 +1097,17 @@ export async function configurarVacaciones(
     supera60Dias = diasTotales > 60;
   }
 
+  // Notar: Las vacaciones son independientes del cierre por fin del día. No alteran esta_abierto ni la reapertura de jornada.
   const updates: Partial<Comercio> = {
-    en_vacaciones: enVacaciones,
-    vacaciones_desde: enVacaciones ? fechaDesde : undefined,
-    vacaciones_hasta: enVacaciones ? (hasta || undefined) : undefined,
-    mensaje_vacaciones: enVacaciones ? (mensaje || 'Cerrado por vacaciones. ¡Pronto regresamos!') : undefined,
-    modalidad_vacaciones: enVacaciones ? (modalidad || 'mostrar_con_aviso') : undefined,
-    esta_abierto: !enVacaciones,
-    oculto_por_inactividad: enVacaciones ? supera60Dias : false,
-    ticket_baja_definitiva: enVacaciones ? supera60Dias : false,
-    fecha_ticket_baja: (enVacaciones && supera60Dias) ? new Date().toISOString() : undefined,
-    motivo_ticket_baja: (enVacaciones && supera60Dias)
+    en_vacaciones: true,
+    vacaciones_desde: fechaDesde,
+    vacaciones_hasta: hasta || undefined,
+    mensaje_vacaciones: mensaje || 'Cerrado por vacaciones. ¡Pronto regresamos!',
+    modalidad_vacaciones: modalidad || 'mostrar_con_aviso',
+    oculto_por_inactividad: supera60Dias,
+    ticket_baja_definitiva: supera60Dias,
+    fecha_ticket_baja: supera60Dias ? new Date().toISOString() : undefined,
+    motivo_ticket_baja: supera60Dias
       ? `Vacaciones programadas de ${diasTotales} días (supera el límite de 60 días)`
       : undefined,
   };
@@ -1124,54 +1130,39 @@ export async function configurarVacaciones(
 
   if (isSupabaseConfigured) {
     try {
-      // 1. Actualizar esta_abierto en tabla comercios (compatible con esquema base)
-      await supabase
-        .from('comercios')
-        .update({
-          esta_abierto: !enVacaciones,
-        })
-        .eq('id', id);
-
-      // Intentar actualizar campos de vacaciones si la tabla los soporta
-      try {
-        await supabase
-          .from('comercios')
-          .update({
-            en_vacaciones: enVacaciones,
-            vacaciones_desde: enVacaciones ? (fechaDesde || null) : null,
-            vacaciones_hasta: enVacaciones ? (hasta || null) : null,
-            mensaje_vacaciones: enVacaciones ? (mensaje || 'Cerrado por vacaciones. ¡Pronto regresamos!') : null,
-            oculto_por_inactividad: enVacaciones ? supera60Dias : false,
-            ticket_baja_definitiva: enVacaciones ? supera60Dias : false,
-            fecha_ticket_baja: (enVacaciones && supera60Dias) ? new Date().toISOString() : null,
-            motivo_ticket_baja: (enVacaciones && supera60Dias)
-              ? `Vacaciones programadas de ${diasTotales} días (supera el límite de 60 días)`
-              : null,
-          })
-          .eq('id', id);
-      } catch (_) {}
-
-      // 2. Sincronizar en solicitudes_modificacion para asegurar persistencia permanente
+      // Sincronizar en solicitudes_modificacion para asegurar persistencia permanente
       const { data: sol } = await supabase
         .from('solicitudes_modificacion')
         .select('*')
         .eq('comercio_id', id)
         .maybeSingle();
 
-      if (sol && sol.cambios) {
+      const cambiosActualizados = {
+        ...(sol?.cambios || {}),
+        ...updates,
+      };
+
+      if (sol) {
         await supabase
           .from('solicitudes_modificacion')
           .update({
-            cambios: {
-              ...sol.cambios,
-              ...updates,
-            },
+            cambios: cambiosActualizados,
           })
           .eq('id', sol.id);
+      } else {
+        await supabase
+          .from('solicitudes_modificacion')
+          .insert({
+            comercio_id: id,
+            tipo: 'datos',
+            estado: 'aprobado',
+            cambios: cambiosActualizados,
+          });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn('[Supabase] Aviso en configurarVacaciones:', msg);
+      console.warn('[Supabase] Error en configurarVacaciones:', msg);
+      return { success: false, error: msg };
     }
   }
 
@@ -1192,6 +1183,7 @@ export async function reanudarHorarioNormal(id: string): Promise<{ success: bool
     vacaciones_desde: undefined,
     vacaciones_hasta: undefined,
     mensaje_vacaciones: undefined,
+    modalidad_vacaciones: undefined,
     oculto_por_inactividad: false,
     ticket_baja_definitiva: false,
     fecha_ticket_baja: undefined,
@@ -1206,7 +1198,14 @@ export async function reanudarHorarioNormal(id: string): Promise<{ success: bool
         const guardados: Comercio[] = JSON.parse(guardadosRaw);
         const idx = guardados.findIndex((c) => c.id === id);
         if (idx >= 0) {
-          guardados[idx] = { ...guardados[idx], ...updates };
+          const mod = { ...guardados[idx], ...updates };
+          delete mod.vacaciones_desde;
+          delete mod.vacaciones_hasta;
+          delete mod.mensaje_vacaciones;
+          delete mod.modalidad_vacaciones;
+          mod.en_vacaciones = false;
+          mod.esta_abierto = true;
+          guardados[idx] = mod;
           localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(guardados));
         }
       }
@@ -1224,43 +1223,41 @@ export async function reanudarHorarioNormal(id: string): Promise<{ success: bool
         })
         .eq('id', id);
 
-      try {
-        await supabase
-          .from('comercios')
-          .update({
-            cerrado_momentaneo: false,
-            motivo_cierre_momentaneo: null,
-            fecha_cierre_emergencia: null,
-            reapertura_emergencia_programada: null,
-            en_vacaciones: false,
-            vacaciones_desde: null,
-            vacaciones_hasta: null,
-            mensaje_vacaciones: null,
-            oculto_por_inactividad: false,
-            ticket_baja_definitiva: false,
-            fecha_ticket_baja: null,
-            motivo_ticket_baja: null,
-          })
-          .eq('id', id);
-      } catch (_) {}
-
-      // Sincronizar en solicitudes_modificacion
+      // Sincronizar en solicitudes_modificacion limpiando explícitamente los campos de vacaciones
       const { data: sol } = await supabase
         .from('solicitudes_modificacion')
         .select('*')
         .eq('comercio_id', id)
         .maybeSingle();
 
-      if (sol && sol.cambios) {
+      const cambiosLimpios = { ...(sol?.cambios || {}) };
+      delete cambiosLimpios.vacaciones_desde;
+      delete cambiosLimpios.vacaciones_hasta;
+      delete cambiosLimpios.mensaje_vacaciones;
+      delete cambiosLimpios.modalidad_vacaciones;
+      delete cambiosLimpios.oculto_por_inactividad;
+      delete cambiosLimpios.ticket_baja_definitiva;
+      delete cambiosLimpios.fecha_ticket_baja;
+      delete cambiosLimpios.motivo_ticket_baja;
+      cambiosLimpios.en_vacaciones = false;
+      cambiosLimpios.esta_abierto = true;
+
+      if (sol) {
         await supabase
           .from('solicitudes_modificacion')
           .update({
-            cambios: {
-              ...sol.cambios,
-              ...updates,
-            },
+            cambios: cambiosLimpios,
           })
           .eq('id', sol.id);
+      } else {
+        await supabase
+          .from('solicitudes_modificacion')
+          .insert({
+            comercio_id: id,
+            tipo: 'datos',
+            estado: 'aprobado',
+            cambios: cambiosLimpios,
+          });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1344,16 +1341,31 @@ export async function toggleCerradoFinDelDia(
         .eq('comercio_id', id)
         .maybeSingle();
 
-      if (sol && sol.cambios) {
+      const cambiosActualizados = {
+        ...(sol?.cambios || {}),
+        ...updates,
+      };
+      if (!cerrar) {
+        delete cambiosActualizados.fecha_cierre_fin_del_dia;
+        delete cambiosActualizados.reapertura_fin_del_dia_programada;
+      }
+
+      if (sol) {
         await supabase
           .from('solicitudes_modificacion')
           .update({
-            cambios: {
-              ...sol.cambios,
-              ...updates,
-            },
+            cambios: cambiosActualizados,
           })
           .eq('id', sol.id);
+      } else {
+        await supabase
+          .from('solicitudes_modificacion')
+          .insert({
+            comercio_id: id,
+            tipo: 'datos',
+            estado: 'aprobado',
+            cambios: cambiosActualizados,
+          });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1361,7 +1373,7 @@ export async function toggleCerradoFinDelDia(
     }
   }
 
-  return { success: true };
+  return { success: true, reapertura, textoLegible };
 }
 
 /**

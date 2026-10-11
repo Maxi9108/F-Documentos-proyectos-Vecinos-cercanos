@@ -1080,50 +1080,91 @@ export default function MiComercioPage() {
   const handleToggleFinDelDia = async (cerrar: boolean) => {
     if (!comercioActual) return;
     const prox = calcularProximaAperturaComercio(comercioActual);
-    const accion = cerrar
+    let accion = cerrar
       ? `cerrar tu local por fin del día (se reactivará automáticamente ${prox.textoLegible} o cuando pulses abrir)`
       : 'abrir tu local ahora y comenzar la jornada';
-    if (!confirm(`¿Confirmas que deseas ${accion}?`)) return;
+
+    let finalizarVacacionesTambien = false;
+    if (!cerrar && comercioActual.en_vacaciones) {
+      if (confirm('Tu local está actualmente en Modo Vacaciones. ¿Deseas finalizar también las vacaciones y comenzar la jornada hoy?')) {
+        finalizarVacacionesTambien = true;
+      } else {
+        return;
+      }
+    } else {
+      if (!confirm(`¿Confirmas que deseas ${accion}?`)) return;
+    }
+
     setProcesandoFinDelDia(true);
-    await toggleCerradoFinDelDia(comercioActual.id, cerrar, comercioActual);
-    const c = await getComercios();
-    setComercios(c);
-    const act = c.find((x) => x.id === comercioActual.id);
-    if (act) cargarDatosFormulario(act);
-    setProcesandoFinDelDia(false);
+    try {
+      if (finalizarVacacionesTambien) {
+        await reanudarHorarioNormal(comercioActual.id);
+      }
+      await toggleCerradoFinDelDia(comercioActual.id, cerrar, comercioActual);
+      const c = await getComercios();
+      setComercios(c);
+      const act = c.find((x) => x.id === comercioActual.id);
+      if (act) cargarDatosFormulario(act);
+    } catch (err) {
+      console.error('Error en handleToggleFinDelDia:', err);
+    } finally {
+      setProcesandoFinDelDia(false);
+    }
   };
 
   // Acción directa para guardar e iniciar modo vacaciones (sin tocar zona de reparto ni mapa)
   const handleGuardarVacacionesDirecto = async () => {
     if (!comercioActual) return;
     setProcesandoVacacionesDirecto(true);
-    await configurarVacaciones(
-      comercioActual.id,
-      true,
-      modalVacDesde || new Date().toISOString().split('T')[0],
-      modalVacHasta || undefined,
-      modalVacMensaje.trim() || undefined,
-      modalVacModalidad
-    );
-    const c = await getComercios();
-    setComercios(c);
-    const act = c.find((x) => x.id === comercioActual.id);
-    if (act) cargarDatosFormulario(act);
-    setProcesandoVacacionesDirecto(false);
-    setModalVacacionesDirecto(false);
+    try {
+      const res = await configurarVacaciones(
+        comercioActual.id,
+        true,
+        modalVacDesde || new Date().toISOString().split('T')[0],
+        modalVacHasta || undefined,
+        modalVacMensaje.trim() || undefined,
+        modalVacModalidad
+      );
+      if (!res.success) {
+        alert(res.error || 'Ocurrió un error al activar vacaciones.');
+        return;
+      }
+      const c = await getComercios();
+      setComercios(c);
+      const act = c.find((x) => x.id === comercioActual.id);
+      if (act) cargarDatosFormulario(act);
+      setModalVacacionesDirecto(false);
+      alert('¡Modo Vacaciones activado! Tu local permanecerá en pausa hasta su regreso o hasta que pulses "Reabrir de Vacaciones".');
+    } catch (err) {
+      console.error('Error en handleGuardarVacacionesDirecto:', err);
+      alert('Error de conexión al guardar vacaciones. Por favor reintenta.');
+    } finally {
+      setProcesandoVacacionesDirecto(false);
+    }
   };
 
   // Acción directa para finalizar vacaciones y reabrir local
   const handleFinalizarVacaciones = async () => {
     if (!comercioActual) return;
-    if (!confirm('¿Deseas finalizar las vacaciones hoy y volver a abrir tu local?')) return;
+    if (!confirm('¿Deseas finalizar las vacaciones hoy y volver a abrir tu local para los vecinos?')) return;
     setProcesandoVacacionesDirecto(true);
-    await reanudarHorarioNormal(comercioActual.id);
-    const c = await getComercios();
-    setComercios(c);
-    const act = c.find((x) => x.id === comercioActual.id);
-    if (act) cargarDatosFormulario(act);
-    setProcesandoVacacionesDirecto(false);
+    try {
+      const res = await reanudarHorarioNormal(comercioActual.id);
+      if (!res.success) {
+        alert(res.error || 'Ocurrió un error al reabrir el local.');
+        return;
+      }
+      const c = await getComercios();
+      setComercios(c);
+      const act = c.find((x) => x.id === comercioActual.id);
+      if (act) cargarDatosFormulario(act);
+      alert('¡Vacaciones finalizadas con éxito! Tu comercio volvió a estar abierto.');
+    } catch (err) {
+      console.error('Error en handleFinalizarVacaciones:', err);
+      alert('Error de conexión al finalizar vacaciones. Por favor reintenta.');
+    } finally {
+      setProcesandoVacacionesDirecto(false);
+    }
   };
 
   const solicitudPendiente = solicitudesMod.find((s) => s.estado === 'pendiente');
@@ -1984,83 +2025,143 @@ export default function MiComercioPage() {
                   </div>
                 )}
 
-                {/* 3. Barra de acciones operativas rápidas (Fin del día, Vacaciones, Reabrir) */}
-                <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 flex flex-wrap items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2.5 h-2.5 rounded-full ${comercioActual.esta_abierto ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
-                    <div>
-                      <span className="text-xs font-bold text-white block">
-                        Estado Actual:{' '}
-                        <span className={comercioActual.esta_abierto ? 'text-emerald-400' : 'text-rose-400'}>
-                          {comercioActual.esta_abierto ? 'Abierto para Vecinos' : 'Cerrado para Vecinos'}
-                        </span>
-                      </span>
-                      {!comercioActual.esta_abierto && !comercioActual.cerrado_momentaneo && !comercioActual.en_vacaciones && (
-                        <span className="text-[10px] text-zinc-400 font-medium flex items-center gap-1 mt-0.5">
-                          <Clock className="w-3 h-3 text-cyan-400 inline" />
-                          Modo Híbrido: Reabre automáticamente{' '}
-                          {comercioActual.reapertura_fin_del_dia_programada ? (
-                            (() => {
-                              const d = new Date(comercioActual.reapertura_fin_del_dia_programada);
-                              const fStr = d.toLocaleDateString('es-AR', { weekday: 'long' });
-                              const hStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-                              return `el ${fStr} a las ${hStr} hs`;
-                            })()
-                          ) : (
-                            'en su próximo horario'
-                          )}{' '}
-                          (o cuando pulses abrir).
-                        </span>
-                      )}
+                {/* 3. Barra de acciones operativas rápidas (Fin del día y Vacaciones independientes) */}
+                {(() => {
+                  const estaEnVacaciones = Boolean(comercioActual.en_vacaciones);
+                  const estaCerradoFinDelDia = Boolean(
+                    !comercioActual.esta_abierto &&
+                    !estaEnVacaciones &&
+                    !comercioActual.cerrado_momentaneo &&
+                    (comercioActual.fecha_cierre_fin_del_dia || comercioActual.reapertura_fin_del_dia_programada)
+                  );
+                  const estaRealmenteAbierto = Boolean(
+                    comercioActual.esta_abierto &&
+                    !estaEnVacaciones &&
+                    !comercioActual.cerrado_momentaneo
+                  );
+
+                  return (
+                    <div className="p-3 rounded-2xl bg-zinc-900/60 border border-zinc-800 flex flex-wrap items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-2.5 h-2.5 rounded-full ${
+                            estaRealmenteAbierto
+                              ? 'bg-emerald-400 animate-pulse'
+                              : estaEnVacaciones
+                              ? 'bg-sky-400 animate-pulse'
+                              : 'bg-rose-500'
+                          }`}
+                        />
+                        <div>
+                          <span className="text-xs font-bold text-white block">
+                            Estado Actual:{' '}
+                            <span
+                              className={
+                                estaEnVacaciones
+                                  ? 'text-sky-400 font-extrabold'
+                                  : estaRealmenteAbierto
+                                  ? 'text-emerald-400 font-extrabold'
+                                  : 'text-rose-400 font-extrabold'
+                              }
+                            >
+                              {estaEnVacaciones
+                                ? 'En Vacaciones'
+                                : estaCerradoFinDelDia
+                                ? 'Cerrado por Fin del Día'
+                                : comercioActual.cerrado_momentaneo
+                                ? 'Cierre Temporal'
+                                : estaRealmenteAbierto
+                                ? 'Abierto para Vecinos'
+                                : 'Cerrado para Vecinos'}
+                            </span>
+                          </span>
+
+                          {estaEnVacaciones && (
+                            <span className="text-[10px] text-sky-300 font-medium flex items-center gap-1 mt-0.5">
+                              <Palmtree className="w-3 h-3 text-sky-400 inline" />
+                              Modo Vacaciones activo {comercioActual.vacaciones_hasta ? `(regreso previsto: ${comercioActual.vacaciones_hasta})` : '(retorno flexible)'}.
+                            </span>
+                          )}
+
+                          {estaCerradoFinDelDia && (
+                            <span className="text-[10px] text-zinc-400 font-medium flex items-center gap-1 mt-0.5">
+                              <Clock className="w-3 h-3 text-cyan-400 inline" />
+                              Modo Híbrido: Reabre automáticamente{' '}
+                              {comercioActual.reapertura_fin_del_dia_programada ? (
+                                (() => {
+                                  const d = new Date(comercioActual.reapertura_fin_del_dia_programada);
+                                  const fStr = d.toLocaleDateString('es-AR', { weekday: 'long' });
+                                  const hStr = d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                                  return `el ${fStr} a las ${hStr} hs`;
+                                })()
+                              ) : (
+                                'en su próximo horario'
+                              )}{' '}
+                              (o cuando pulses abrir).
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center flex-wrap gap-2">
+                        {/* Control 1: Fin del Día (Cerrar / Abrir Jornada) */}
+                        {estaCerradoFinDelDia ? (
+                          <button
+                            type="button"
+                            disabled={procesandoFinDelDia}
+                            onClick={() => handleToggleFinDelDia(false)}
+                            className="py-1.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-black font-black text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-emerald-950/50 disabled:opacity-50"
+                            title="Reabrir local para comenzar la jornada"
+                          >
+                            <Power className="w-3.5 h-3.5 text-black" />
+                            <span>{procesandoFinDelDia ? 'Abriendo...' : '🟢 Abrir Local (Comenzar Día)'}</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={procesandoFinDelDia}
+                            onClick={() => handleToggleFinDelDia(true)}
+                            className="py-1.5 px-3 rounded-xl bg-zinc-800 hover:bg-rose-950/70 border border-zinc-700 hover:border-rose-700 text-zinc-200 hover:text-rose-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-50"
+                            title="Cerrar sin motivo como fin del día (no consume cupos ni genera strikes)"
+                          >
+                            <Power className="w-3.5 h-3.5 text-rose-400" />
+                            <span>{procesandoFinDelDia ? 'Cerrando...' : '🌙 Cerrar por Fin del Día'}</span>
+                          </button>
+                        )}
+
+                        {/* Control 2: Modo Vacaciones (Totalmente Separado e Independiente) */}
+                        {estaEnVacaciones ? (
+                          <button
+                            type="button"
+                            disabled={procesandoVacacionesDirecto}
+                            onClick={handleFinalizarVacaciones}
+                            className="py-1.5 px-3.5 rounded-xl bg-gradient-to-r from-sky-500 to-emerald-400 hover:from-sky-400 hover:to-emerald-300 text-black font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-sky-950/50 disabled:opacity-50"
+                            title="Finalizar el período de vacaciones y reabrir el local de inmediato"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 text-black" />
+                            <span>{procesandoVacacionesDirecto ? 'Reabriendo...' : '🟢 Reabrir de Vacaciones'}</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalVacDesde(new Date().toISOString().split('T')[0]);
+                              setModalVacHasta('');
+                              setModalVacMensaje('');
+                              setModalVacModalidad('mostrar_con_aviso');
+                              setModalVacacionesDirecto(true);
+                            }}
+                            className="py-1.5 px-3 rounded-xl bg-sky-950/80 hover:bg-sky-900 border border-sky-600/60 text-sky-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                            title="Programar vacaciones sin tocar la zona de reparto ni modificar datos"
+                          >
+                            <Palmtree className="w-3.5 h-3.5 text-sky-400" />
+                            <span>🌴 Modo Vacaciones</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center flex-wrap gap-2">
-                    {/* Botón Cerrar por Fin del Día / Abrir Local */}
-                    {comercioActual.esta_abierto ? (
-                      <button
-                        type="button"
-                        disabled={procesandoFinDelDia}
-                        onClick={() => handleToggleFinDelDia(true)}
-                        className="py-1.5 px-3 rounded-xl bg-rose-950/80 hover:bg-rose-900 border border-rose-700/60 text-rose-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm disabled:opacity-50"
-                        title="Cerrar sin motivo como fin del día (no consume cupos ni genera strikes)"
-                      >
-                        <Power className="w-3.5 h-3.5 text-rose-400" />
-                        <span>{procesandoFinDelDia ? 'Cerrando...' : 'Cerrado por Fin del Día'}</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={procesandoFinDelDia}
-                        onClick={() => handleToggleFinDelDia(false)}
-                        className="py-1.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-black font-black text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-md shadow-emerald-950/50 disabled:opacity-50"
-                        title="Reabrir local para comenzar la jornada"
-                      >
-                        <Power className="w-3.5 h-3.5 text-black" />
-                        <span>{procesandoFinDelDia ? 'Abriendo...' : '🟢 Abrir Local Ahora (Comenzar Día)'}</span>
-                      </button>
-                    )}
-
-                    {/* Botón Irse de Vacaciones (abre modal directo, nunca toca zona ni mapa) */}
-                    {!comercioActual.en_vacaciones && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModalVacDesde(new Date().toISOString().split('T')[0]);
-                          setModalVacHasta('');
-                          setModalVacMensaje('');
-                          setModalVacModalidad('mostrar_con_aviso');
-                          setModalVacacionesDirecto(true);
-                        }}
-                        className="py-1.5 px-3 rounded-xl bg-sky-950/80 hover:bg-sky-900 border border-sky-700/60 text-sky-200 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-                        title="Programar vacaciones sin tocar la zona de reparto ni modificar datos"
-                      >
-                        <Palmtree className="w-3.5 h-3.5 text-sky-400" />
-                        <span>Irse de Vacaciones</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
             )}
           </section>

@@ -2759,22 +2759,50 @@ export default function AdminPage() {
 
                       {/* Alerta de Vacaciones */}
                       {comercio.en_vacaciones && (
-                        <div className="p-2.5 rounded-xl bg-sky-950/40 border border-sky-500/40 text-sky-200 text-xs flex items-start gap-2">
-                          <Palmtree className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-                          <div className="space-y-0.5">
-                            <span className="font-bold block text-[11px]">En Receso por Vacaciones</span>
-                            <p className="text-[10px] text-sky-300/90 leading-tight">
-                              {comercio.vacaciones_desde ? `Desde ${comercio.vacaciones_desde}` : ''}
-                              {comercio.vacaciones_hasta ? ` hasta ${comercio.vacaciones_hasta}` : ''}
-                              {comercio.mensaje_vacaciones ? ` — "${comercio.mensaje_vacaciones}"` : ''}
-                            </p>
-                            {comercio.vacaciones_hasta && (
-                              <p className="text-[9px] text-sky-400 font-medium mt-1 flex items-center gap-1">
-                                <Calendar className="w-3 h-3 text-sky-400" />
-                                Retorno: {comercio.vacaciones_hasta} (reapertura auto)
+                        <div className="p-2.5 rounded-xl bg-sky-950/40 border border-sky-500/40 text-sky-200 text-xs flex items-center justify-between gap-2">
+                          <div className="flex items-start gap-2">
+                            <Palmtree className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                            <div className="space-y-0.5">
+                              <span className="font-bold block text-[11px]">En Receso por Vacaciones</span>
+                              <p className="text-[10px] text-sky-300/90 leading-tight">
+                                {comercio.vacaciones_desde ? `Desde ${comercio.vacaciones_desde}` : ''}
+                                {comercio.vacaciones_hasta ? ` hasta ${comercio.vacaciones_hasta}` : ''}
+                                {comercio.mensaje_vacaciones ? ` — "${comercio.mensaje_vacaciones}"` : ''}
                               </p>
-                            )}
+                              {comercio.vacaciones_hasta && (
+                                <p className="text-[9px] text-sky-400 font-medium mt-1 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3 text-sky-400" />
+                                  Retorno: {comercio.vacaciones_hasta} (reapertura auto)
+                                </p>
+                              )}
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (confirm(`¿Finalizar las vacaciones de "${comercio.nombre}" y reabrir su local de inmediato?`)) {
+                                await reanudarHorarioNormal(comercio.id);
+                                setComercios((prev) =>
+                                  prev.map((c) =>
+                                    c.id === comercio.id
+                                      ? {
+                                          ...c,
+                                          en_vacaciones: false,
+                                          vacaciones_desde: undefined,
+                                          vacaciones_hasta: undefined,
+                                          mensaje_vacaciones: undefined,
+                                          esta_abierto: true,
+                                        }
+                                      : c
+                                  )
+                                );
+                              }
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600 hover:bg-emerald-500 text-black shrink-0 transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-black" />
+                            <span>Reabrir Ahora</span>
+                          </button>
                         </div>
                       )}
 
@@ -2858,7 +2886,7 @@ export default function AdminPage() {
                           </button>
                         )}
 
-                        {!comercio.cerrado_momentaneo && !comercio.en_vacaciones && (
+                        {!comercio.cerrado_momentaneo && (
                           <button
                             type="button"
                             onClick={async () => {
@@ -2911,7 +2939,35 @@ export default function AdminPage() {
                           </button>
                         )}
 
-                        {!comercio.en_vacaciones && (
+                        {comercio.en_vacaciones ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (confirm(`¿Finalizar las vacaciones de "${comercio.nombre}" y reabrir su local de inmediato?`)) {
+                                await reanudarHorarioNormal(comercio.id);
+                                setComercios((prev) =>
+                                  prev.map((c) =>
+                                    c.id === comercio.id
+                                      ? {
+                                          ...c,
+                                          en_vacaciones: false,
+                                          vacaciones_desde: undefined,
+                                          vacaciones_hasta: undefined,
+                                          mensaje_vacaciones: undefined,
+                                          esta_abierto: true,
+                                        }
+                                      : c
+                                  )
+                                );
+                              }
+                            }}
+                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-sky-950/60 text-sky-200 border border-sky-500/60 hover:bg-sky-900/60 transition-colors flex items-center gap-1 cursor-pointer"
+                            title="Finalizar vacaciones y reabrir comercio"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-sky-400" />
+                            <span>Reabrir Vacaciones</span>
+                          </button>
+                        ) : (
                           <button
                             type="button"
                             onClick={() => handleCargarVacaciones(comercio)}
