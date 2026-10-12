@@ -3074,7 +3074,7 @@ export default function AdminPage() {
                   <h2 className="text-base font-bold text-white">Solicitudes de Membresías & Planes</h2>
                 </div>
                 <p className="text-xs text-zinc-300 max-w-2xl mt-1 leading-relaxed">
-                  <strong>🎉 Bonificación de Lanzamiento:</strong> Todos los planes (Standar, Premium y Gold) son <strong>100% GRATIS hasta Enero de 2027</strong>. Los precios se publicarán recién en dicha fecha para que los comercios evalúen su membresía. Desde aquí podés aprobar solicitudes de pases de nivel bonificados o gestionar extensiones.
+                  <strong>🎉 Bonificación de Lanzamiento:</strong> Todos los planes (Standar, Premium y Gold) son <strong>100% GRATIS hasta el 31 de Diciembre</strong>. El <strong>01 de Enero de 2027</strong> se publicarán los precios oficiales y los comercios deberán renovar su membresía. Desde aquí podés aprobar solicitudes de pases de nivel bonificados o gestionar extensiones.
                 </p>
               </div>
 

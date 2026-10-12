@@ -987,7 +987,7 @@ export default function CargarComercioPage() {
                     2. Selecciona el Nivel de tu Comercio *
                   </h2>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Elige el plan que mejor se adapte a tus necesidades. Durante el lanzamiento todos los planes son 100% bonificados.
+                    Elige el plan que mejor se adapte a tus necesidades. Durante el lanzamiento todos los planes son 100% bonificados hasta el 31 de diciembre.
                   </p>
                 </div>
                 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 w-fit">
@@ -999,9 +999,9 @@ export default function CargarComercioPage() {
               <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-teal-950/60 to-cyan-950/80 border border-emerald-500/50 flex items-start gap-3 text-xs text-emerald-200">
                 <Sparkles className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <strong className="text-white text-sm block">🎉 ¡Todos los planes son 100% GRATIS hasta Enero de 2027!</strong>
+                  <strong className="text-white text-sm block">🎉 ¡Todos los planes son 100% GRATIS hasta el 31 de Diciembre!</strong>
                   <p className="text-emerald-300 leading-relaxed">
-                    Durante la etapa de lanzamiento e impulso barrial, todos los comercios disfrutan de acceso libre a cualquiera de las membresías sin costo alguno. Los precios oficiales se publicarán recién en <strong>Enero de 2027</strong>, momento en el cual podrás evaluar el impacto en tu local y decidir tu suscripción.
+                    Durante la etapa de lanzamiento e impulso barrial, todos los comercios disfrutan de acceso libre a cualquiera de las membresías sin costo alguno. La fecha de vencimiento es hasta el <strong>31 de diciembre</strong>; luego, el <strong>01 de enero de 2027</strong> se publicarán los precios oficiales y deberán renovar su membresía evaluando el rendimiento de su local.
                   </p>
                 </div>
               </div>
@@ -1083,7 +1083,7 @@ export default function CargarComercioPage() {
                           Premium
                           <Award className="w-4 h-4 text-purple-400" />
                         </h3>
-                        <span className="text-xs font-black text-purple-300">Gratis hasta Ene 2027</span>
+                        <span className="text-xs font-black text-purple-300">Gratis hasta 31 Dic</span>
                       </div>
                       <p className="text-xs text-zinc-400 mt-0.5">Mayor variedad y descuentos barriales.</p>
                     </div>
@@ -1102,7 +1102,7 @@ export default function CargarComercioPage() {
                       </li>
                       <li className="flex items-center gap-2 text-purple-300 font-semibold">
                         <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span>Bonificado hasta Enero 2027</span>
+                        <span>Bonificado hasta 31 Dic (Renovación 01/01/2027)</span>
                       </li>
                     </ul>
                   </div>
@@ -1135,7 +1135,7 @@ export default function CargarComercioPage() {
                           Gold
                           <Crown className="w-4 h-4 text-amber-400" />
                         </h3>
-                        <span className="text-xs font-black text-amber-400">Gratis hasta Ene 2027</span>
+                        <span className="text-xs font-black text-amber-400">Gratis hasta 31 Dic</span>
                       </div>
                       <p className="text-xs text-zinc-400 mt-0.5">Para comercios líderes del barrio.</p>
                     </div>
@@ -1154,7 +1154,7 @@ export default function CargarComercioPage() {
                       </li>
                       <li className="flex items-center gap-2 text-amber-300 font-semibold">
                         <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span>Bonificado hasta Enero 2027</span>
+                        <span>Bonificado hasta 31 Dic (Renovación 01/01/2027)</span>
                       </li>
                     </ul>
                   </div>
@@ -1165,7 +1165,7 @@ export default function CargarComercioPage() {
               <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-400 flex items-start gap-2.5">
                 <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                 <p className="leading-relaxed">
-                  <strong className="text-white">Condición de membresía:</strong> Durante la etapa de lanzamiento e impulso barrial, todos los planes son 100% gratuitos hasta Enero de 2027. Los precios oficiales se publicarán en dicha fecha y cada comercio podrá evaluar libremente sus membresías en función de las visitas y resultados obtenidos.
+                  <strong className="text-white">Condición de membresía:</strong> La fecha de vencimiento bonificada rige hasta el 31 de diciembre. Luego, el 01 de enero de 2027 se publicarán los precios oficiales y cada comercio deberá evaluar y renovar su membresía según sus necesidades y resultados.
                 </p>
               </div>
             </div>

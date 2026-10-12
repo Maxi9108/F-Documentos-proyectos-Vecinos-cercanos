@@ -989,13 +989,13 @@ export default function MiComercioPage() {
       comercio_id: comercioActual.id,
       comercio_nombre: comercioActual.nombre,
       categoria_solicitada: categoriaAbonada,
-      monto: 0, // 100% Bonificado hasta Enero 2027
+      monto: 0, // 100% Bonificado hasta 31 de Diciembre
       fecha_envio: new Date().toISOString(),
       comprobante_url: comprobanteUrl || 'solicitud-bonificada',
       comprobante_nombre: comprobanteNombre || 'Solicitud de membresía bonificada',
       numero_operacion: numeroOperacion.trim() || undefined,
       banco_origen: bancoOrigen.trim() || undefined,
-      notas: notasComprobante.trim() || 'Solicitud de membresía bonificada hasta Enero 2027',
+      notas: notasComprobante.trim() || 'Solicitud de membresía bonificada hasta 31 de Diciembre',
       estado: 'pendiente',
     };
 
@@ -3303,7 +3303,7 @@ export default function MiComercioPage() {
           )}
 
           {/* ============================================================== */}
-          {/* PESTAÑA 4: MEMBRESÍAS & PLANES BONIFICADOS HASTA ENERO 2027    */}
+          {/* PESTAÑA 4: MEMBRESÍAS & PLANES BONIFICADOS HASTA 31 DICIEMBRE  */}
           {/* ============================================================== */}
           {pestana === 'comprobantes' && (
             <div className="space-y-6">
@@ -3311,13 +3311,13 @@ export default function MiComercioPage() {
               <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-950/80 via-teal-950/60 to-cyan-950/80 border border-emerald-500/50 shadow-xl space-y-2">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" />
-                  <h2 className="text-base font-bold text-white">🎉 ¡Todos los Planes son 100% GRATIS hasta Enero de 2027!</h2>
+                  <h2 className="text-base font-bold text-white">🎉 ¡Todos los Planes son 100% GRATIS hasta el 31 de Diciembre!</h2>
                 </div>
                 <p className="text-xs text-emerald-200 leading-relaxed">
-                  Durante toda la etapa de lanzamiento e impulso barrial en NeoFaro, <strong>todos los planes (Standar, Premium y Gold) están 100% bonificados</strong> sin costo alguno ni cobros automáticos.
+                  Durante toda la etapa de lanzamiento e impulso barrial en NeoFaro, <strong>todos los planes (Standar, Premium y Gold) están 100% bonificados hasta el 31 de diciembre</strong> sin costo alguno ni cobros automáticos.
                 </p>
                 <div className="p-3 rounded-2xl bg-black/40 border border-emerald-500/30 text-xs text-emerald-300">
-                  📅 <strong>Publicación de Precios:</strong> Los precios oficiales de las membresías se publicarán recién en <strong>Enero de 2027</strong>. En esa fecha, cada comercio podrá evaluar libremente el impacto, las visitas y los resultados obtenidos en su negocio para elegir el plan que mejor se adapte a sus necesidades.
+                  📅 <strong>Renovación & Precios Oficiales:</strong> El <strong>01 de Enero de 2027</strong> se publicarán los precios oficiales y cada comercio deberá evaluar y renovar su membresía según los resultados y visitas obtenidas en su negocio.
                 </div>
               </div>
 
@@ -3334,7 +3334,7 @@ export default function MiComercioPage() {
                       <span>Tu Membresía Actual: Plan {comercioActual.nivel.toUpperCase()} (Bonificado)</span>
                     </span>
                     <span className="text-xs text-emerald-400 font-semibold">
-                      Gratis hasta: 31 de Enero de 2027
+                      Vencimiento: 31 de Diciembre (Renovación: 01 de Enero de 2027)
                     </span>
                   </div>
                   <ContadorMembresia
@@ -3374,12 +3374,12 @@ export default function MiComercioPage() {
                       100% Bonificado
                     </span>
                   </div>
-                  <div className="text-xl font-black text-white">Gratis hasta Ene 2027</div>
+                  <div className="text-xl font-black text-white">Gratis hasta 31 Dic</div>
                   <p className="text-[11px] text-zinc-300">Catálogo ampliado y ofertas barriales para atraer nuevos clientes.</p>
                   <div className="text-[10px] text-purple-300 border-t border-purple-800/40 pt-2 space-y-1">
                     <div>• 50 productos en catálogo</div>
                     <div>• 5 ofertas semanales (duración 7 días)</div>
-                    <div>• Insignia Premium en mapa y directorio</div>
+                    <div>• Renovación: 01 de Enero de 2027</div>
                   </div>
                 </div>
 
@@ -3393,12 +3393,12 @@ export default function MiComercioPage() {
                       100% Bonificado
                     </span>
                   </div>
-                  <div className="text-xl font-black text-white">Gratis hasta Ene 2027</div>
+                  <div className="text-xl font-black text-white">Gratis hasta 31 Dic</div>
                   <p className="text-[11px] text-zinc-300">Máxima visibilidad barrial, catálogo completo y mayor cantidad de ofertas.</p>
                   <div className="text-[10px] text-amber-300 border-t border-amber-800/40 pt-2 space-y-1">
                     <div>• 100 productos en catálogo</div>
                     <div>• 20 ofertas semanales (duración 7 días)</div>
-                    <div>• Posicionamiento superior en el mapa</div>
+                    <div>• Renovación: 01 de Enero de 2027</div>
                   </div>
                 </div>
               </div>
@@ -3407,25 +3407,25 @@ export default function MiComercioPage() {
               <div className="p-5 rounded-3xl bg-zinc-950 border border-zinc-800 space-y-3">
                 <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Info className="w-4 h-4" />
-                  <span>¿Cómo funciona el período bonificado hasta Enero de 2027?</span>
+                  <span>¿Cómo funciona el período bonificado hasta el 31 de Diciembre?</span>
                 </span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                   <div className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800/80 space-y-1.5">
-                    <span className="text-[11px] font-bold text-white block">1. Sin Cobros ni Pagos Requeridos</span>
+                    <span className="text-[11px] font-bold text-white block">1. Sin Cobros hasta el 31 de Diciembre</span>
                     <p className="text-[11px] text-zinc-400 leading-relaxed">
-                      No se requieren tarjetas ni pagos durante todo el año. Todas las herramientas de tu nivel asignado están habilitadas.
+                      No se requieren tarjetas ni pagos durante el período bonificado. Todas las herramientas de tu plan asignado están habilitadas.
                     </p>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800/80 space-y-1.5">
-                    <span className="text-[11px] font-bold text-white block">2. Publicación Oficial en Enero 2027</span>
+                    <span className="text-[11px] font-bold text-white block">2. Publicación Oficial: 01/01/2027</span>
                     <p className="text-[11px] text-zinc-400 leading-relaxed">
-                      Los precios oficiales se publicarán en dicha fecha de manera transparente para toda la comunidad de comercios.
+                      Los precios oficiales se publicarán el 01 de enero de 2027 de manera transparente para toda la comunidad de comercios.
                     </p>
                   </div>
                   <div className="p-3.5 rounded-2xl bg-zinc-900 border border-zinc-800/80 space-y-1.5">
-                    <span className="text-[11px] font-bold text-white block">3. Evaluación de Membresía</span>
+                    <span className="text-[11px] font-bold text-white block">3. Evaluación y Renovación</span>
                     <p className="text-[11px] text-zinc-400 leading-relaxed">
-                      En esa fecha podrás evaluar las estadísticas, visitas y ventas de tu negocio para decidir si continúas con tu plan o pasas al plan Standar gratuito.
+                      El 01 de enero de 2027 evaluarás las estadísticas y resultados de tu comercio para renovar tu membresía o continuar con el plan Standar gratuito.
                     </p>
                   </div>
                 </div>
@@ -3446,7 +3446,7 @@ export default function MiComercioPage() {
                     <span>Solicitar Activación o Cambio de Plan Bonificado</span>
                   </h3>
                   <span className="text-[11px] font-bold text-emerald-400 bg-emerald-950/50 border border-emerald-800/50 px-2.5 py-1 rounded-full w-fit">
-                    Costo: $0 (100% Bonificado)
+                    Costo: $0 (Bonificado hasta 31 Dic)
                   </span>
                 </div>
 
@@ -3465,8 +3465,8 @@ export default function MiComercioPage() {
                       }}
                       className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
                     >
-                      <option value="gold">Plan Gold Destacado (Gratis hasta Enero 2027 - 100 productos, 20 ofertas)</option>
-                      <option value="premium">Plan Premium (Gratis hasta Enero 2027 - 50 productos, 5 ofertas)</option>
+                      <option value="gold">Plan Gold Destacado (Gratis hasta 31 Dic - Renovación 01/01/2027)</option>
+                      <option value="premium">Plan Premium (Gratis hasta 31 Dic - Renovación 01/01/2027)</option>
                       <option value="standar">Plan Standar (Gratuito Permanente - 20 productos)</option>
                     </select>
                   </div>
@@ -3479,7 +3479,7 @@ export default function MiComercioPage() {
                     <input
                       type="text"
                       disabled
-                      value="100% GRATIS (Precios se publican en Enero 2027)"
+                      value="100% GRATIS hasta el 31 Dic (Renovación 01/01/2027)"
                       className="w-full px-3.5 py-2.5 bg-zinc-900/60 border border-zinc-800 rounded-xl text-xs text-emerald-400 font-bold"
                     />
                   </div>

@@ -31,18 +31,18 @@ export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKe
 
 export const STORAGE_KEY_COMERCIOS_ELIMINADOS = 'vecinos_comercios_eliminados';
 
-export const FECHA_FIN_BONIFICACION_LANZAMIENTO = '2027-01-31T23:59:59.999Z';
+export const FECHA_FIN_BONIFICACION_LANZAMIENTO = '2026-12-31T23:59:59.999Z';
 
 /**
  * Verifica si los comercios con membresía Premium o Gold tienen su suscripción vencida.
- * NOTA: Durante la etapa de lanzamiento (hasta Enero 2027), todos los planes son 100% gratuitos y bonificados.
- * Los precios oficiales se publicarán en Enero 2027, momento en que los comercios evaluarán sus membresías.
+ * NOTA: La bonificación de lanzamiento es hasta el 31 de diciembre.
+ * El 01 de enero de 2027 se publicarán los precios oficiales y los comercios deberán renovar su membresía.
  */
 export function verificarYDegradarVencidos(comercios: Comercio[]): Comercio[] {
   const ahora = Date.now();
   const finBonificacion = new Date(FECHA_FIN_BONIFICACION_LANZAMIENTO).getTime();
 
-  // Durante la promoción de lanzamiento (hasta Enero 2027), nadie es degradado
+  // Durante la bonificación de lanzamiento (hasta el 31 de diciembre), nadie es degradado
   if (ahora < finBonificacion) {
     return comercios;
   }

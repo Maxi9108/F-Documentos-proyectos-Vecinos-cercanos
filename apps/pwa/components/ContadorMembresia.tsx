@@ -34,11 +34,11 @@ export default function ContadorMembresia({
       return;
     }
 
-    const META_LANZAMIENTO = new Date('2027-01-31T23:59:59.999Z').getTime();
+    const META_LANZAMIENTO = new Date('2026-12-31T23:59:59.999Z').getTime();
 
     const calcular = () => {
       const ahora = Date.now();
-      // Si la fecha configurada es posterior a enero 2027, usarla; si no, usar la meta de enero 2027
+      // Si la fecha configurada es posterior al 31 de diciembre de 2026, usarla; si no, usar la meta del 31 de diciembre
       const fv = fechaVencimiento ? new Date(fechaVencimiento).getTime() : 0;
       const meta = !isNaN(fv) && fv > META_LANZAMIENTO ? fv : META_LANZAMIENTO;
 
@@ -91,7 +91,7 @@ export default function ContadorMembresia({
   if (formato === 'badge') {
     return (
       <span
-        title={`Categoría ${nombreNivel} 100% bonificada hasta Enero de 2027`}
+        title={`Categoría ${nombreNivel} 100% bonificada hasta el 31 de Diciembre`}
         className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${
           esGold
             ? 'bg-amber-950/70 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-950/40'
@@ -104,7 +104,7 @@ export default function ContadorMembresia({
           <Award className="w-3 h-3 text-purple-400 shrink-0" />
         )}
         <span className="tracking-wide">
-          {nombreNivel}: Gratis hasta Enero 2027
+          {nombreNivel}: Gratis hasta 31 Dic
         </span>
       </span>
     );
@@ -133,7 +133,7 @@ export default function ContadorMembresia({
           </div>
           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-emerald-400" />
-            <span>Gratis hasta Enero 2027</span>
+            <span>Gratis hasta 31 Dic (Renovación 01/01/2027)</span>
           </span>
         </div>
 
@@ -157,7 +157,7 @@ export default function ContadorMembresia({
         </div>
 
         <p className="text-[10px] text-zinc-400 mt-2 text-center leading-relaxed">
-          Plan 100% gratuito por etapa de lanzamiento. Los precios oficiales se publicarán en Enero de 2027 para que evalúes tu membresía.
+          Plan 100% gratuito por etapa de lanzamiento hasta el 31 de diciembre. El 01 de enero de 2027 se publicarán los precios oficiales para evaluar y renovar tu membresía.
         </p>
       </div>
     );
@@ -198,7 +198,7 @@ export default function ContadorMembresia({
 
         <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800/60 flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-          <span>Bonificado hasta Enero 2027</span>
+          <span>Bonificado hasta el 31 de Diciembre</span>
         </span>
       </div>
 
@@ -230,10 +230,10 @@ export default function ContadorMembresia({
       <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex flex-col sm:flex-row items-center justify-between text-[11px] text-zinc-400 gap-1.5">
         <span className="flex items-center gap-1 text-emerald-300 font-medium">
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Bonificado hasta Enero de 2027</span>
+          <span>Vencimiento: 31 de Diciembre (Renovación: 01 de Enero de 2027)</span>
         </span>
         <span className="text-zinc-400 text-[10.5px]">
-          Los precios se publicarán en esa fecha para evaluar tu membresía según las visitas recibidas.
+          El 01 de enero de 2027 se publicarán los precios oficiales para evaluar y renovar tu membresía según las visitas recibidas.
         </span>
       </div>
     </div>
