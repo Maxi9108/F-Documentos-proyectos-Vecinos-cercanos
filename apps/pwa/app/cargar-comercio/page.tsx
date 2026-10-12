@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Comercio, Producto, NivelComercio, NIVELES_CONFIG, HorariosConfig } from '@/types/comercio';
 import MapaSelectorWrapper from '@/components/MapaSelectorWrapper';
-import { guardarComercio } from '@/lib/supabase';
+import { guardarComercio, getComercios, supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
   Store,
   MapPin,
@@ -243,6 +243,37 @@ export default function CargarComercioPage() {
     if (passwordComercio !== confirmarPasswordComercio) {
       setErrorMsg('Las contraseñas no coinciden. Por favor confirma la contraseña exactamente igual.');
       return;
+    }
+
+    // SEGURIDAD: Verificar que el correo del comercio no esté ya registrado en el sistema
+    const cleanEmailComercio = emailComercio.trim().toLowerCase();
+    const comerciosExistentes = await getComercios();
+    const yaExisteComercio = comerciosExistentes.some(
+      (c) =>
+        (c.email_comercio && c.email_comercio.trim().toLowerCase() === cleanEmailComercio) ||
+        (c.email && c.email.trim().toLowerCase() === cleanEmailComercio)
+    );
+    if (yaExisteComercio) {
+      setErrorMsg(
+        `Ya existe un comercio registrado con el correo "${cleanEmailComercio}". Por motivos de seguridad, no está permitido registrar otro comercio con un correo existente ni modificar su contraseña desde el alta. Si ya registraste tu local, ingresa desde "Mi Comercio".`
+      );
+      return;
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const { data: supaComercios } = await supabase
+          .from('comercios')
+          .select('id, nombre')
+          .or(`email_comercio.ilike.${cleanEmailComercio},email.ilike.${cleanEmailComercio}`)
+          .limit(1);
+        if (supaComercios && supaComercios.length > 0) {
+          setErrorMsg(
+            `Ya existe un comercio registrado con el correo "${cleanEmailComercio}". Por motivos de seguridad, no está permitido registrar otro comercio con un correo existente ni modificar su contraseña desde el alta. Si ya registraste tu local, ingresa desde "Mi Comercio".`
+          );
+          return;
+        }
+      } catch (_) {}
     }
 
     if (tipoAtencion !== 'local_fisico') {

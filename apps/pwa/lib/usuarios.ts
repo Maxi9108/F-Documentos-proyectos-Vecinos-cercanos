@@ -1,6 +1,6 @@
 import { UsuarioSistema, EstadoUsuario, RolUsuario } from '@/types/comercio';
 import { supabase, isSupabaseConfigured } from './supabase';
-import { verifyPassword } from './crypto';
+import { hashPassword, verifyPassword } from './crypto';
 import { obtenerAdminPorEmail } from './auth-admin';
 
 const STORAGE_KEY_USUARIOS = 'vecinos_usuarios_registrados';
@@ -110,7 +110,44 @@ export async function getUsuariosSistema(): Promise<UsuarioSistema[]> {
 }
 
 /**
- * Guarda o actualiza un usuario en la lista persistente
+ * Comprueba si un correo electrónico ya está registrado en el sistema
+ * (en administradores, en usuarios locales o en la base de datos de Supabase).
+ */
+export async function verificarEmailExisteEnSistema(email: string): Promise<boolean> {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail) return false;
+
+  // 1. Verificar si es administrador del sistema
+  if (obtenerAdminPorEmail(cleanEmail)) {
+    return true;
+  }
+
+  // 2. Verificar en lista local / combinada de usuarios del sistema
+  const lista = await getUsuariosSistema();
+  if (lista.some((u) => u.email.toLowerCase() === cleanEmail)) {
+    return true;
+  }
+
+  // 3. Consultar directamente en Supabase tabla 'usuarios'
+  if (isSupabaseConfigured) {
+    try {
+      const { data } = await supabase
+        .from('usuarios')
+        .select('id, email')
+        .eq('email', cleanEmail)
+        .limit(1);
+      if (data && data.length > 0) {
+        return true;
+      }
+    } catch (_) {}
+  }
+
+  return false;
+}
+
+/**
+ * Guarda o actualiza un usuario en la lista persistente.
+ * SEGURIDAD: Nunca sobreescribe la contraseña de un usuario que ya existe.
  */
 export async function registrarOActualizarUsuario(
   usuario: Partial<UsuarioSistema> & { id: string; email: string }
@@ -124,9 +161,12 @@ export async function registrarOActualizarUsuario(
       const idx = lista.findIndex((u) => u.email.toLowerCase() === cleanEmail);
       if (idx >= 0) {
         visitasFinal = (lista[idx].visitas || 1);
+        // SEGURIDAD: Preservar estrictamente la contraseña original si ya existe
+        const hashExistente = lista[idx].password_hash;
         lista[idx] = {
           ...lista[idx],
           ...usuario,
+          password_hash: hashExistente || usuario.password_hash,
           visitas: visitasFinal,
           verificado: usuario.verificado !== undefined ? usuario.verificado : lista[idx].verificado,
         };
@@ -166,7 +206,19 @@ export async function registrarOActualizarUsuario(
       };
 
       if (usuario.password_hash) {
-        payload.password_hash = usuario.password_hash;
+        // SEGURIDAD: Verificar si el usuario ya existe en Supabase y tiene contraseña
+        const { data: existente } = await supabase
+          .from('usuarios')
+          .select('id, password_hash')
+          .eq('email', cleanEmail)
+          .maybeSingle();
+
+        if (existente && existente.password_hash) {
+          // El usuario ya existe en Supabase con contraseña: no sobreescribirla
+          delete payload.password_hash;
+        } else {
+          payload.password_hash = usuario.password_hash;
+        }
       }
 
       const { error } = await supabase.from('usuarios').upsert(payload);
@@ -182,6 +234,50 @@ export async function registrarOActualizarUsuario(
       console.warn('[Usuarios] Supabase upsert error no crítico:', supaErr);
     }
   }
+}
+
+/**
+ * Cambia la contraseña de un usuario autenticado tras validar su contraseña actual
+ */
+export async function cambiarPasswordUsuario(
+  email: string,
+  passwordActual: string,
+  nuevaPassword: string
+): Promise<{ exito: boolean; error?: string }> {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail) return { exito: false, error: 'Correo inválido.' };
+  if (!nuevaPassword || nuevaPassword.length < 4) {
+    return { exito: false, error: 'La nueva contraseña debe tener al menos 4 caracteres.' };
+  }
+
+  const lista = await getUsuariosSistema();
+  const idx = lista.findIndex((u) => u.email.toLowerCase() === cleanEmail);
+  if (idx < 0) {
+    return { exito: false, error: 'Usuario no encontrado.' };
+  }
+
+  const user = lista[idx];
+  if (user.password_hash) {
+    const valida = await verifyPassword(passwordActual, user.password_hash);
+    if (!valida) {
+      return { exito: false, error: 'La contraseña actual ingresada es incorrecta.' };
+    }
+  }
+
+  const nuevoHash = await hashPassword(nuevaPassword);
+  lista[idx].password_hash = nuevoHash;
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(STORAGE_KEY_USUARIOS, JSON.stringify(lista));
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('usuarios').update({ password_hash: nuevoHash }).eq('email', cleanEmail);
+    } catch (_) {}
+  }
+
+  return { exito: true };
 }
 
 /**

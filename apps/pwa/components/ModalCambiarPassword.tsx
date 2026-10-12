@@ -6,6 +6,7 @@ import { useUser } from '@/context/user-context';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { getAdminActual, getAdministradores, actualizarAdmin } from '@/lib/auth-admin';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
+import { cambiarPasswordUsuario } from '@/lib/usuarios';
 
 interface ModalCambiarPasswordProps {
   abierto: boolean;
@@ -140,33 +141,26 @@ export default function ModalCambiarPassword({
         setMensajeExito('¡Contraseña de acceso al comercio actualizada correctamente!');
       } else {
         // Tipo: usuario general
-        if (!usuario) {
+        if (!usuario || !usuario.email) {
           throw new Error('Debes haber iniciado sesión para cambiar tu contraseña.');
         }
 
-        // Si Supabase Auth está configurado, actualizar usuario
-        if (isSupabaseConfigured) {
-          const { error: supaErr } = await supabase.auth.updateUser({
-            password: nuevaPassword,
-          });
-          if (supaErr) {
-            console.warn('Supabase updateUser warning:', supaErr.message);
-          }
+        // SEGURIDAD: Validar contraseña actual antes de realizar el cambio
+        const resultadoCambio = await cambiarPasswordUsuario(usuario.email, passwordActual, nuevaPassword);
+        if (!resultadoCambio.exito) {
+          throw new Error(resultadoCambio.error || 'La contraseña actual ingresada es incorrecta.');
         }
 
-        // Actualizar en registro local de usuarios con hash
-        try {
-          const passHash = await hashPassword(nuevaPassword);
-          const rawUsers = localStorage.getItem('vecinos_usuarios_registrados');
-          if (rawUsers) {
-            const users = JSON.parse(rawUsers);
-            const userIdx = users.findIndex((u: any) => u.email === usuario.email);
-            if (userIdx >= 0) {
-              users[userIdx].password_hash = passHash;
-              localStorage.setItem('vecinos_usuarios_registrados', JSON.stringify(users));
-            }
+        // Si Supabase Auth está configurado, actualizar contraseña de la sesión
+        if (isSupabaseConfigured) {
+          try {
+            await supabase.auth.updateUser({
+              password: nuevaPassword,
+            });
+          } catch (supaErr: any) {
+            console.warn('Supabase updateUser warning:', supaErr?.message);
           }
-        } catch (e) {}
+        }
 
         setMensajeExito('¡Tu contraseña de usuario ha sido cambiada con éxito!');
       }

@@ -15,6 +15,7 @@ import {
   registrarOActualizarUsuario,
   registrarVisitaUsuario,
   solicitarBajaYEliminacionCuenta,
+  verificarEmailExisteEnSistema,
 } from '@/lib/usuarios';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import ModalSoporte from '@/components/ModalSoporte';
@@ -286,6 +287,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       return { ok: false, mensaje: 'Las contraseñas no coinciden. Verifica la clave de confirmación.' };
     }
 
+    // SEGURIDAD CRÍTICA: Bloquear si el correo ya pertenece a un usuario o administrador existente
+    const yaExiste = await verificarEmailExisteEnSistema(cleanEmail);
+    if (yaExiste) {
+      return {
+        ok: false,
+        mensaje:
+          'Este correo electrónico ya se encuentra registrado en NeoFaro. Si eres el dueño de esta cuenta, por favor ingresa en la pestaña "Ya tengo cuenta" o recupera tu contraseña. Por seguridad, no es posible registrar una cuenta existente ni modificar su contraseña desde el alta.',
+      };
+    }
+
     try {
       // Intentar registro con Supabase si está disponible
       if (supabase) {
@@ -351,6 +362,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
     if (!cleanNombre) {
       return { ok: false, mensaje: 'Por favor ingresa tu nombre completo o de pila.' };
+    }
+
+    // SEGURIDAD: Verificar si el correo ya existe
+    const yaExiste = await verificarEmailExisteEnSistema(cleanEmail);
+    if (yaExiste) {
+      return {
+        ok: false,
+        mensaje:
+          'Este correo electrónico ya está registrado en NeoFaro. Por favor inicia sesión con tu contraseña en la pestaña "Ya tengo cuenta".',
+      };
     }
 
     try {
