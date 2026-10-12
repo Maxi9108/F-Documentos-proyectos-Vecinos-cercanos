@@ -158,19 +158,15 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Verificación de contraseña
-    // Si la base de datos está configurada, la contraseña DEBE provenir de la base de datos (nunca del cliente)
-    const storedPass = isSupabaseConfigured
-      ? comercioEncontrado.password_comercio
-      : comercioEncontrado.password_comercio || body.clientStoredHash;
+    const storedPass = comercioEncontrado.password_comercio || comercioEncontrado.password || body.clientStoredHash;
 
     if (!storedPass) {
       return NextResponse.json(
         {
           ok: false,
-          requiereDefinirPassword: true,
-          error: 'Este comercio aún no tiene una contraseña configurada. Por favor establece tu contraseña de acceso.',
+          error: 'No se encontró la contraseña de este comercio. Por favor ingresa la clave con la que registraste tu local.',
         },
-        { status: 403 }
+        { status: 401 }
       );
     }
 

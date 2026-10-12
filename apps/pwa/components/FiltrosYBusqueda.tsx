@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Search, X, Pill, Heart, Navigation, Compass } from 'lucide-react';
+import { Search, X, Pill, Heart, Navigation, Compass, MapPin } from 'lucide-react';
 
 interface FiltrosYBusquedaProps {
   busqueda: string;
@@ -21,6 +21,9 @@ interface FiltrosYBusquedaProps {
   radioKm: number | null;
   onRadioKmChange: (radio: number | null) => void;
   totalResultados: number;
+  onAbrirSelectorLocalidad?: () => void;
+  localidadSeleccionadaNombre?: string | null;
+  onLimpiarLocalidad?: () => void;
 }
 
 export default function FiltrosYBusqueda({
@@ -41,12 +44,15 @@ export default function FiltrosYBusqueda({
   radioKm,
   onRadioKmChange,
   totalResultados,
+  onAbrirSelectorLocalidad,
+  localidadSeleccionadaNombre,
+  onLimpiarLocalidad,
 }: FiltrosYBusquedaProps) {
   return (
     <div className="space-y-3">
-      {/* Barra de Búsqueda y Toggles Principales */}
+      {/* Barra de Búsqueda, Selector de Localidad y Toggles Principales */}
       <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5">
-        {/* Input con icono */}
+        {/* Input de Búsqueda con icono */}
         <div className="relative flex-1">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
           <input
@@ -66,6 +72,39 @@ export default function FiltrosYBusqueda({
             </button>
           )}
         </div>
+
+        {/* Botón Selector de Localidad / Partido / Provincia */}
+        {onAbrirSelectorLocalidad && (
+          <button
+            type="button"
+            onClick={onAbrirSelectorLocalidad}
+            title="Elegir localidad, partido o provincia para centrar el mapa sin necesidad de GPS"
+            className={`flex items-center justify-between sm:justify-start gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer select-none shrink-0 ${
+              localidadSeleccionadaNombre
+                ? 'bg-violet-950/80 border-violet-500/80 text-violet-200 shadow-sm shadow-violet-950/60 ring-1 ring-violet-500/30'
+                : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-violet-500/60 hover:text-white'
+            }`}
+          >
+            <div className="flex items-center gap-1.5 min-w-0">
+              <MapPin className={`w-3.5 h-3.5 shrink-0 ${localidadSeleccionadaNombre ? 'text-cyan-400 animate-pulse' : 'text-zinc-400'}`} />
+              <span className="max-w-[130px] sm:max-w-[180px] truncate">
+                {localidadSeleccionadaNombre ? localidadSeleccionadaNombre : 'Elegir Localidad / Partido'}
+              </span>
+            </div>
+            {localidadSeleccionadaNombre && onLimpiarLocalidad ? (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onLimpiarLocalidad();
+                }}
+                title="Quitar localidad y volver a vista general"
+                className="ml-1 p-0.5 rounded-md hover:bg-violet-800/60 text-violet-300 hover:text-white"
+              >
+                <X className="w-3 h-3" />
+              </span>
+            ) : null}
+          </button>
+        )}
 
         {/* Toggles de Filtro Rápido */}
         <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">

@@ -547,38 +547,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      // Verificar si el usuario ha sido bloqueado o dado de baja por un administrador
-      const todosUsuarios = await getUsuariosSistema();
-      const registrado = todosUsuarios.find((u) => u.email.toLowerCase() === cleanEmail);
-
-      if (registrado) {
-        if (registrado.estado === 'bloqueado') {
-          return {
-            ok: false,
-            mensaje: `Tu cuenta ha sido bloqueada por un administrador.${
-              registrado.motivo_estado ? ` Motivo: ${registrado.motivo_estado}` : ''
-            }`,
-          };
-        }
-        if (registrado.estado === 'baja') {
-          return {
-            ok: false,
-            mensaje: 'Esta cuenta ha sido dada de baja en el sistema.',
-          };
-        }
-      }
-
-      if (supabase) {
-        try {
-          await supabase.auth.signInWithPassword({
-            email: cleanEmail,
-            password: password,
-          });
-        } catch (supaErr) {
-          console.log('Supabase auth login fallback local:', supaErr);
-        }
-      }
-
+      // 1. Verificar si es Administrador del sistema
       const admin = obtenerAdminPorEmail(cleanEmail);
       if (admin) {
         let adminPassOk = await verifyPassword(password, admin.password);
@@ -594,31 +563,128 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
               'Contraseña de administrador incorrecta. Puedes restablecer tu clave directamente aquí respondiendo a tu pregunta de seguridad.',
           };
         }
-      } else if (registrado?.password_hash) {
-        const userPassOk = await verifyPassword(password, registrado.password_hash);
-        if (!userPassOk) {
-          return { ok: false, mensaje: 'Contraseña incorrecta. Por favor verifica tus datos.' };
+
+        const usuarioSesion: Usuario = {
+          id: admin.id,
+          email: cleanEmail,
+          nombre: admin.nombre,
+          esAdmin: true,
+          rol: admin.rol,
+          creado_en: new Date().toISOString(),
+          estado: 'activo',
+        };
+
+        guardarSesion(admin);
+        setUsuario(usuarioSesion);
+        localStorage.setItem(STORAGE_KEYS.USUARIO, JSON.stringify(usuarioSesion));
+        registrarVisitaUsuario(cleanEmail).catch(() => {});
+        setModalAuthAbierto(false);
+        return { ok: true, mensaje: `¡Bienvenido Administrador ${admin.nombre}!` };
+      }
+
+      // 2. Buscar usuario registrado en base de datos local y remota
+      const todosUsuarios = await getUsuariosSistema();
+      let registrado = todosUsuarios.find((u) => u.email.toLowerCase() === cleanEmail);
+
+      let supaUsr: any = null;
+      if (!registrado && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('usuarios')
+            .select('*')
+            .eq('email', cleanEmail)
+            .maybeSingle();
+          if (!error && data) {
+            supaUsr = data;
+          }
+        } catch (_) {}
+      }
+
+      // 3. Probar autenticación remota con Supabase Auth si está configurado
+      let supaAuthSuccess = false;
+      let supaAuthUser: any = null;
+      if (supabase) {
+        try {
+          const { data: supaData, error: supaErr } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password: password,
+          });
+          if (!supaErr && supaData?.user) {
+            supaAuthSuccess = true;
+            supaAuthUser = supaData.user;
+          }
+        } catch (supaErr) {
+          console.log('Supabase auth sign in intento:', supaErr);
         }
       }
 
-      const usuarioSesion: Usuario = {
-        id: admin ? admin.id : 'usr_' + Date.now(),
-        email: cleanEmail,
-        nombre: admin ? admin.nombre : cleanEmail.split('@')[0],
-        esAdmin: !!admin,
-        rol: admin ? admin.rol : 'usuario',
-        creado_en: new Date().toISOString(),
-      };
-
-      if (admin) {
-        guardarSesion(admin);
+      // 4. Si el usuario no existe en ninguna fuente, RECHAZAR el ingreso obligándolo a registrarse
+      if (!registrado && !supaUsr && !supaAuthSuccess) {
+        return {
+          ok: false,
+          mensaje: 'Este correo electrónico no está registrado en NeoFaro. Por favor crea tu cuenta para poder ingresar.',
+        };
       }
+
+      // 5. Verificar si el usuario ha sido bloqueado o dado de baja
+      const estadoUsuario = registrado?.estado || supaUsr?.estado || 'activo';
+      const motivoEstado = registrado?.motivo_estado || supaUsr?.motivo_estado || '';
+
+      if (estadoUsuario === 'bloqueado') {
+        return {
+          ok: false,
+          mensaje: `Tu cuenta ha sido bloqueada por un administrador.${
+            motivoEstado ? ` Motivo: ${motivoEstado}` : ''
+          }`,
+        };
+      }
+      if (estadoUsuario === 'baja') {
+        return {
+          ok: false,
+          mensaje: 'Esta cuenta ha sido dada de baja en el sistema.',
+        };
+      }
+
+      // 6. Verificar contraseña válida
+      const hashEsperado = registrado?.password_hash || supaUsr?.password_hash || supaUsr?.password;
+      let passwordValida = false;
+
+      if (hashEsperado) {
+        passwordValida = await verifyPassword(password, hashEsperado);
+      } else if (supaAuthSuccess) {
+        passwordValida = true;
+      }
+
+      if (!passwordValida) {
+        return {
+          ok: false,
+          mensaje: 'Contraseña incorrecta. Por favor verifica tus datos de acceso.',
+        };
+      }
+
+      // 7. Autenticación exitosa con cuenta existente
+      const idUsuario = registrado?.id || supaUsr?.id || supaAuthUser?.id || `usr_${Date.now()}`;
+      const nombreUsuario =
+        registrado?.nombre ||
+        supaUsr?.nombre ||
+        supaAuthUser?.user_metadata?.nombre ||
+        cleanEmail.split('@')[0];
+
+      const usuarioSesion: Usuario = {
+        id: idUsuario,
+        email: cleanEmail,
+        nombre: nombreUsuario,
+        esAdmin: false,
+        rol: (registrado?.rol as any) || (supaUsr?.rol as any) || 'usuario',
+        creado_en: registrado?.fecha_registro || supaUsr?.fecha_registro || new Date().toISOString(),
+        estado: 'activo',
+      };
 
       setUsuario(usuarioSesion);
       localStorage.setItem(STORAGE_KEYS.USUARIO, JSON.stringify(usuarioSesion));
       registrarVisitaUsuario(cleanEmail).catch(() => {});
       setModalAuthAbierto(false);
-      return { ok: true, mensaje: admin ? `¡Bienvenido SuperAdmin ${admin.nombre}!` : '¡Sesión iniciada correctamente!' };
+      return { ok: true, mensaje: '¡Sesión iniciada correctamente!' };
     } catch (err: any) {
       return { ok: false, mensaje: err?.message || 'Error al iniciar sesión.' };
     }

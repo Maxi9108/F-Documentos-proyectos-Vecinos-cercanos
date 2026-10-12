@@ -918,11 +918,32 @@ export async function eliminarComercio(id: string): Promise<{ success: boolean; 
         localStorage.setItem(STORAGE_KEY_COMERCIOS_ELIMINADOS, JSON.stringify(eliminados));
       }
 
+      // 1. Desvincular en almacenamiento local
       const guardadosRaw = localStorage.getItem('vecinos_comercios_nuevos');
       if (guardadosRaw) {
         const guardados: Comercio[] = JSON.parse(guardadosRaw);
         const filtrados = guardados.filter((c) => c.id !== id);
         localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(filtrados));
+      }
+
+      const miComId = localStorage.getItem('vecinos_mi_comercio_id');
+      if (miComId === id) {
+        localStorage.removeItem('vecinos_mi_comercio_id');
+      }
+
+      const authComId = sessionStorage.getItem('vecinos_comercio_auth_id');
+      if (authComId === id) {
+        sessionStorage.removeItem('vecinos_comercio_auth_id');
+      }
+
+      // Limpiar de favoritos de usuarios si estaba guardado
+      const favsRaw = localStorage.getItem('vecinos_locales_favoritos');
+      if (favsRaw) {
+        try {
+          const favs: string[] = JSON.parse(favsRaw);
+          const favsFiltrados = favs.filter((fId) => fId !== id);
+          localStorage.setItem('vecinos_locales_favoritos', JSON.stringify(favsFiltrados));
+        } catch (_) {}
       }
     } catch (e) {
       console.warn('[LocalStorage] Error al registrar eliminación:', e);
@@ -932,8 +953,17 @@ export async function eliminarComercio(id: string): Promise<{ success: boolean; 
   // 2. Borrar de Supabase en todas las tablas asociadas
   if (isSupabaseConfigured) {
     try {
+      // Desvincular usuarios que tengan este comercio asignado
+      try {
+        await supabase
+          .from('usuarios')
+          .update({ comercio_id: null, comercio_nombre: null })
+          .eq('comercio_id', id);
+      } catch (_) {}
+
       // Eliminar de solicitudes de modificación y tablas asociadas
       await supabase.from('solicitudes_modificacion').delete().or(`comercio_id.eq.${id},id.eq.${id}`);
+      await supabase.from('solicitudes_transferencia').delete().eq('comercio_id', id);
       await supabase.from('debates_inconvenientes').delete().eq('comercio_id', id);
       await supabase.from('reportes').delete().eq('comercio_id', id);
       await supabase.from('productos').delete().eq('comercio_id', id);

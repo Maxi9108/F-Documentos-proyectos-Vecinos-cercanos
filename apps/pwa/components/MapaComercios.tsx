@@ -314,8 +314,14 @@ export function getRubroPinConfig(rubro?: string, tipoAtencion?: string): RubroP
   return RUBRO_PIN_CONFIGS.default;
 }
 
-// Controlador interno para centrar suavemente el mapa al seleccionar un comercio
-function MapController({ selectedComercio }: { selectedComercio: Comercio | null }) {
+// Controlador interno para centrar suavemente el mapa al seleccionar un comercio o una localidad
+function MapController({
+  selectedComercio,
+  ubicacionReferencia,
+}: {
+  selectedComercio: Comercio | null;
+  ubicacionReferencia: { latitud: number; longitud: number } | null;
+}) {
   const map = useMap();
 
   useEffect(() => {
@@ -326,6 +332,15 @@ function MapController({ selectedComercio }: { selectedComercio: Comercio | null
       });
     }
   }, [selectedComercio, map]);
+
+  useEffect(() => {
+    if (ubicacionReferencia && !selectedComercio) {
+      map.flyTo([ubicacionReferencia.latitud, ubicacionReferencia.longitud], 14, {
+        duration: 1.2,
+        easeLinearity: 0.25,
+      });
+    }
+  }, [ubicacionReferencia, selectedComercio, map]);
 
   return null;
 }
@@ -730,7 +745,10 @@ export default function MapaComercios({
           />
         )}
 
-        <MapController selectedComercio={comercioSeleccionado} />
+        <MapController
+          selectedComercio={comercioSeleccionado}
+          ubicacionReferencia={ubicacionReferencia}
+        />
 
         {/* Círculo interactivo que dibuja el radio de entrega del comercio seleccionado */}
         {comercioSeleccionado &&

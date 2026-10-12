@@ -8,6 +8,7 @@ import TarjetaComercio from './TarjetaComercio';
 import ModalDetalleComercio from './ModalDetalleComercio';
 import ModalReportarComercio from './ModalReportarComercio';
 import PaletaOfertas from './PaletaOfertas';
+import SelectorLocalidadModal, { ZonaGeografica } from './SelectorLocalidadModal';
 import Link from 'next/link';
 import { Map, List, Store, Sparkles, Navigation, User, Compass, Radar, MapPin } from 'lucide-react';
 
@@ -65,6 +66,7 @@ export default function DirectorioComercios({
   const [comercioSeleccionado, setComercioSeleccionado] = useState<Comercio | null>(null);
   const [comercioModal, setComercioModal] = useState<Comercio | null>(null);
   const [comercioAReportar, setComercioAReportar] = useState<Comercio | null>(null);
+  const [modalLocalidadAbierto, setModalLocalidadAbierto] = useState(false);
   // En móviles inicia por defecto en 'lista' para mayor rapidez y prolijidad visual
   const [vistaMovil, setVistaMovil] = useState<'ambos' | 'mapa' | 'lista'>('lista');
 
@@ -72,6 +74,7 @@ export default function DirectorioComercios({
     favoritosIds,
     esFavorito,
     ubicacionReferencia,
+    seleccionarUbicacionReferencia,
     gpsActivo,
     activarGps,
     estaAutenticado,
@@ -441,6 +444,12 @@ export default function DirectorioComercios({
               radioKm={radioKm}
               onRadioKmChange={setRadioKm}
               totalResultados={comerciosFiltrados.length}
+              onAbrirSelectorLocalidad={() => setModalLocalidadAbierto(true)}
+              localidadSeleccionadaNombre={ubicacionReferencia && !ubicacionReferencia.esGps ? ubicacionReferencia.nombre : null}
+              onLimpiarLocalidad={() => {
+                seleccionarUbicacionReferencia(null);
+                setCercaDeMi(false);
+              }}
             />
           </section>
 
@@ -631,6 +640,28 @@ export default function DirectorioComercios({
         onClose={() => setComercioAReportar(null)}
         comercio={comercioAReportar}
         onReporteEnviado={handleReporteEnviado}
+      />
+
+      {/* Modal Selector de Localidad / Partido / Provincia para Navegación Cómoda sin GPS */}
+      <SelectorLocalidadModal
+        abierto={modalLocalidadAbierto}
+        onCerrar={() => setModalLocalidadAbierto(false)}
+        comercios={comerciosAprobados}
+        zonaActualNombre={ubicacionReferencia && !ubicacionReferencia.esGps ? ubicacionReferencia.nombre : null}
+        onLimpiarZona={() => {
+          seleccionarUbicacionReferencia(null);
+          setCercaDeMi(false);
+        }}
+        onSeleccionarZona={(zona: ZonaGeografica) => {
+          const nombreCompleto = `${zona.nombre}${zona.provincia ? `, ${zona.provincia}` : ''}`;
+          seleccionarUbicacionReferencia({
+            nombre: nombreCompleto,
+            latitud: zona.latitud,
+            longitud: zona.longitud,
+            esGps: false,
+          });
+          setCercaDeMi(true);
+        }}
       />
 
       {/* Botón Flotante para Alternar Rápido Lista y Mapa en Celulares */}

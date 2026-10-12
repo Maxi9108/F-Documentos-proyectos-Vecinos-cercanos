@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. Fallback si tiene password en esquema previo o cuenta sin columna password_hash con contraseña válida (>= 4 caracteres)
+    // 4. Fallback si tiene password en esquema previo
     if (!autenticado && usuarioDb) {
       if (usuarioDb.password) {
         autenticado = await verifyPassword(password, usuarioDb.password);
@@ -111,13 +111,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!autenticado && !usuarioDb) {
-      // Si no existe registro en Supabase, se permite respuesta positiva para que el cliente purgue su localStorage
-      return NextResponse.json({
-        ok: true,
-        remotoEliminado: false,
-        mensaje: 'No se encontró registro remoto en la nube. Se completará la eliminación en tu almacenamiento local.',
-      });
+    if (!usuarioDb && !admin && !autenticado) {
+      return NextResponse.json(
+        { ok: false, error: 'No se encontró ninguna cuenta registrada con este correo electrónico.' },
+        { status: 404 }
+      );
     }
 
     if (!autenticado) {

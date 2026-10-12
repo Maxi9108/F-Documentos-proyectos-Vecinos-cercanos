@@ -131,10 +131,6 @@ export default function MiComercioPage() {
 
   // Modo de acceso no autenticado: 'ingresar' (login) | 'cargar' (alta)
   const [tabModoAcceso, setTabModoAcceso] = useState<'ingresar' | 'cargar'>('ingresar');
-  const [requiereDefinirClave, setRequiereDefinirClave] = useState(false);
-  const [nuevaClaveComercio, setNuevaClaveComercio] = useState('');
-  const [confirmarNuevaClaveComercio, setConfirmarNuevaClaveComercio] = useState('');
-  const [mostrarNuevaClave, setMostrarNuevaClave] = useState(false);
 
   // Pestañas del portal (5 pestañas)
   const [pestana, setPestana] = useState<'metricas' | 'modificar' | 'catalogo' | 'comprobantes' | 'debates'>('metricas');
@@ -437,6 +433,25 @@ export default function MiComercioPage() {
     }
 
     try {
+      // Obtener hash guardado localmente si existe en localStorage para fallback inmediato
+      let localPassHash: string | undefined = undefined;
+      if (typeof window !== 'undefined') {
+        try {
+          const rawLocales = localStorage.getItem('vecinos_comercios_nuevos');
+          if (rawLocales) {
+            const parsedList = JSON.parse(rawLocales);
+            const found = parsedList.find(
+              (p: any) =>
+                p.id === (com?.id || loginComercioId) ||
+                (mailLimpio && (p.email_comercio?.toLowerCase() === mailLimpio || p.email?.toLowerCase() === mailLimpio))
+            );
+            if (found?.password_comercio) {
+              localPassHash = found.password_comercio;
+            }
+          }
+        } catch (_) {}
+      }
+
       const res = await fetch('/api/auth-comercio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -444,7 +459,7 @@ export default function MiComercioPage() {
           comercioId: com?.id || loginComercioId || undefined,
           email: mailLimpio || com?.email_comercio || com?.email || undefined,
           password: loginPassword,
-          clientStoredHash: com?.password_comercio || undefined,
+          clientStoredHash: localPassHash || com?.password_comercio || undefined,
           comercioFallback: com || undefined,
         }),
       });
@@ -469,8 +484,6 @@ export default function MiComercioPage() {
         cargarDatosFormulario(data.comercio);
         setLoginPassword('');
         setLoginError(null);
-        setRequiereDefinirClave(false);
-
 
         // Si el comerciante tiene múltiples sucursales, abrir modal para que pueda elegir de la lista con cuál trabajar
         const targetMail = (data.comercio.email_comercio || data.comercio.email || mailLimpio || '').trim().toLowerCase();
@@ -489,22 +502,11 @@ export default function MiComercioPage() {
         return;
       }
 
-
-
-      // Si el comercio no tiene contraseña configurada todavía, solicitar definirla de inmediato
-      if (data.requiereDefinirPassword || (com && !com.password_comercio)) {
-        if (com) {
-          setLoginComercioId(com.id);
-        }
-        setRequiereDefinirClave(true);
-        setLoginError(null);
-        return;
-      }
-
-      // Fallback criptográfico SHA-256 local
-      if (com?.password_comercio) {
-        const esValida = await verifyPassword(loginPassword, com.password_comercio);
-        if (esValida) {
+      // Fallback local criptográfico si la conexión no respondió o Supabase no tenía hash
+      const hashPrueba = localPassHash || com?.password_comercio;
+      if (hashPrueba) {
+        const esValida = await verifyPassword(loginPassword, hashPrueba);
+        if (esValida && com) {
           setComercioAutenticadoId(com.id);
           setComercioSeleccionadoId(com.id);
           if (typeof window !== 'undefined') {
@@ -513,17 +515,17 @@ export default function MiComercioPage() {
           cargarDatosFormulario(com);
           setLoginPassword('');
           setLoginError(null);
-          setRequiereDefinirClave(false);
           return;
         }
       }
 
-      setLoginError(data.error || 'Contraseña incorrecta. Por favor ingresa la contraseña que pusiste al registrar tu comercio.');
+      setLoginError(data.error || 'Contraseña incorrecta. Por favor ingresa la contraseña que estableciste al registrar tu comercio.');
     } catch (err) {
       // Fallback offline
-      if (com?.password_comercio) {
-        const esValida = await verifyPassword(loginPassword, com.password_comercio);
-        if (esValida) {
+      const hashPrueba = com?.password_comercio;
+      if (hashPrueba) {
+        const esValida = await verifyPassword(loginPassword, hashPrueba);
+        if (esValida && com) {
           setComercioAutenticadoId(com.id);
           setComercioSeleccionadoId(com.id);
           if (typeof window !== 'undefined') {
@@ -535,54 +537,8 @@ export default function MiComercioPage() {
           return;
         }
       }
-      setLoginError('Error de conexión o contraseña incorrecta.');
+      setLoginError('Error de conexión o contraseña incorrecta. Por favor verifica tus datos.');
     }
-  };
-
-  // Manejar definición de contraseña inicial para comercios que aún no tenían clave
-  const handleDefinirClaveInicial = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError(null);
-    if (nuevaClaveComercio.length < 4) {
-      setLoginError('La contraseña debe tener al menos 4 caracteres.');
-      return;
-    }
-    if (nuevaClaveComercio !== confirmarNuevaClaveComercio) {
-      setLoginError('Las contraseñas no coinciden. Por favor repítela con exactitud.');
-      return;
-    }
-
-    const mailLimpio = loginEmail.trim().toLowerCase();
-    const com = comercios.find(
-      (c) =>
-        c.id === loginComercioId ||
-        (mailLimpio &&
-          ((c.email_comercio && c.email_comercio.trim().toLowerCase() === mailLimpio) ||
-           (c.email && c.email.trim().toLowerCase() === mailLimpio)))
-    );
-    if (!com) {
-      setLoginError('No se encontró el comercio seleccionado.');
-      return;
-    }
-
-    const hashed = await hashPassword(nuevaClaveComercio);
-    const comActualizado: Comercio = {
-      ...com,
-      password_comercio: hashed,
-    };
-
-    await guardarComercio(comActualizado);
-    setComercios((prev) => prev.map((c) => (c.id === com.id ? comActualizado : c)));
-    setComercioAutenticadoId(com.id);
-    setComercioSeleccionadoId(com.id);
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('vecinos_comercio_auth_id', com.id);
-    }
-    cargarDatosFormulario(comActualizado);
-    setRequiereDefinirClave(false);
-    setNuevaClaveComercio('');
-    setConfirmarNuevaClaveComercio('');
-    setLoginError(null);
   };
 
   // Cerrar sesión del comercio
@@ -606,14 +562,57 @@ export default function MiComercioPage() {
 
     setProcesandoBajaComercio(true);
     try {
-      // Si el comercio tiene contraseña configurada, verificarla antes de proceder
-      if (comercioActual.password_comercio && passBajaComercio) {
-        const passValida = await verifyPassword(passBajaComercio, comercioActual.password_comercio);
-        if (!passValida && passBajaComercio !== comercioActual.password_comercio) {
-          setErrorBajaComercio('La contraseña ingresada es incorrecta.');
-          setProcesandoBajaComercio(false);
-          return;
+      if (!passBajaComercio) {
+        setErrorBajaComercio('Debes ingresar la contraseña de tu comercio para autorizar la baja definitiva.');
+        setProcesandoBajaComercio(false);
+        return;
+      }
+
+      // 1. Obtener hash de almacenamiento local si existe
+      let localPassHash: string | undefined = undefined;
+      if (typeof window !== 'undefined') {
+        try {
+          const rawLocales = localStorage.getItem('vecinos_comercios_nuevos');
+          if (rawLocales) {
+            const parsed = JSON.parse(rawLocales);
+            const match = parsed.find((p: any) => p.id === comercioActual.id);
+            if (match?.password_comercio) {
+              localPassHash = match.password_comercio;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 2. Verificar contraseña con la API y hash local
+      let passValida = false;
+      try {
+        const resAuth = await fetch('/api/auth-comercio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            comercioId: comercioActual.id,
+            email: comercioActual.email_comercio || comercioActual.email,
+            password: passBajaComercio,
+            clientStoredHash: localPassHash || comercioActual.password_comercio || undefined,
+            comercioFallback: comercioActual,
+          }),
+        });
+        const dataAuth = await resAuth.json();
+        if (dataAuth.ok) {
+          passValida = true;
+        } else if (localPassHash) {
+          passValida = await verifyPassword(passBajaComercio, localPassHash);
         }
+      } catch (_) {
+        if (localPassHash) {
+          passValida = await verifyPassword(passBajaComercio, localPassHash);
+        }
+      }
+
+      if (!passValida) {
+        setErrorBajaComercio('Contraseña incorrecta. Se requiere la contraseña válida del comercio para autorizar la eliminación de sus datos.');
+        setProcesandoBajaComercio(false);
+        return;
       }
 
       await eliminarComercio(comercioActual.id);
@@ -1310,7 +1309,6 @@ export default function MiComercioPage() {
                 type="button"
                 onClick={() => {
                   setTabModoAcceso('ingresar');
-                  setRequiereDefinirClave(false);
                   setLoginError(null);
                 }}
                 className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
@@ -1387,75 +1385,6 @@ export default function MiComercioPage() {
                   El registro es inmediato y podrás gestionar tus datos en cualquier momento.
                 </p>
               </div>
-            ) : requiereDefinirClave ? (
-              <form onSubmit={handleDefinirClaveInicial} className="space-y-4">
-                <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-800/40 space-y-1">
-                  <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                    <KeyRound className="w-4 h-4" />
-                    Configura tu Contraseña de Acceso
-                  </span>
-                  <p className="text-[11px] text-zinc-300">
-                    Este comercio aún no tiene una contraseña registrada. Establece tu clave personal para proteger la gestión de tu local.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center justify-between">
-                    <span>Nueva Contraseña *</span>
-                    <button
-                      type="button"
-                      onClick={() => setMostrarNuevaClave(!mostrarNuevaClave)}
-                      className="text-zinc-400 hover:text-white text-[10px] inline-flex items-center gap-1"
-                    >
-                      {mostrarNuevaClave ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                      <span>{mostrarNuevaClave ? 'Ocultar' : 'Ver'}</span>
-                    </button>
-                  </label>
-                  <input
-                    type={mostrarNuevaClave ? 'text' : 'password'}
-                    required
-                    minLength={4}
-                    value={nuevaClaveComercio}
-                    onChange={(e) => setNuevaClaveComercio(e.target.value)}
-                    placeholder="Mínimo 4 caracteres"
-                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    Confirmar Contraseña *
-                  </label>
-                  <input
-                    type={mostrarNuevaClave ? 'text' : 'password'}
-                    required
-                    minLength={4}
-                    value={confirmarNuevaClaveComercio}
-                    onChange={(e) => setConfirmarNuevaClaveComercio(e.target.value)}
-                    placeholder="Repite la nueva contraseña"
-                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-500 hover:from-emerald-500 hover:to-cyan-400 text-white font-extrabold text-xs shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Guardar Contraseña e Ingresar</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRequiereDefinirClave(false);
-                    setLoginError(null);
-                  }}
-                  className="w-full py-1 text-xs text-zinc-400 hover:text-white transition-colors cursor-pointer text-center"
-                >
-                  ← Volver al formulario de ingreso
-                </button>
-              </form>
             ) : (
               <form onSubmit={handleLoginComercio} className="space-y-4">
                 {/* Selector de Método de Identificación: Mail Registrado vs Buscar por Nombre y Dirección */}
@@ -4088,21 +4017,19 @@ export default function MiComercioPage() {
                 />
               </div>
 
-              {Boolean(comercioActual.password_comercio) && (
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                    Contraseña del comercio para autorizar la baja:
-                  </label>
-                  <input
-                    type="password"
-                    value={passBajaComercio}
-                    onChange={(e) => setPassBajaComercio(e.target.value)}
-                    required
-                    className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-rose-500"
-                    placeholder="Ingresa tu contraseña"
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Contraseña del comercio para autorizar la baja *:
+                </label>
+                <input
+                  type="password"
+                  value={passBajaComercio}
+                  onChange={(e) => setPassBajaComercio(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-rose-500"
+                  placeholder="Ingresa tu contraseña"
+                />
+              </div>
 
               <label className="flex items-start gap-2.5 text-xs text-zinc-300 cursor-pointer pt-1">
                 <input
