@@ -130,8 +130,12 @@ export default function ModalCambiarPassword({
           localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(listaLocales));
         }
 
-        // Actualizar en Supabase si está activo
+        // Actualizar en Supabase si está activo (incluyendo Supabase Auth nativo)
         if (isSupabaseConfigured) {
+          try {
+            await supabase.auth.updateUser({ password: nuevaPassword });
+          } catch (_) {}
+
           await supabase
             .from('comercios')
             .update({ password_comercio: nuevaHash })

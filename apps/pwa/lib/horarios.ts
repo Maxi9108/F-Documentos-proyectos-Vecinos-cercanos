@@ -1,4 +1,11 @@
-import { Comercio, HorariosConfig, HorarioDia, DiaSemana } from '@/types/comercio';
+import {
+  Comercio,
+  HorariosConfig,
+  HorarioDia,
+  DiaSemana,
+  HorarioEspecialFecha,
+  HorarioTurno,
+} from '@/types/comercio';
 
 const DIAS_CLAVES: DiaSemana[] = [
   'domingo',
@@ -74,6 +81,108 @@ export function obtenerHorariosConfigPorDefecto(): HorariosConfig {
 }
 
 export const HORARIOS_DEFECTO: HorariosConfig = obtenerHorariosConfigPorDefecto();
+
+/**
+ * Convierte un objeto Date al formato ISO local YYYY-MM-DD sin desfasaje horario
+ */
+export function formatearFechaISO(fecha: Date): string {
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, '0');
+  const d = String(fecha.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Busca si existe una fecha especial programada con anterioridad para un día puntual
+ */
+export function obtenerFechaEspecial(
+  comercio?: Partial<Comercio> | null,
+  fechaISO?: string
+): HorarioEspecialFecha | undefined {
+  if (!comercio || !fechaISO) return undefined;
+  const lista: HorarioEspecialFecha[] =
+    comercio.fechas_especiales ||
+    comercio.horarios_config?.fechas_especiales ||
+    [];
+  return lista.find((fe) => fe.fecha === fechaISO);
+}
+
+export interface ProximaFechaEspecialInfo {
+  especial: HorarioEspecialFecha;
+  fechaObj: Date;
+  esHoy: boolean;
+  diasDiferencia: number;
+  diaSemanaNombre: string;
+  fechaCorta: string; // ej: "24/10"
+  textoAviso: string; // ej: "El Vie 24/10 cerrado por Feriado"
+}
+
+/**
+ * Obtiene las fechas especiales programadas con anterioridad que ocurren hoy o en los próximos días (hasta N días)
+ */
+export function obtenerProximasFechasEspeciales(
+  comercio?: Partial<Comercio> | null,
+  fechaBase: Date = new Date(),
+  diasAdelante: number = 21
+): ProximaFechaEspecialInfo[] {
+  if (!comercio) return [];
+  const lista: HorarioEspecialFecha[] =
+    comercio.fechas_especiales ||
+    comercio.horarios_config?.fechas_especiales ||
+    [];
+
+  if (!lista.length) return [];
+
+  const hoyISO = formatearFechaISO(fechaBase);
+  const resultados: ProximaFechaEspecialInfo[] = [];
+
+  for (const item of lista) {
+    if (!item.fecha) continue;
+    // Comparar strings YYYY-MM-DD directamente
+    if (item.fecha < hoyISO) continue; // ya pasó
+
+    const [y, m, d] = item.fecha.split('-').map(Number);
+    const fechaObj = new Date(y, m - 1, d, 12, 0, 0); // mediodía para evitar saltos de horario de verano
+
+    // Diferencia en días enteros
+    const fechaBaseMid = new Date(fechaBase.getFullYear(), fechaBase.getMonth(), fechaBase.getDate(), 12, 0, 0);
+    const diffMs = fechaObj.getTime() - fechaBaseMid.getTime();
+    const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDias > diasAdelante) continue;
+
+    const diaClave = DIAS_CLAVES[fechaObj.getDay()];
+    const diaSemanaNombre = DIAS_NOMBRES[diaClave] || '';
+    const fechaCorta = `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+
+    let detalleTurnos = '';
+    if (item.tipo === 'horario_especial' && item.turnos && item.turnos.length > 0) {
+      detalleTurnos = `de ${item.turnos.map((t) => `${t.abre} a ${t.cierra} hs`).join(' y ')}`;
+    }
+
+    let textoAviso = '';
+    const prefijoDia = diffDias === 0 ? 'Hoy' : diffDias === 1 ? 'Mañana' : `El ${diaSemanaNombre.slice(0, 3)} ${fechaCorta}`;
+    
+    if (item.tipo === 'cerrado') {
+      textoAviso = `${prefijoDia}: Cerrado${item.motivo ? ` (${item.motivo})` : ' todo el día'}`;
+    } else {
+      textoAviso = `${prefijoDia}: Horario especial ${detalleTurnos}${item.motivo ? ` (${item.motivo})` : ''}`;
+    }
+
+    resultados.push({
+      especial: item,
+      fechaObj,
+      esHoy: diffDias === 0,
+      diasDiferencia: diffDias,
+      diaSemanaNombre,
+      fechaCorta,
+      textoAviso,
+    });
+  }
+
+  // Ordenar cronológicamente (más cercana primero)
+  return resultados.sort((a, b) => a.especial.fecha.localeCompare(b.especial.fecha));
+}
 
 
 /**
@@ -154,6 +263,7 @@ export function verificarComercioAbierto(
   motivo?: string;
   badgeTexto: string;
   esTrasnoche?: boolean;
+  esFechaEspecial?: boolean;
 } {
   // 1. Cierres excepcionales prioritarios
   if (comercio.en_vacaciones) {
@@ -200,6 +310,97 @@ export function verificarComercioAbierto(
       motivo: motivoTexto,
       badgeTexto: 'Cerrado hoy',
     };
+  }
+
+  // 1c. Fechas especiales programadas con anterioridad (Feriados, inventarios o cambios puntuales de fecha)
+  const hoyISO = formatearFechaISO(fechaReferencia);
+  const especialHoy = obtenerFechaEspecial(comercio, hoyISO);
+
+  if (especialHoy) {
+    if (especialHoy.tipo === 'cerrado') {
+      return {
+        estaAbierto: false,
+        motivo: especialHoy.motivo
+          ? `Cerrado hoy: ${especialHoy.motivo}`
+          : 'Cerrado hoy por fecha especial programada',
+        badgeTexto: 'Cerrado hoy',
+        esFechaEspecial: true,
+      };
+    }
+
+    if (especialHoy.tipo === 'horario_especial') {
+      const turnos = especialHoy.turnos || [];
+      if (turnos.length === 0) {
+        return {
+          estaAbierto: false,
+          motivo: especialHoy.motivo
+            ? `Cerrado hoy (${especialHoy.motivo})`
+            : 'Cerrado por fecha especial sin turnos',
+          badgeTexto: 'Cerrado hoy',
+          esFechaEspecial: true,
+        };
+      }
+
+      const horas = fechaReferencia.getHours();
+      const minutos = fechaReferencia.getMinutes();
+      const minutosActuales = horas * 60 + minutos;
+
+      for (const turno of turnos) {
+        const [hAbre, mAbre] = turno.abre.split(':').map(Number);
+        const [hCierra, mCierra] = turno.cierra.split(':').map(Number);
+        const minAbre = hAbre * 60 + (mAbre || 0);
+        const minCierra = hCierra * 60 + (mCierra || 0);
+
+        if (esHorarioTrasnoche(turno.abre, turno.cierra)) {
+          if (minutosActuales >= minAbre) {
+            return {
+              estaAbierto: true,
+              motivo: especialHoy.motivo
+                ? `${especialHoy.motivo} (abierto hasta las ${turno.cierra} hs)`
+                : `Horario especial abierto hasta las ${turno.cierra} hs`,
+              badgeTexto: `Horario especial`,
+              esTrasnoche: true,
+              esFechaEspecial: true,
+            };
+          }
+        } else {
+          if (minutosActuales >= minAbre && minutosActuales < minCierra) {
+            return {
+              estaAbierto: true,
+              motivo: especialHoy.motivo
+                ? `${especialHoy.motivo} (abierto hasta las ${turno.cierra} hs)`
+                : `Horario especial abierto hasta las ${turno.cierra} hs`,
+              badgeTexto: `Horario especial`,
+              esTrasnoche: false,
+              esFechaEspecial: true,
+            };
+          }
+        }
+      }
+
+      // Si no cayó en ningún turno activo de hoy, ver si abre más tarde hoy
+      for (const turno of turnos) {
+        const [hAbre, mAbre] = turno.abre.split(':').map(Number);
+        const minAbre = hAbre * 60 + (mAbre || 0);
+        if (minutosActuales < minAbre) {
+          return {
+            estaAbierto: false,
+            motivo: `Horario especial: abre hoy a las ${turno.abre} hs${especialHoy.motivo ? ` (${especialHoy.motivo})` : ''}`,
+            badgeTexto: `Abre ${turno.abre}`,
+            esFechaEspecial: true,
+          };
+        }
+      }
+
+      return {
+        estaAbierto: false,
+        motivo: especialHoy.motivo
+          ? `Cerrado por horario especial (${especialHoy.motivo})`
+          : 'Cerrado en este momento (horario especial)',
+        badgeTexto: 'Cerrado',
+        esFechaEspecial: true,
+      };
+    }
   }
 
   const config = comercio.horarios_config;
@@ -351,13 +552,30 @@ export function calcularProximaAperturaComercio(
     const candidata = new Date(fechaBase);
     candidata.setDate(fechaBase.getDate() + offset);
 
+    // Revisar si existe una fecha especial programada con anterioridad para este día
+    const fechaCandidataISO = formatearFechaISO(candidata);
+    const especialCandidata = obtenerFechaEspecial(comercio, fechaCandidataISO);
+
+    if (especialCandidata && especialCandidata.tipo === 'cerrado') {
+      // Cierre total programado con anticipación: no abrirá este día
+      continue;
+    }
+
     const diaSemanaIndex = candidata.getDay(); // 0: Dom, 1: Lun, ..., 6: Sab
     const diaClave = DIAS_CLAVES[diaSemanaIndex];
     const confDia = obtenerConfiguracionDia(config, diaClave);
 
-    if (confDia.abierto && confDia.turnos && confDia.turnos.length > 0) {
+    // Si tiene turnos especiales definidos para esta fecha, usarlos con prioridad
+    const turnosAEvaluar =
+      especialCandidata?.tipo === 'horario_especial' && especialCandidata.turnos?.length
+        ? especialCandidata.turnos
+        : confDia.abierto
+        ? confDia.turnos
+        : [];
+
+    if (turnosAEvaluar.length > 0) {
       // Ordenar turnos por hora de apertura y tomar el más temprano
-      const turnosOrdenados = [...confDia.turnos].sort((a, b) => a.abre.localeCompare(b.abre));
+      const turnosOrdenados = [...turnosAEvaluar].sort((a, b) => a.abre.localeCompare(b.abre));
 
       let turnoElegido = turnosOrdenados[0];
       if (offset === 0) {

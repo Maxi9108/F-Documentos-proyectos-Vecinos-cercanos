@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Comercio, Producto } from '@/types/comercio';
 import {
   X,
@@ -33,11 +33,16 @@ import {
   Globe,
   Mail,
   Star,
+  CalendarClock,
 } from 'lucide-react';
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
-import { verificarComercioAbierto } from '@/lib/horarios';
+import {
+  verificarComercioAbierto,
+  obtenerProximasFechasEspeciales,
+  ProximaFechaEspecialInfo,
+} from '@/lib/horarios';
 import { guardarCalificacionVecino } from '@/lib/supabase';
 import ModalCrearDebate from '@/components/ModalCrearDebate';
 import OfertaCountdown from '@/components/OfertaCountdown';
@@ -172,8 +177,12 @@ export default function ModalDetalleComercio({
     return construirEnlaceWhatsApp(cleanWhatsapp, lineas.join('\n'));
   };
 
-  // Badge de Estado Operativo en tiempo real con soporte de trasnoche
+  // Badge de Estado Operativo en tiempo real con soporte de trasnoche y fechas especiales
   const infoHorario = verificarComercioAbierto(comercio);
+  const proximasFechas = useMemo<ProximaFechaEspecialInfo[]>(
+    () => (comercio ? obtenerProximasFechasEspeciales(comercio, new Date(), 21) : []),
+    [comercio]
+  );
 
   let estadoBadgeTexto = infoHorario.badgeTexto;
   let estadoBadgeClases = infoHorario.estaAbierto
@@ -188,6 +197,14 @@ export default function ModalDetalleComercio({
   } else if (comercio.en_vacaciones) {
     estadoBadgeTexto = 'En Receso por Vacaciones';
     estadoBadgeClases = 'bg-sky-950/60 text-sky-300 border-sky-800/60';
+  } else if (infoHorario.esFechaEspecial) {
+    if (infoHorario.estaAbierto) {
+      estadoBadgeTexto = 'Horario Especial';
+      estadoBadgeClases = 'bg-amber-950/80 text-amber-300 border-amber-600/60 shadow-sm shadow-amber-950/40';
+    } else {
+      estadoBadgeTexto = 'Cerrado Hoy';
+      estadoBadgeClases = 'bg-rose-950/80 text-rose-300 border-rose-800/60';
+    }
   }
 
   return (
@@ -419,6 +436,21 @@ export default function ModalDetalleComercio({
                   <span>Zona de reparto delimitada en mapa (perímetro personalizado)</span>
                 </div>
               )}
+
+              {(comercio.envios_nacional || comercio.envios_exterior) && (
+                <div className="pt-2 border-t border-zinc-800/80 flex items-center gap-2 flex-wrap text-[11px]">
+                  {comercio.envios_nacional && (
+                    <span className="px-2 py-0.5 rounded-md font-bold bg-cyan-950 text-cyan-300 border border-cyan-700/60 flex items-center gap-1">
+                      <span>🇦🇷</span> Envíos a todo el país
+                    </span>
+                  )}
+                  {comercio.envios_exterior && (
+                    <span className="px-2 py-0.5 rounded-md font-bold bg-purple-950 text-purple-300 border border-purple-700/60 flex items-center gap-1">
+                      <span>🌐</span> Envíos al exterior / Internacional
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Tarjeta de Horarios (Estructurados, Cortados o Continuos) */}
@@ -427,6 +459,18 @@ export default function ModalDetalleComercio({
                 <Clock className="w-4 h-4 text-emerald-400" />
                 Horarios de Atención:
               </span>
+
+              {/* Banner si hoy rige un horario especial o cierre puntual */}
+              {infoHorario.esFechaEspecial && infoHorario.motivo && (
+                <div className="mb-2.5 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-start gap-2 text-xs text-amber-200 shadow-sm">
+                  <CalendarClock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-amber-300 block">Atención Especial Hoy:</span>
+                    <span className="text-[11px] leading-relaxed">{infoHorario.motivo}</span>
+                  </div>
+                </div>
+              )}
+
               {comercio.horarios_config?.resumenFormateado ? (
                 <div className="space-y-1.5 pl-1">
                   <p className="text-zinc-200 text-xs font-medium leading-relaxed">
@@ -459,6 +503,40 @@ export default function ModalDetalleComercio({
                 <p className="text-zinc-300 pl-5 leading-relaxed text-[11px]">
                   {comercio.horario || 'Consultar directamente con el comercio.'}
                 </p>
+              )}
+
+              {/* Lista de próximos cierres o cambios de horarios programados */}
+              {proximasFechas.filter((pf) => !pf.esHoy).length > 0 && (
+                <div className="mt-3 pt-2.5 border-t border-zinc-800 space-y-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                    <CalendarClock className="w-3.5 h-3.5" />
+                    <span>Próximas fechas programadas con anticipación:</span>
+                  </span>
+                  <div className="space-y-1">
+                    {proximasFechas
+                      .filter((pf: ProximaFechaEspecialInfo) => !pf.esHoy)
+                      .slice(0, 3)
+                      .map((pf: ProximaFechaEspecialInfo, idx: number) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between gap-2 p-2 rounded-xl bg-zinc-950/80 border border-zinc-800/90 text-[11px]"
+                        >
+                          <span className="text-zinc-200 font-medium leading-tight">
+                            🗓️ {pf.textoAviso}
+                          </span>
+                          <span
+                            className={`text-[9.5px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 ${
+                              pf.especial.tipo === 'cerrado'
+                                ? 'bg-rose-950 text-rose-300 border border-rose-800/50'
+                                : 'bg-amber-950 text-amber-300 border border-amber-800/50'
+                            }`}
+                          >
+                            {pf.especial.tipo === 'cerrado' ? 'Cerrado' : 'Horario Esp.'}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
               )}
             </div>
 

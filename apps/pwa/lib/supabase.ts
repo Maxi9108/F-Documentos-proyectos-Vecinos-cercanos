@@ -566,6 +566,7 @@ export async function guardarComercio(comercio: Comercio): Promise<{ success: bo
         strikes_reportes: comercio.strikes_reportes || 0,
         // Nuevos campos de configuración avanzada y credenciales
         horarios_config: comercio.horarios_config || null,
+        user_id: comercio.user_id || null,
         email_comercio: comercio.email_comercio || null,
         password_comercio: passwordSegura,
         fecha_ultima_modificacion_catalogo: comercio.fecha_ultima_modificacion_catalogo || null,
@@ -602,6 +603,7 @@ export async function guardarComercio(comercio: Comercio): Promise<{ success: bo
         const solPayload = {
           id: comercio.id,
           comercio_id: comercio.id,
+          user_id: comercio.user_id || null,
           comercio_nombre: comercio.nombre,
           cambios: {
             ...comercio,
@@ -693,10 +695,15 @@ export async function aprobarComercio(
       if (rubroAsignado) updates.rubro = rubroAsignado;
 
       const { error: errUpd } = await supabase.from('comercios').update(updates).eq('id', id);
-      if (errUpd && errUpd.code === 'PGRST204') {
-        if (rubroAsignado) {
-          await supabase.from('comercios').update({ rubro: rubroAsignado }).eq('id', id);
-        }
+      if (errUpd) {
+        const baseUpdates: Record<string, unknown> = {
+          estado_aprobacion: 'aprobado',
+          aprobado_por: aprobadoPor,
+          fecha_aprobacion: fechaAprobacion,
+          nivel: nivelAsignado,
+        };
+        if (rubroAsignado) baseUpdates.rubro = rubroAsignado;
+        await supabase.from('comercios').update(baseUpdates).eq('id', id);
       }
     } catch (err) {
       console.warn('[Supabase] Error al actualizar estado de aprobación:', err);

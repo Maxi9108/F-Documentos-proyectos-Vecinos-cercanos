@@ -27,11 +27,11 @@ export default function PaletaOfertas({
   const todasLasOfertas = useMemo(() => {
     const listado: OfertaConComercio[] = [];
     comercios.forEach((comercio) => {
-      // Regla de Negocio: Solo Premium (hasta 2) y Gold (hasta 5) pueden publicar ofertas en la paleta
+      // Regla de Negocio: Premium (hasta 2 diarias + 5 semanales) y Gold (hasta 5 diarias + 10 semanales)
       const nivel = comercio.nivel || 'standar';
       if (nivel === 'standar') return;
 
-      const maxOfertas = nivel === 'gold' ? 5 : 2;
+      const maxOfertas = nivel === 'gold' ? 15 : 7;
 
       if (comercio.productos && comercio.productos.length > 0) {
         comercio.productos

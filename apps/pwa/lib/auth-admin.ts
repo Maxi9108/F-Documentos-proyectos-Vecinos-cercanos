@@ -1,6 +1,7 @@
 import { Administrador, PermisosAdmin } from '@/types/comercio';
 import { hashPassword, verifyPassword } from './crypto';
 import { getUsuariosSistema, cambiarRolUsuario } from './usuarios';
+import { supabase, isSupabaseConfigured } from './supabase';
 
 const STORAGE_KEY_ADMINS = 'vecinos_administradores_sistema';
 const STORAGE_KEY_SESION = 'vecinos_admin_sesion_usuario';
@@ -177,6 +178,16 @@ export async function completarPaso2Admin(
   }
 
   guardarSesion(encontrado);
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: encontrado.password || 'admin123',
+      });
+    } catch (_) {}
+  }
+
   return { exito: true, admin: encontrado };
 }
 
@@ -259,6 +270,9 @@ export function cerrarSesionAdmin(): void {
   if (typeof window !== 'undefined') {
     sessionStorage.removeItem(STORAGE_KEY_SESION);
     sessionStorage.removeItem('vecinos_admin_sesion');
+  }
+  if (isSupabaseConfigured) {
+    supabase.auth.signOut().catch(() => {});
   }
 }
 

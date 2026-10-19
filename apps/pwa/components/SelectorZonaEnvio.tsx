@@ -24,16 +24,51 @@ import {
   Unlock,
   Hexagon,
   Layers,
+  Globe,
+  Building2,
+  MapPin,
+  Plus,
+  X,
+  Flag,
 } from 'lucide-react';
+
+export interface ZonasEnvioConfig {
+  localidades?: string[];
+  partidos?: string[];
+  provincias?: string[];
+  enviosNacional?: boolean;
+  enviosExterior?: boolean;
+  descripcionGenerada?: string;
+}
 
 interface SelectorZonaEnvioProps {
   latitud: number;
   longitud: number;
   radioKm: number;
   poligono: [number, number][];
-  onChange: (nuevoRadioKm: number, nuevoPoligono: [number, number][]) => void;
+  onChange: (
+    nuevoRadioKm: number,
+    nuevoPoligono: [number, number][],
+    zonasConfig?: ZonasEnvioConfig
+  ) => void;
   confirmado: boolean;
   onToggleConfirmado: (nuevoEstado: boolean) => void;
+  initialDescripcion?: string;
+  initialEnviosNacional?: boolean;
+  initialEnviosExterior?: boolean;
+  initialLocalidades?: string[];
+  initialPartidos?: string[];
+  initialProvincias?: string[];
+  alcanceEnvio?: 'radio' | 'poligono' | 'territorial';
+  onChangeAlcanceEnvio?: (modo: 'radio' | 'poligono' | 'territorial') => void;
+  enviosNacional?: boolean;
+  onChangeEnviosNacional?: (val: boolean) => void;
+  enviosExterior?: boolean;
+  onChangeEnviosExterior?: (val: boolean) => void;
+  zonasDetalle?: string[] | { localidades?: string[]; partidos?: string[]; provincias?: string[] };
+  onChangeZonasDetalle?: (val: any) => void;
+  zonaDescripcion?: string;
+  onChangeZonaDescripcion?: (val: string) => void;
 }
 
 // Icono para el local comercial / punto base
@@ -106,7 +141,7 @@ function AutoAjustarVista({
   center: [number, number];
   radiusKm: number;
   polygonPoints: [number, number][];
-  modo: 'radio' | 'poligono';
+  modo: 'radio' | 'poligono' | 'territorial';
   zonaCerrada: boolean;
 }) {
   const map = useMap();
@@ -185,11 +220,21 @@ export default function SelectorZonaEnvio({
   onChange,
   confirmado,
   onToggleConfirmado,
+  initialDescripcion,
+  initialEnviosNacional = false,
+  initialEnviosExterior = false,
+  initialLocalidades = [],
+  initialPartidos = [],
+  initialProvincias = [],
 }: SelectorZonaEnvioProps) {
   const safePoligono: [number, number][] = Array.isArray(poligono) ? poligono : [];
 
-  const [modo, setModo] = useState<'radio' | 'poligono'>(
-    safePoligono.length >= 3 ? 'poligono' : 'radio'
+  const [modo, setModo] = useState<'radio' | 'poligono' | 'territorial'>(
+    initialEnviosNacional || initialEnviosExterior || (initialLocalidades && initialLocalidades.length > 0) || (initialPartidos && initialPartidos.length > 0)
+      ? 'territorial'
+      : safePoligono.length >= 3
+      ? 'poligono'
+      : 'radio'
   );
 
   // Estado que define si el polígono actual ya fue cerrado
@@ -201,10 +246,79 @@ export default function SelectorZonaEnvio({
     radioKm && radioKm > 0 ? radioKm.toString() : '3'
   );
 
+  // Estados territoriales
+  const [localidades, setLocalidades] = useState<string[]>(initialLocalidades);
+  const [nuevaLocalidad, setNuevaLocalidad] = useState('');
+
+  const [partidos, setPartidos] = useState<string[]>(initialPartidos);
+  const [nuevoPartido, setNuevoPartido] = useState('');
+
+  const [provincias, setProvincias] = useState<string[]>(initialProvincias);
+  const [nuevaProvincia, setNuevaProvincia] = useState('');
+
+  const [enviosNacional, setEnviosNacional] = useState<boolean>(initialEnviosNacional);
+  const [enviosExterior, setEnviosExterior] = useState<boolean>(initialEnviosExterior);
+
   const storeIcon = useMemo(() => createStoreIcon(), []);
 
   const validLat = typeof latitud === 'number' && !isNaN(latitud) ? latitud : -34.6037;
   const validLng = typeof longitud === 'number' && !isNaN(longitud) ? longitud : -58.4212;
+
+  // Generador de descripción compilada de cobertura
+  const compilarResumen = (
+    r: number,
+    pol: [number, number][],
+    locs: string[],
+    parts: string[],
+    provs: string[],
+    nac: boolean,
+    ext: boolean,
+    m: 'radio' | 'poligono' | 'territorial'
+  ): string => {
+    const partes: string[] = [];
+    if (m === 'radio' && r > 0) {
+      partes.push(`Radio de entrega: ${r} km`);
+    } else if (m === 'poligono' && pol.length >= 3) {
+      partes.push(`Zona delimitada en mapa (${pol.length} puntos)`);
+    }
+    if (locs.length > 0) {
+      partes.push(`Localidades: ${locs.join(', ')}`);
+    }
+    if (parts.length > 0) {
+      partes.push(`Partidos/Municipios: ${parts.join(', ')}`);
+    }
+    if (provs.length > 0) {
+      partes.push(`Provincias: ${provs.join(', ')}`);
+    }
+    if (nac) {
+      partes.push('Envíos a todo el país');
+    }
+    if (ext) {
+      partes.push('Envíos al exterior / Internacional');
+    }
+    return partes.join(' • ');
+  };
+
+  const notificarCambios = (
+    r: number,
+    pol: [number, number][],
+    locs: string[] = localidades,
+    parts: string[] = partidos,
+    provs: string[] = provincias,
+    nac: boolean = enviosNacional,
+    ext: boolean = enviosExterior,
+    m: 'radio' | 'poligono' | 'territorial' = modo
+  ) => {
+    const desc = compilarResumen(r, pol, locs, parts, provs, nac, ext, m);
+    onChange(r, pol, {
+      localidades: locs,
+      partidos: parts,
+      provincias: provs,
+      enviosNacional: nac,
+      enviosExterior: ext,
+      descripcionGenerada: desc,
+    });
+  };
 
   // Sincronizar inicial si polígono viene con puntos suficientes
   useEffect(() => {
@@ -224,7 +338,7 @@ export default function SelectorZonaEnvio({
   const handleSelectModoRadio = () => {
     setModo('radio');
     const parsed = parseFloat(inputKm) || 3;
-    onChange(parsed, poligono);
+    notificarCambios(parsed, poligono, localidades, partidos, provincias, enviosNacional, enviosExterior, 'radio');
     onToggleConfirmado(true);
   };
 
@@ -234,14 +348,22 @@ export default function SelectorZonaEnvio({
     if (poligono.length >= 3 && zonaCerrada) {
       onToggleConfirmado(true);
     }
+    notificarCambios(parseFloat(inputKm) || 3, poligono, localidades, partidos, provincias, enviosNacional, enviosExterior, 'poligono');
   };
 
-  // Manejo de cambio de radio en km
+  // Cambio de modo a Territorial / Puntos
+  const handleSelectModoTerritorial = () => {
+    setModo('territorial');
+    onToggleConfirmado(true);
+    notificarCambios(parseFloat(inputKm) || 3, poligono, localidades, partidos, provincias, enviosNacional, enviosExterior, 'territorial');
+  };
+
+  // Manejo de cambio de radio en km (permite valores mayores a 15 km: 20, 30, 50, etc.)
   const handleRadioKmChange = (valStr: string) => {
     setInputKm(valStr);
     const parsed = parseFloat(valStr);
     if (!isNaN(parsed) && parsed > 0) {
-      onChange(parsed, poligono);
+      notificarCambios(parsed, poligono, localidades, partidos, provincias, enviosNacional, enviosExterior, modo);
       onToggleConfirmado(true);
     }
   };
@@ -250,7 +372,7 @@ export default function SelectorZonaEnvio({
   const handleAddPoint = (lat: number, lng: number) => {
     if (zonaCerrada) return;
     const nuevoPoligono: [number, number][] = [...poligono, [lat, lng]];
-    onChange(radioKm, nuevoPoligono);
+    notificarCambios(parseFloat(inputKm) || 3, nuevoPoligono);
   };
 
   // Cerrar la zona: une el último punto con el primero y marca todo el interior
@@ -260,7 +382,7 @@ export default function SelectorZonaEnvio({
       return;
     }
     setZonaCerrada(true);
-    onChange(radioKm, poligono);
+    notificarCambios(parseFloat(inputKm) || 3, poligono);
     onToggleConfirmado(true);
   };
 
@@ -285,8 +407,8 @@ export default function SelectorZonaEnvio({
       ]);
     }
 
-    onChange(radioKm, puntos);
     setZonaCerrada(true);
+    notificarCambios(parseFloat(inputKm) || 3, puntos);
     onToggleConfirmado(true);
   };
 
@@ -294,7 +416,7 @@ export default function SelectorZonaEnvio({
   const handleUndoPoint = () => {
     if (poligono.length === 0) return;
     const nuevoPoligono = poligono.slice(0, -1);
-    onChange(radioKm, nuevoPoligono);
+    notificarCambios(parseFloat(inputKm) || 3, nuevoPoligono);
     if (nuevoPoligono.length < 3) {
       setZonaCerrada(false);
     }
@@ -302,7 +424,7 @@ export default function SelectorZonaEnvio({
 
   // Limpiar polígono
   const handleClearPolygon = () => {
-    onChange(radioKm, []);
+    notificarCambios(parseFloat(inputKm) || 3, []);
     setZonaCerrada(false);
   };
 
@@ -310,10 +432,69 @@ export default function SelectorZonaEnvio({
   const handleVertexDragEnd = (index: number, newLat: number, newLng: number) => {
     const copia = [...poligono];
     copia[index] = [Number(newLat.toFixed(6)), Number(newLng.toFixed(6))];
-    onChange(radioKm, copia);
+    notificarCambios(parseFloat(inputKm) || 3, copia);
     if (zonaCerrada) {
       onToggleConfirmado(true);
     }
+  };
+
+  // Helpers territoriales
+  const handleAgregarLocalidad = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = nuevaLocalidad.trim();
+    if (!clean || localidades.includes(clean)) return;
+    const actualizadas = [...localidades, clean];
+    setLocalidades(actualizadas);
+    setNuevaLocalidad('');
+    notificarCambios(parseFloat(inputKm) || 3, poligono, actualizadas);
+  };
+
+  const handleEliminarLocalidad = (item: string) => {
+    const filtradas = localidades.filter((l) => l !== item);
+    setLocalidades(filtradas);
+    notificarCambios(parseFloat(inputKm) || 3, poligono, filtradas);
+  };
+
+  const handleAgregarPartido = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = nuevoPartido.trim();
+    if (!clean || partidos.includes(clean)) return;
+    const actualizadas = [...partidos, clean];
+    setPartidos(actualizadas);
+    setNuevoPartido('');
+    notificarCambios(parseFloat(inputKm) || 3, poligono, localidades, actualizadas);
+  };
+
+  const handleEliminarPartido = (item: string) => {
+    const filtradas = partidos.filter((p) => p !== item);
+    setPartidos(filtradas);
+    notificarCambios(parseFloat(inputKm) || 3, poligono, localidades, filtradas);
+  };
+
+  const handleAgregarProvincia = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = nuevaProvincia.trim();
+    if (!clean || provincias.includes(clean)) return;
+    const actualizadas = [...provincias, clean];
+    setProvincias(actualizadas);
+    setNuevaProvincia('');
+    notificarCambios(parseFloat(inputKm) || 3, poligono, localidades, partidos, actualizadas);
+  };
+
+  const handleEliminarProvincia = (item: string) => {
+    const filtradas = provincias.filter((p) => p !== item);
+    setProvincias(filtradas);
+    notificarCambios(parseFloat(inputKm) || 3, poligono, localidades, partidos, filtradas);
+  };
+
+  const handleToggleNacional = (valor: boolean) => {
+    setEnviosNacional(valor);
+    notificarCambios(parseFloat(inputKm) || 3, poligono, localidades, partidos, provincias, valor, enviosExterior);
+  };
+
+  const handleToggleExterior = (valor: boolean) => {
+    setEnviosExterior(valor);
+    notificarCambios(parseFloat(inputKm) || 3, poligono, localidades, partidos, provincias, enviosNacional, valor);
   };
 
   return (
@@ -326,20 +507,20 @@ export default function SelectorZonaEnvio({
           </div>
           <div>
             <h4 className="text-xs sm:text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <span>Límites y Zona de Cobertura de Envíos</span>
+              <span>Límites y Cobertura de Envíos</span>
             </h4>
             <p className="text-[11px] text-zinc-400">
-              Elegí un radio circular o marcá puntos con la forma que desees (como un hexágono o tus propias calles).
+              Elegí un radio en km (sin tope de 15km), marcá puntos en el mapa o indicá localidades, partidos, provincias, país y exterior.
             </p>
           </div>
         </div>
 
-        {/* Pestañas de Modo: Radio vs Polígono */}
-        <div className="flex items-center p-1 rounded-2xl bg-zinc-900 border border-zinc-800 self-stretch sm:self-auto">
+        {/* Pestañas de Modo: Radio vs Polígono vs Zonas Territoriales */}
+        <div className="flex items-center p-1 rounded-2xl bg-zinc-900 border border-zinc-800 self-stretch sm:self-auto flex-wrap gap-1">
           <button
             type="button"
             onClick={handleSelectModoRadio}
-            className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               modo === 'radio'
                 ? 'bg-cyan-600 text-white shadow-md'
                 : 'text-zinc-400 hover:text-white'
@@ -350,13 +531,25 @@ export default function SelectorZonaEnvio({
           <button
             type="button"
             onClick={handleSelectModoPoligono}
-            className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               modo === 'poligono'
                 ? 'bg-amber-600 text-white shadow-md'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            Marcar Puntos / Polígono
+            Marcar Puntos Mapa
+          </button>
+          <button
+            type="button"
+            onClick={handleSelectModoTerritorial}
+            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              modo === 'territorial'
+                ? 'bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 text-cyan-300" />
+            <span>Zonas / Exterior</span>
           </button>
         </div>
       </div>
@@ -369,11 +562,11 @@ export default function SelectorZonaEnvio({
               Alcance de reparto en kilómetros:
             </span>
             <span className="text-[11px] text-zinc-400">
-              Definí la distancia máxima a la redonda desde tu base de operaciones.
+              Definí la distancia máxima a la redonda. Podés ingresar más de 15 km (ej: 20 km, 30 km, 50 km).
             </span>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
             <div className="relative flex items-center">
               <input
                 type="number"
@@ -388,8 +581,8 @@ export default function SelectorZonaEnvio({
               </span>
             </div>
 
-            <div className="flex items-center gap-1">
-              {[1, 2, 3, 5, 10, 15].map((sugerido) => (
+            <div className="flex items-center gap-1 flex-wrap">
+              {[1, 2, 3, 5, 10, 15, 20, 25, 30, 50].map((sugerido) => (
                 <button
                   key={sugerido}
                   type="button"
@@ -404,6 +597,155 @@ export default function SelectorZonaEnvio({
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      ) : modo === 'territorial' ? (
+        <div className="p-4 rounded-2xl bg-zinc-900/80 border border-zinc-800 space-y-4 text-xs">
+          {/* Toggles Nacional y Exterior */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
+              enviosNacional ? 'bg-cyan-950/60 border-cyan-500/60 text-cyan-200' : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+            }`}>
+              <div className="flex items-center gap-2">
+                <Flag className="w-4 h-4 text-cyan-400" />
+                <div>
+                  <span className="font-bold text-white block text-xs">Envíos a todo el País</span>
+                  <span className="text-[10px] text-zinc-400">Correo Argentino, Andreani, encomiendas</span>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={enviosNacional}
+                onChange={(e) => handleToggleNacional(e.target.checked)}
+                className="w-4 h-4 accent-cyan-500 rounded"
+              />
+            </label>
+
+            <label className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
+              enviosExterior ? 'bg-purple-950/60 border-purple-500/60 text-purple-200' : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+            }`}>
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-purple-400" />
+                <div>
+                  <span className="font-bold text-white block text-xs">Envíos al Exterior (Internacional)</span>
+                  <span className="text-[10px] text-zinc-400">Exportaciones y paquetería internacional</span>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={enviosExterior}
+                onChange={(e) => handleToggleExterior(e.target.checked)}
+                className="w-4 h-4 accent-purple-500 rounded"
+              />
+            </label>
+          </div>
+
+          {/* Localidades o Barrios */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-zinc-300 flex items-center gap-1.5 uppercase tracking-wider">
+              <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Localidades / Barrios Específicos</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={nuevaLocalidad}
+                onChange={(e) => setNuevaLocalidad(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAgregarLocalidad(); } }}
+                placeholder="Ej: Vicente López, Olivos, Palermo, etc."
+                className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+              />
+              <button
+                type="button"
+                onClick={() => handleAgregarLocalidad()}
+                className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Agregar</span>
+              </button>
+            </div>
+            {localidades.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                {localidades.map((loc) => (
+                  <span key={loc} className="px-2 py-0.5 rounded-lg bg-cyan-950/80 border border-cyan-800/80 text-cyan-300 text-[11px] font-semibold flex items-center gap-1">
+                    <span>{loc}</span>
+                    <button type="button" onClick={() => handleEliminarLocalidad(loc)} className="text-zinc-400 hover:text-white">✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Partidos o Municipios */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-zinc-300 flex items-center gap-1.5 uppercase tracking-wider">
+              <Building2 className="w-3.5 h-3.5 text-violet-400" />
+              <span>Partidos / Municipios / Departamentos</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={nuevoPartido}
+                onChange={(e) => setNuevoPartido(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAgregarPartido(); } }}
+                placeholder="Ej: San Isidro, San Martín, Tigre, Morón, etc."
+                className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:outline-none focus:border-violet-500"
+              />
+              <button
+                type="button"
+                onClick={() => handleAgregarPartido()}
+                className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Agregar</span>
+              </button>
+            </div>
+            {partidos.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                {partidos.map((part) => (
+                  <span key={part} className="px-2 py-0.5 rounded-lg bg-violet-950/80 border border-violet-800/80 text-violet-300 text-[11px] font-semibold flex items-center gap-1">
+                    <span>{part}</span>
+                    <button type="button" onClick={() => handleEliminarPartido(part)} className="text-zinc-400 hover:text-white">✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Provincias */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-zinc-300 flex items-center gap-1.5 uppercase tracking-wider">
+              <Layers className="w-3.5 h-3.5 text-amber-400" />
+              <span>Provincias Cubiertas</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={nuevaProvincia}
+                onChange={(e) => setNuevaProvincia(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAgregarProvincia(); } }}
+                placeholder="Ej: Buenos Aires, CABA, Córdoba, Santa Fe..."
+                className="flex-1 px-3 py-1.5 bg-zinc-950 border border-zinc-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500"
+              />
+              <button
+                type="button"
+                onClick={() => handleAgregarProvincia()}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Agregar</span>
+              </button>
+            </div>
+            {provincias.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                {provincias.map((prov) => (
+                  <span key={prov} className="px-2 py-0.5 rounded-lg bg-amber-950/80 border border-amber-800/80 text-amber-300 text-[11px] font-semibold flex items-center gap-1">
+                    <span>{prov}</span>
+                    <button type="button" onClick={() => handleEliminarProvincia(prov)} className="text-zinc-400 hover:text-white">✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -642,7 +984,14 @@ export default function SelectorZonaEnvio({
 
       {/* Barra de Estado y Confirmación */}
       <div className="pt-1 flex flex-col sm:flex-row items-center justify-between gap-3">
-        {modo === 'radio' ? (
+        {modo === 'territorial' ? (
+          <div className="flex items-center gap-2 p-2.5 px-3.5 rounded-2xl bg-violet-950/70 border border-violet-500/60 text-violet-200 text-xs w-full">
+            <Globe className="w-4 h-4 text-cyan-400 shrink-0" />
+            <span className="font-semibold">
+              {compilarResumen(parseFloat(inputKm) || 0, poligono, localidades, partidos, provincias, enviosNacional, enviosExterior, 'territorial') || 'Configura tus localidades, partidos, provincias, país o exterior arriba.'}
+            </span>
+          </div>
+        ) : modo === 'radio' ? (
           <div className="flex items-center gap-2 p-2.5 px-3.5 rounded-2xl bg-emerald-950/70 border border-emerald-500/60 text-emerald-300 text-xs w-full">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="font-semibold">

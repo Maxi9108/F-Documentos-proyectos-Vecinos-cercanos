@@ -15,7 +15,7 @@ export interface NivelConfig {
 export const NIVELES_CONFIG: Record<NivelComercio, NivelConfig> = {
   standar: {
     nombre: 'Standar',
-    limiteProductos: 20,
+    limiteProductos: 10,
     limiteOfertasSemanales: 0,
     limiteOfertasDiarias: 0,
     requiereRenovacion: false,
@@ -26,9 +26,9 @@ export const NIVELES_CONFIG: Record<NivelComercio, NivelConfig> = {
   },
   premium: {
     nombre: 'Premium',
-    limiteProductos: 50,
+    limiteProductos: 30,
     limiteOfertasSemanales: 5,
-    limiteOfertasDiarias: 5,
+    limiteOfertasDiarias: 2,
     requiereRenovacion: true,
     diasVigencia: 30,
     diasDuracionOferta: 7,
@@ -37,9 +37,9 @@ export const NIVELES_CONFIG: Record<NivelComercio, NivelConfig> = {
   },
   gold: {
     nombre: 'Gold',
-    limiteProductos: 100,
-    limiteOfertasSemanales: 20,
-    limiteOfertasDiarias: 20,
+    limiteProductos: 45,
+    limiteOfertasSemanales: 10,
+    limiteOfertasDiarias: 5,
     requiereRenovacion: true,
     diasVigencia: 30,
     diasDuracionOferta: 7,
@@ -57,6 +57,7 @@ export interface Comercio {
   telefono: string;
   whatsapp?: string;
   email?: string;
+  user_id?: string;
   email_comercio?: string;
   estado_aprobacion?: 'pendiente' | 'aprobado' | 'rechazado' | 'eliminado';
   motivo_rechazo?: string;
@@ -73,6 +74,14 @@ export interface Comercio {
   longitud: number;
   radio_entrega_metros?: number;
   zona_envio_descripcion?: string;
+  alcance_envio?: ('radio' | 'poligono' | 'localidades' | 'partido' | 'provincia' | 'nacional' | 'exterior' | 'territorial')[] | 'radio' | 'poligono' | 'territorial';
+  envios_nacional?: boolean;
+  envios_exterior?: boolean;
+  zonas_entrega_detalle?: {
+    localidades?: string[];
+    partidos?: string[];
+    provincias?: string[];
+  } | string[];
   cobertura_poligono?: [number, number][];
   nivel?: NivelComercio;
   nivel_solicitado?: NivelComercio;

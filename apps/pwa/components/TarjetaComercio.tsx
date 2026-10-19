@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Comercio, NivelComercio } from '@/types/comercio';
 import {
   Phone,
@@ -20,11 +20,16 @@ import {
   AlertCircle,
   Palmtree,
   Clock,
+  CalendarClock,
   Heart,
   Flag,
   Power,
 } from 'lucide-react';
-import { verificarComercioAbierto } from '@/lib/horarios';
+import {
+  verificarComercioAbierto,
+  obtenerProximasFechasEspeciales,
+  ProximaFechaEspecialInfo,
+} from '@/lib/horarios';
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
@@ -65,10 +70,15 @@ export default function TarjetaComercio({
   const distanciaFormateada = distanciaKm !== null ? formatearDistancia(distanciaKm) : null;
   const tiempoEstimado = distanciaKm !== null ? estimarTiempo(distanciaKm) : null;
   
-  // Ofertas visibles solo si el comercio es Premium o Gold
-  const ofertasPermitidas = nivel === 'gold' ? 5 : nivel === 'premium' ? 2 : 0;
+  // Ofertas visibles solo si el comercio es Premium o Gold (Gold: 5 diarias + 10 semanales, Premium: 2 diarias + 5 semanales)
+  const ofertasPermitidas = nivel === 'gold' ? 15 : nivel === 'premium' ? 7 : 0;
   const ofertas = (comercio.productos?.filter((p) => p.es_oferta) || []).slice(0, ofertasPermitidas);
-  const tieneEnvios = Boolean(comercio.radio_entrega_metros && comercio.radio_entrega_metros > 0);
+  const tieneEnvios = Boolean(
+    (comercio.radio_entrega_metros && comercio.radio_entrega_metros > 0) ||
+    comercio.envios_nacional ||
+    comercio.envios_exterior ||
+    Boolean(comercio.zona_envio_descripcion && comercio.tipo_atencion !== 'local_fisico')
+  );
 
   // Determinar clases de borde y sombreado según Nivel y Selección
   let bordeClases = 'border-zinc-800/80 hover:border-zinc-700 hover:shadow-lg hover:shadow-black/50';
@@ -80,8 +90,15 @@ export default function TarjetaComercio({
     bordeClases = 'border-purple-500/40 hover:border-purple-500 shadow-md shadow-purple-950/20';
   }
 
-  // Estado operativo en tiempo real con soporte de días específicos y trasnoche
+  // Estado operativo en tiempo real con soporte de días específicos, trasnoche y fechas especiales
   const infoHorario = verificarComercioAbierto(comercio);
+
+  // Fechas especiales anticipadas programadas
+  const proximasFechas = useMemo<ProximaFechaEspecialInfo[]>(
+    () => obtenerProximasFechasEspeciales(comercio, new Date(), 14),
+    [comercio]
+  );
+  const avisoProximaFecha = proximasFechas.find((pf: ProximaFechaEspecialInfo) => !pf.esHoy) || null;
 
   let estadoBadgeTexto = infoHorario.badgeTexto;
   let estadoBadgeClases = infoHorario.estaAbierto
@@ -104,6 +121,14 @@ export default function TarjetaComercio({
   } else if (comercio.en_vacaciones) {
     estadoBadgeTexto = 'Vacaciones';
     estadoBadgeClases = 'bg-sky-950/60 text-sky-300 border-sky-800/60';
+  } else if (infoHorario.esFechaEspecial) {
+    if (infoHorario.estaAbierto) {
+      estadoBadgeTexto = 'Horario Esp.';
+      estadoBadgeClases = 'bg-amber-950/80 text-amber-300 border-amber-600/60 shadow-sm shadow-amber-950/40';
+    } else {
+      estadoBadgeTexto = 'Cerrado hoy';
+      estadoBadgeClases = 'bg-rose-950/80 text-rose-300 border-rose-800/50';
+    }
   }
 
   return (
@@ -327,6 +352,15 @@ export default function TarjetaComercio({
 
         {/* Horarios (Estructurados, Cortados o Continuos) */}
         <div className="mb-3 p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/60 text-xs text-zinc-300">
+          {infoHorario.esFechaEspecial && infoHorario.motivo && (
+            <div className="mb-2 pb-2 border-b border-zinc-800/80 flex items-start gap-1.5 text-[11px] text-amber-300">
+              <CalendarClock className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+              <span className="font-medium leading-tight">
+                <strong>Hoy:</strong> {infoHorario.motivo}
+              </span>
+            </div>
+          )}
+
           {comercio.horarios_config?.resumenFormateado ? (
             <p className="flex items-start gap-1.5 text-[11px] text-zinc-300 leading-snug">
               <Clock className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
@@ -352,15 +386,46 @@ export default function TarjetaComercio({
               <span>{comercio.horario || 'Horario no especificado'}</span>
             </p>
           )}
+
+          {/* Aviso anticipado de cierre o cambio de horario programado para los próximos días */}
+          {avisoProximaFecha && (
+            <div className="mt-2 pt-2 border-t border-zinc-800/80 flex items-start gap-1.5 text-[10.5px]">
+              <CalendarClock className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+              <span className="text-amber-200/90 leading-tight">
+                <strong className="text-amber-300">Aviso:</strong> {avisoProximaFecha.textoAviso}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Zona de Cobertura de Envíos */}
         {tieneEnvios && (
-          <div className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/90 text-xs text-zinc-300 space-y-1 mb-3.5">
-            <p className="flex items-center gap-1.5 font-semibold text-cyan-300">
-              <Compass className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-              <span>Zona de entrega: {(comercio.radio_entrega_metros! / 1000).toFixed(1)} km de radio</span>
-            </p>
+          <div className="p-2.5 rounded-xl bg-zinc-950 border border-zinc-800/90 text-xs text-zinc-300 space-y-1.5 mb-3.5">
+            <div className="flex items-center justify-between gap-1.5 flex-wrap">
+              {comercio.radio_entrega_metros && comercio.radio_entrega_metros > 0 ? (
+                <p className="flex items-center gap-1.5 font-semibold text-cyan-300">
+                  <Compass className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>Radio de entrega: {(comercio.radio_entrega_metros! / 1000).toFixed(1)} km</span>
+                </p>
+              ) : (
+                <p className="flex items-center gap-1.5 font-semibold text-cyan-300">
+                  <Bike className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>Envíos y Reparto</span>
+                </p>
+              )}
+              <div className="flex items-center gap-1 flex-wrap">
+                {comercio.envios_nacional && (
+                  <span className="px-1.5 py-0.5 rounded-md text-[9.5px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-700/60">
+                    🇦🇷 Envíos a todo el país
+                  </span>
+                )}
+                {comercio.envios_exterior && (
+                  <span className="px-1.5 py-0.5 rounded-md text-[9.5px] font-bold bg-purple-950 text-purple-300 border border-purple-700/60">
+                    🌐 Al exterior
+                  </span>
+                )}
+              </div>
+            </div>
             {comercio.zona_envio_descripcion && (
               <p className="text-[11px] text-zinc-400 pl-5 leading-tight">
                 {comercio.zona_envio_descripcion}

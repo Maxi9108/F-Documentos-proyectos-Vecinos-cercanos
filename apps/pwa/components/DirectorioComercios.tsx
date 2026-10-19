@@ -10,7 +10,7 @@ import ModalReportarComercio from './ModalReportarComercio';
 import PaletaOfertas from './PaletaOfertas';
 import SelectorLocalidadModal, { ZonaGeografica } from './SelectorLocalidadModal';
 import Link from 'next/link';
-import { Map, List, Store, Sparkles, Navigation, User, Compass, Radar, MapPin } from 'lucide-react';
+import { Map, List, Store, Sparkles, Navigation, User, Compass, Radar, MapPin, ShoppingBag } from 'lucide-react';
 
 import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
@@ -366,9 +366,13 @@ export default function DirectorioComercios({
   // Acción al hacer clic en un pin del mapa
   const handleSelectFromMap = useCallback((comercio: Comercio) => {
     setComercioSeleccionado(comercio);
-    const cardElement = document.getElementById(`comercio-${comercio.id}`);
-    if (cardElement) {
-      cardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Solo scrollear a la tarjeta en escritorio (pantallas grandes donde el mapa y la lista están lado a lado).
+    // En celulares NO scrolleamos la pantalla para no mover el mapa ni ocultar la tienda seleccionada.
+    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+      const cardElement = document.getElementById(`comercio-${comercio.id}`);
+      if (cardElement) {
+        cardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
     }
   }, []);
 
@@ -529,6 +533,67 @@ export default function DirectorioComercios({
                   onOpenDetalle={(comercio) => setComercioModal(comercio)}
                 />
               </div>
+
+              {/* Tarjeta flotante rápida para móviles cuando se toca una tienda en el mapa */}
+              {comercioSeleccionado && (
+                <div className="lg:hidden mt-3 p-3.5 bg-zinc-950/95 border border-cyan-500/50 rounded-2xl shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-2 duration-200">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-9 h-9 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800/60 flex items-center justify-center font-bold text-xs shrink-0">
+                        <Store className="w-4 h-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="font-bold text-sm text-white leading-tight truncate">
+                            {comercioSeleccionado.nombre}
+                          </h4>
+                          {comercioSeleccionado.esta_abierto ? (
+                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/40">
+                              Abierto
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-rose-950 text-rose-400 border border-rose-500/40">
+                              Cerrado
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[11px] text-zinc-400 truncate block">
+                          {comercioSeleccionado.rubro} • {comercioSeleccionado.direccion}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setComercioSeleccionado(null)}
+                      title="Cerrar vista rápida"
+                      className="w-6 h-6 rounded-full bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center text-xs shrink-0 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setComercioModal(comercioSeleccionado)}
+                      className="flex-1 py-2 px-3 bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5" />
+                      <span>{comercioSeleccionado.tiene_catalogo ? 'Ver Catálogo y Precios' : 'Ver Ficha y Contacto'}</span>
+                    </button>
+                    {comercioSeleccionado.whatsapp && (
+                      <a
+                        href={`https://wa.me/${comercioSeleccionado.whatsapp.replace(/[^0-9]/g, '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 cursor-pointer no-underline shrink-0"
+                      >
+                        <span>Pedir WhatsApp</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* Grilla de Tarjetas de Comercios */}

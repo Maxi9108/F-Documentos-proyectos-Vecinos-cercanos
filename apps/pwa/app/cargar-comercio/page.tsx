@@ -97,12 +97,16 @@ export default function CargarComercioPage() {
     setListaCategorias(cats);
   }, []);
 
-  // Modalidad de Atención y Zona de Entrega (delimitación con mapa y confirmación)
+  // Modalidad de Atención y Zona de Entrega (delimitación con mapa, radio o puntos territoriales)
   const [tipoAtencion, setTipoAtencion] = useState<'local_fisico' | 'solo_envio' | 'ambos'>('local_fisico');
   const [radioKm, setRadioKm] = useState(3);
   const [coberturaPoligono, setCoberturaPoligono] = useState<[number, number][]>([]);
   const [zonaEnvioConfirmada, setZonaEnvioConfirmada] = useState(true);
   const [zonaEnvioDescripcion, setZonaEnvioDescripcion] = useState('');
+  const [alcanceEnvio, setAlcanceEnvio] = useState<'radio' | 'poligono' | 'territorial'>('radio');
+  const [enviosNacional, setEnviosNacional] = useState(false);
+  const [enviosExterior, setEnviosExterior] = useState(false);
+  const [zonasEntregaDetalle, setZonasEntregaDetalle] = useState<string[]>([]);
 
   // Coordenadas geográficas por defecto (centro de referencia)
   const [latitud, setLatitud] = useState(-34.6000);
@@ -112,7 +116,8 @@ export default function CargarComercioPage() {
   const [nivelSolicitado, setNivelSolicitado] = useState<NivelComercio>('standar');
   const nivelConfig = NIVELES_CONFIG[nivelSolicitado];
   const limiteProductos = nivelConfig.limiteProductos;
-  const limiteOfertas = nivelConfig.limiteOfertasDiarias;
+  const limiteOfertasDiarias = nivelConfig.limiteOfertasDiarias;
+  const limiteOfertasSemanales = nivelConfig.limiteOfertasSemanales;
 
   // Sección de Catálogo
   const [deseaCatalogo, setDeseaCatalogo] = useState(false);
@@ -122,6 +127,7 @@ export default function CargarComercioPage() {
       descripcion: '',
       precio: 0,
       es_oferta: false,
+      tipo_oferta: 'semanal',
       precio_oferta: 0,
       imagen_url: '',
       categoria: '',
@@ -142,7 +148,9 @@ export default function CargarComercioPage() {
     }
   };
 
-  // Cantidad de ofertas activas actualmente
+  // Cantidad de ofertas activas actualmente desglosadas por tipo
+  const totalOfertasDiarias = productos.filter((p) => p.es_oferta && p.tipo_oferta === 'diaria').length;
+  const totalOfertasSemanales = productos.filter((p) => p.es_oferta && p.tipo_oferta !== 'diaria').length;
   const totalOfertas = productos.filter((p) => p.es_oferta).length;
 
   // Agregar fila de producto al catálogo respetando el límite del nivel
@@ -161,6 +169,7 @@ export default function CargarComercioPage() {
         descripcion: '',
         precio: 0,
         es_oferta: false,
+        tipo_oferta: 'semanal',
         precio_oferta: 0,
         imagen_url: '',
         categoria: '',
@@ -168,29 +177,51 @@ export default function CargarComercioPage() {
     ]);
   };
 
-  // Alternar estado de oferta respetando el límite diario del nivel
+  // Alternar estado de oferta respetando los límites del nivel
   const toggleOferta = (index: number) => {
     const prodActual = productos[index];
     const nuevoEstado = !prodActual?.es_oferta;
 
     if (nuevoEstado) {
-      if (limiteOfertas === 0) {
+      if (limiteOfertasDiarias === 0 && limiteOfertasSemanales === 0) {
         setErrorMsg(
-          'El nivel Standar no incluye ofertas destacadas. Selecciona el nivel Premium (2/día) o Gold (5/día) en el paso 2 para publicar promociones barriales.'
+          'El nivel Standar no incluye ofertas destacadas (0 ofertas diarias y 0 semanales). Selecciona el nivel Premium o Gold en el paso 2 para publicar promociones barriales.'
         );
         return;
       }
-      if (totalOfertas >= limiteOfertas) {
+
+      // Asignar tipo según disponibilidad
+      const tipoSugerido: 'diaria' | 'semanal' =
+        totalOfertasDiarias < limiteOfertasDiarias ? 'diaria' : 'semanal';
+
+      if (
+        tipoSugerido === 'semanal' &&
+        totalOfertasSemanales >= limiteOfertasSemanales &&
+        totalOfertasDiarias >= limiteOfertasDiarias
+      ) {
         setErrorMsg(
-          `El nivel ${nivelConfig.nombre} permite como máximo ${limiteOfertas} ${
-            limiteOfertas === 1 ? 'oferta' : 'ofertas'
-          } por día.`
+          `Has alcanzado el límite de ofertas del nivel ${nivelConfig.nombre} (${limiteOfertasDiarias} diarias y ${limiteOfertasSemanales} semanales).`
         );
         return;
       }
+
+      actualizarProducto(index, 'tipo_oferta', prodActual?.tipo_oferta || tipoSugerido);
     }
 
     actualizarProducto(index, 'es_oferta', nuevoEstado);
+  };
+
+  // Cambiar tipo de oferta entre diaria (24hs) y semanal (7 días)
+  const cambiarTipoOferta = (index: number, tipo: 'diaria' | 'semanal') => {
+    if (tipo === 'diaria' && totalOfertasDiarias >= limiteOfertasDiarias && productos[index]?.tipo_oferta !== 'diaria') {
+      setErrorMsg(`Has alcanzado el límite de ${limiteOfertasDiarias} ofertas diarias para el nivel ${nivelConfig.nombre}.`);
+      return;
+    }
+    if (tipo === 'semanal' && totalOfertasSemanales >= limiteOfertasSemanales && productos[index]?.tipo_oferta === 'diaria') {
+      setErrorMsg(`Has alcanzado el límite de ${limiteOfertasSemanales} ofertas semanales para el nivel ${nivelConfig.nombre}.`);
+      return;
+    }
+    actualizarProducto(index, 'tipo_oferta', tipo);
   };
 
   // Eliminar producto del catálogo
@@ -308,6 +339,7 @@ export default function CargarComercioPage() {
             descripcion: p.descripcion || '',
             precio: Number(p.precio) || 0,
             es_oferta: Boolean(p.es_oferta),
+            tipo_oferta: p.es_oferta ? (p.tipo_oferta || 'semanal') : undefined,
             precio_oferta: p.es_oferta ? Number(p.precio_oferta) || undefined : undefined,
             descuento_porcentaje:
               p.es_oferta && p.precio && p.precio_oferta
@@ -316,6 +348,7 @@ export default function CargarComercioPage() {
             imagen_url: p.imagen_url || 'https://images.unsplash.com/photo-1534723452862-4c874018d66d?w=600&auto=format&fit=crop&q=80',
             categoria: p.categoria || rubroFinal,
             fecha_oferta: p.es_oferta ? new Date().toISOString().split('T')[0] : undefined,
+            duracion_horas_oferta: p.es_oferta ? (p.tipo_oferta === 'diaria' ? 24 : 168) : undefined,
           }))
       : [];
 
@@ -328,10 +361,20 @@ export default function CargarComercioPage() {
       return;
     }
 
-    const ofertasValidas = productosValidos.filter((p) => p.es_oferta);
-    if (ofertasValidas.length > limiteOfertas) {
+    const ofertasDiarias = productosValidos.filter((p) => p.es_oferta && p.tipo_oferta === 'diaria');
+    const ofertasSemanales = productosValidos.filter((p) => p.es_oferta && p.tipo_oferta !== 'diaria');
+
+    if (ofertasDiarias.length > limiteOfertasDiarias) {
       setErrorMsg(
-        `Has marcado ${ofertasValidas.length} ofertas, pero el nivel ${nivelConfig.nombre} permite como máximo ${limiteOfertas} ofertas diarias.`
+        `Has marcado ${ofertasDiarias.length} ofertas diarias, pero el nivel ${nivelConfig.nombre} permite como máximo ${limiteOfertasDiarias} ofertas diarias.`
+      );
+      setGuardando(false);
+      return;
+    }
+
+    if (ofertasSemanales.length > limiteOfertasSemanales) {
+      setErrorMsg(
+        `Has marcado ${ofertasSemanales.length} ofertas semanales, pero el nivel ${nivelConfig.nombre} permite como máximo ${limiteOfertasSemanales} ofertas semanales.`
       );
       setGuardando(false);
       return;
@@ -339,8 +382,35 @@ export default function CargarComercioPage() {
 
     const hashedPassword = await hashPassword(passwordComercio.trim());
 
+    // Registro nativo en Supabase Auth para vinculación inmediata
+    let authUserId: string | undefined = undefined;
+    if (isSupabaseConfigured && emailComercio.trim()) {
+      const cleanMail = emailComercio.trim().toLowerCase();
+      try {
+        const { data: authData, error: authErr } = await supabase.auth.signUp({
+          email: cleanMail,
+          password: passwordComercio.trim(),
+        });
+        if (authData?.user) {
+          authUserId = authData.user.id;
+        } else if (authErr?.message?.toLowerCase().includes('already registered')) {
+          // Si el usuario ya existe (ej. comerciante abriendo sucursal), intentar iniciar sesión
+          const { data: loginData } = await supabase.auth.signInWithPassword({
+            email: cleanMail,
+            password: passwordComercio.trim(),
+          });
+          if (loginData?.user) {
+            authUserId = loginData.user.id;
+          }
+        }
+      } catch (eAuth) {
+        console.warn('[CargarComercio] Supabase Auth vincular usuario:', eAuth);
+      }
+    }
+
     const nuevoComercio: Comercio = {
       id: comercioId,
+      user_id: authUserId,
       nombre: nombre.trim(),
       rubro: rubroFinal,
       direccion: direccionFinal,
@@ -369,6 +439,10 @@ export default function CargarComercioPage() {
       radio_entrega_metros: tipoAtencion !== 'local_fisico' ? Math.round(radioKm * 1000) : 0,
       cobertura_poligono: tipoAtencion !== 'local_fisico' && coberturaPoligono.length >= 3 ? coberturaPoligono : undefined,
       zona_envio_descripcion: tipoAtencion !== 'local_fisico' ? zonaEnvioDescripcion.trim() : '',
+      alcance_envio: tipoAtencion !== 'local_fisico' ? alcanceEnvio : undefined,
+      envios_nacional: tipoAtencion !== 'local_fisico' ? enviosNacional : false,
+      envios_exterior: tipoAtencion !== 'local_fisico' ? enviosExterior : false,
+      zonas_entrega_detalle: tipoAtencion !== 'local_fisico' ? zonasEntregaDetalle : undefined,
       // Estado de moderación previa: todo local nuevo ingresa en pendiente
       estado_aprobacion: 'pendiente',
       categoria_solicitada: solicitaNuevaCategoria && categoriaSolicitada.trim() ? categoriaSolicitada.trim() : undefined,
@@ -472,7 +546,7 @@ export default function CargarComercioPage() {
                 )}
               </div>
               <p className="text-[11px] text-zinc-400 mt-1">
-                {limiteProductos} artículos en catálogo · {limiteOfertas} ofertas diarias destacadas.
+                {limiteProductos} artículos en catálogo · {limiteOfertasDiarias} ofertas diarias · {limiteOfertasSemanales} ofertas semanales.
               </p>
             </div>
 
@@ -662,19 +736,17 @@ export default function CargarComercioPage() {
                     }}
                     confirmado={zonaEnvioConfirmada}
                     onToggleConfirmado={(nuevoEstado) => setZonaEnvioConfirmada(nuevoEstado)}
+                    alcanceEnvio={alcanceEnvio}
+                    onChangeAlcanceEnvio={setAlcanceEnvio}
+                    enviosNacional={enviosNacional}
+                    onChangeEnviosNacional={setEnviosNacional}
+                    enviosExterior={enviosExterior}
+                    onChangeEnviosExterior={setEnviosExterior}
+                    zonasDetalle={zonasEntregaDetalle}
+                    onChangeZonasDetalle={setZonasEntregaDetalle}
+                    zonaDescripcion={zonaEnvioDescripcion}
+                    onChangeZonaDescripcion={setZonaEnvioDescripcion}
                   />
-                  <div className="mt-2.5">
-                    <label className="block text-[11px] text-zinc-400 mb-1">
-                      Aclaración adicional de calles límites o zonas (opcional)
-                    </label>
-                    <input
-                      type="text"
-                      value={zonaEnvioDescripcion}
-                      onChange={(e) => setZonaEnvioDescripcion(e.target.value)}
-                      placeholder="Ej. Entre Av. San Martín, Colectora Oeste y vías del tren"
-                      className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
                 </div>
               )}
 
@@ -1069,11 +1141,11 @@ export default function CargarComercioPage() {
                     <ul className="space-y-2 text-xs text-zinc-300 pt-2 border-t border-zinc-800/80">
                       <li className="flex items-center gap-2">
                         <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span>Catálogo de hasta <strong>20 artículos</strong></span>
+                        <span>Catálogo de hasta <strong>10 artículos</strong></span>
                       </li>
                       <li className="flex items-center gap-2 text-zinc-500">
                         <span className="w-3.5 h-3.5 text-center shrink-0">✕</span>
-                        <span>Sin ofertas destacadas diarias</span>
+                        <span>Sin ofertas destacadas (0 diarias / 0 semanales)</span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -1121,11 +1193,11 @@ export default function CargarComercioPage() {
                     <ul className="space-y-2 text-xs text-zinc-300 pt-2 border-t border-zinc-800/80">
                       <li className="flex items-center gap-2">
                         <Check className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                        <span>Catálogo de hasta <strong>50 artículos</strong></span>
+                        <span>Catálogo de hasta <strong>30 artículos</strong></span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span>Hasta <strong>2 ofertas por día</strong></span>
+                        <span>Hasta <strong>2 ofertas diarias</strong> y <strong>5 semanales</strong></span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Check className="w-3.5 h-3.5 text-purple-400 shrink-0" />
@@ -1173,11 +1245,11 @@ export default function CargarComercioPage() {
                     <ul className="space-y-2 text-xs text-zinc-300 pt-2 border-t border-zinc-800/80">
                       <li className="flex items-center gap-2">
                         <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span>Catálogo completo hasta <strong>100 productos</strong></span>
+                        <span>Catálogo completo hasta <strong>45 productos</strong></span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span>Hasta <strong>5 ofertas por día</strong></span>
+                        <span>Hasta <strong>5 ofertas diarias</strong> y <strong>10 semanales</strong></span>
                       </li>
                       <li className="flex items-center gap-2">
                         <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -1280,7 +1352,7 @@ export default function CargarComercioPage() {
                     </span>
                   </div>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Permitido para {nivelConfig.nombre}: hasta <strong>{limiteProductos} productos</strong> y <strong>{limiteOfertas === 0 ? 'sin ofertas' : `${limiteOfertas} ofertas/día`}</strong>.
+                    Permitido para {nivelConfig.nombre}: hasta <strong>{limiteProductos} productos</strong>, <strong>{limiteOfertasDiarias} ofertas diarias</strong> y <strong>{limiteOfertasSemanales} ofertas semanales</strong>.
                   </p>
                 </div>
 
@@ -1313,15 +1385,28 @@ export default function CargarComercioPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-zinc-400">Ofertas Diarias Marcadas:</span>
+                      <span className="text-zinc-400">Ofertas Diarias (24h):</span>
                       <span className={`font-bold font-mono px-2 py-0.5 rounded-lg border ${
-                        limiteOfertas === 0
+                        limiteOfertasDiarias === 0
                           ? 'bg-zinc-900 text-zinc-500 border-zinc-800'
-                          : totalOfertas >= limiteOfertas
+                          : totalOfertasDiarias >= limiteOfertasDiarias
                           ? 'bg-amber-950/60 text-amber-300 border-amber-800/60'
                           : 'bg-zinc-900 text-zinc-200 border-zinc-700'
                       }`}>
-                        {totalOfertas} / {limiteOfertas}
+                        {totalOfertasDiarias} / {limiteOfertasDiarias}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-zinc-400">Ofertas Semanales (7d):</span>
+                      <span className={`font-bold font-mono px-2 py-0.5 rounded-lg border ${
+                        limiteOfertasSemanales === 0
+                          ? 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                          : totalOfertasSemanales >= limiteOfertasSemanales
+                          ? 'bg-purple-950/60 text-purple-300 border-purple-800/60'
+                          : 'bg-zinc-900 text-zinc-200 border-zinc-700'
+                      }`}>
+                        {totalOfertasSemanales} / {limiteOfertasSemanales}
                       </span>
                     </div>
                   </div>
@@ -1403,36 +1488,68 @@ export default function CargarComercioPage() {
                       </div>
 
                       {/* Toggle de Oferta */}
-                      <div className="pt-2 border-t border-zinc-900 flex flex-wrap items-center justify-between gap-3">
-                        <button
-                          type="button"
-                          onClick={() => toggleOferta(index)}
-                          className={`text-xs px-3 py-1.5 rounded-lg border font-semibold flex items-center gap-1.5 cursor-pointer ${
-                            prod.es_oferta
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                              : limiteOfertas === 0
-                              ? 'bg-zinc-900 text-zinc-600 border-zinc-800/60 opacity-60'
-                              : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700'
-                          }`}
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          {prod.es_oferta
-                            ? 'En Oferta Barrial'
-                            : limiteOfertas === 0
-                            ? 'Ofertas solo en Premium/Gold'
-                            : 'Marcar como Oferta'}
-                        </button>
+                      <div className="pt-2 border-t border-zinc-900 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleOferta(index)}
+                            className={`text-xs px-3 py-1.5 rounded-lg border font-semibold flex items-center gap-1.5 cursor-pointer ${
+                              prod.es_oferta
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                : (limiteOfertasDiarias === 0 && limiteOfertasSemanales === 0)
+                                ? 'bg-zinc-900 text-zinc-600 border-zinc-800/60 opacity-60'
+                                : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700'
+                            }`}
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            {prod.es_oferta
+                              ? 'En Oferta Barrial'
+                              : (limiteOfertasDiarias === 0 && limiteOfertasSemanales === 0)
+                              ? 'Ofertas solo en Premium/Gold'
+                              : 'Marcar como Oferta'}
+                          </button>
+
+                          {prod.es_oferta && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-zinc-400">Precio Oferta ($):</span>
+                              <input
+                                type="number"
+                                value={prod.precio_oferta || ''}
+                                onChange={(e) => actualizarProducto(index, 'precio_oferta', e.target.value)}
+                                placeholder="6500"
+                                className="w-28 px-3 py-1 bg-zinc-900 border border-amber-500/40 rounded-lg text-xs text-amber-300 font-bold font-mono"
+                              />
+                            </div>
+                          )}
+                        </div>
 
                         {prod.es_oferta && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-zinc-400">Precio Oferta ($):</span>
-                            <input
-                              type="number"
-                              value={prod.precio_oferta || ''}
-                              onChange={(e) => actualizarProducto(index, 'precio_oferta', e.target.value)}
-                              placeholder="6500"
-                              className="w-28 px-3 py-1 bg-zinc-900 border border-amber-500/40 rounded-lg text-xs text-amber-300 font-bold font-mono"
-                            />
+                          <div className="flex items-center gap-2 pt-1 border-t border-zinc-900/80">
+                            <span className="text-[11px] text-zinc-400">Tipo de oferta:</span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => cambiarTipoOferta(index, 'diaria')}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                  prod.tipo_oferta === 'diaria'
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+                                }`}
+                              >
+                                Diaria (24 hs)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => cambiarTipoOferta(index, 'semanal')}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                  prod.tipo_oferta !== 'diaria'
+                                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/50'
+                                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
+                                }`}
+                              >
+                                Semanal (7 días)
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>

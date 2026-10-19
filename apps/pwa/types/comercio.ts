@@ -14,6 +14,7 @@ export interface Producto {
   agotado?: boolean;
   fecha_agotado?: string;
   // Ofertas dinámicas con cuenta regresiva en vivo
+  tipo_oferta?: 'diaria' | 'semanal'; // Diaria (24 hs) o Semanal (7 días)
   hora_vencimiento_oferta?: string;
   duracion_horas_oferta?: number;
   unidades_limitadas?: number;
@@ -37,7 +38,7 @@ export interface NivelConfig {
 export const NIVELES_CONFIG: Record<NivelComercio, NivelConfig> = {
   standar: {
     nombre: 'Standar',
-    limiteProductos: 20,
+    limiteProductos: 10,
     limiteOfertasSemanales: 0,
     limiteOfertasDiarias: 0,
     requiereRenovacion: false,
@@ -45,31 +46,31 @@ export const NIVELES_CONFIG: Record<NivelComercio, NivelConfig> = {
     diasDuracionOferta: 0,
     badgeLabel: 'Standar',
     badgeColor: 'zinc',
-    descripcion: 'Catálogo de hasta 20 artículos esenciales para tu comercio.',
+    descripcion: 'Catálogo de hasta 10 artículos esenciales para tu comercio.',
   },
   premium: {
     nombre: 'Premium',
-    limiteProductos: 50,
+    limiteProductos: 30,
     limiteOfertasSemanales: 5,
-    limiteOfertasDiarias: 5,
+    limiteOfertasDiarias: 2,
     requiereRenovacion: true,
     diasVigencia: 30,
     diasDuracionOferta: 7,
     badgeLabel: 'Premium',
     badgeColor: 'purple',
-    descripcion: 'Catálogo de hasta 50 productos y 5 ofertas semanales con duración de 7 días.',
+    descripcion: 'Catálogo de hasta 30 productos, 2 ofertas diarias y 5 ofertas semanales con duración de 7 días.',
   },
   gold: {
     nombre: 'Gold',
-    limiteProductos: 100,
-    limiteOfertasSemanales: 20,
-    limiteOfertasDiarias: 20,
+    limiteProductos: 45,
+    limiteOfertasSemanales: 10,
+    limiteOfertasDiarias: 5,
     requiereRenovacion: true,
     diasVigencia: 30,
     diasDuracionOferta: 7,
     badgeLabel: 'Gold',
     badgeColor: 'amber',
-    descripcion: 'Máxima visibilidad: catálogo de hasta 100 productos y 20 ofertas semanales con duración de 7 días.',
+    descripcion: 'Máxima visibilidad: catálogo de hasta 45 productos, 5 ofertas diarias y 10 ofertas semanales con duración de 7 días.',
   },
 };
 
@@ -104,6 +105,15 @@ export interface Comercio {
   tipo_atencion?: TipoAtencion;
   radio_entrega_metros?: number;
   zona_envio_descripcion?: string;
+  // Cobertura ampliada de envíos: radio sin límite (+15km), localidades, partidos, provincias, país y exterior
+  alcance_envio?: ('radio' | 'poligono' | 'localidades' | 'partido' | 'provincia' | 'nacional' | 'exterior' | 'territorial')[] | 'radio' | 'poligono' | 'territorial';
+  envios_nacional?: boolean;
+  envios_exterior?: boolean;
+  zonas_entrega_detalle?: {
+    localidades?: string[];
+    partidos?: string[];
+    provincias?: string[];
+  } | string[];
   // Campos de moderación y aprobación
   estado_aprobacion?: EstadoAprobacion;
   categoria_solicitada?: string;
@@ -147,9 +157,11 @@ export interface Comercio {
   fecha_cuarentena?: string;
   motivo_cuarentena?: string;
   strikes_reportes?: number;
-  // Configuración avanzada de días y horarios (con soporte trasnoche)
+  // Configuración avanzada de días y horarios (con soporte trasnoche y fechas especiales)
   horarios_config?: HorariosConfig;
+  fechas_especiales?: HorarioEspecialFecha[];
   // Credenciales exclusivas del comercio para portal mi-comercio
+  user_id?: string;
   email_comercio?: string;
   password_comercio?: string;
   // Control de modificación de catálogo (1 vez por mes / 30 días)
@@ -359,6 +371,7 @@ export interface DebateInconveniente {
 export interface ModificacionComercio {
   id: string;
   comercio_id: string;
+  user_id?: string;
   comercio_nombre: string;
   usuario_email?: string;
   fecha_solicitud: string;
@@ -404,6 +417,14 @@ export type DiaSemana =
   | 'sabado'
   | 'domingo';
 
+export interface HorarioEspecialFecha {
+  id: string;
+  fecha: string; // Formato YYYY-MM-DD (ej: "2026-10-25")
+  tipo: 'cerrado' | 'horario_especial';
+  motivo?: string; // Ej: "Feriado Nacional", "Inventario", "Día personal", "Horario de víspera"
+  turnos?: HorarioTurno[]; // Si es horario_especial, los turnos a aplicar ese día
+}
+
 export interface HorariosConfig {
   modo: 'bloques' | 'personalizado';
   // Modo Bloques: Lun a Vie, Sábados y Domingos
@@ -422,6 +443,8 @@ export interface HorariosConfig {
     sabado: HorarioDia;
     domingo: HorarioDia;
   };
+  // Fechas especiales anticipadas (Feriados, inventarios o cambios puntuales de fecha)
+  fechas_especiales?: HorarioEspecialFecha[];
   resumenFormateado?: string;
 }
 

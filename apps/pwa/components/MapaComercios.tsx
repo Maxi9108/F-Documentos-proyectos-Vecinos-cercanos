@@ -318,27 +318,39 @@ export function getRubroPinConfig(rubro?: string, tipoAtencion?: string): RubroP
 function MapController({
   selectedComercio,
   ubicacionReferencia,
+  skipFlyToId,
 }: {
   selectedComercio: Comercio | null;
   ubicacionReferencia: { latitud: number; longitud: number } | null;
+  skipFlyToId?: string | null;
 }) {
   const map = useMap();
+  const ultimaRefVolada = React.useRef<string | null>(null);
 
   useEffect(() => {
     if (selectedComercio) {
+      // Si el comercio fue seleccionado tocando directamente el pin en el mapa,
+      // evitamos flyTo forzado para que no desplace la pantalla bruscamente en celulares
+      if (skipFlyToId === selectedComercio.id) {
+        return;
+      }
       map.flyTo([selectedComercio.latitud, selectedComercio.longitud], 15, {
-        duration: 1.2,
+        duration: 0.9,
         easeLinearity: 0.25,
       });
     }
-  }, [selectedComercio, map]);
+  }, [selectedComercio, skipFlyToId, map]);
 
   useEffect(() => {
     if (ubicacionReferencia && !selectedComercio) {
-      map.flyTo([ubicacionReferencia.latitud, ubicacionReferencia.longitud], 14, {
-        duration: 1.2,
-        easeLinearity: 0.25,
-      });
+      const clave = `${ubicacionReferencia.latitud.toFixed(4)},${ubicacionReferencia.longitud.toFixed(4)}`;
+      if (ultimaRefVolada.current !== clave) {
+        ultimaRefVolada.current = clave;
+        map.flyTo([ubicacionReferencia.latitud, ubicacionReferencia.longitud], 14, {
+          duration: 1.0,
+          easeLinearity: 0.25,
+        });
+      }
     }
   }, [ubicacionReferencia, selectedComercio, map]);
 
@@ -486,6 +498,13 @@ export default function MapaComercios({
   const [avisoLentitudVisible, setAvisoLentitudVisible] = useState(false);
   const [tilesCargados, setTilesCargados] = useState(false);
   const [, setTileErrorsCount] = useState(0);
+  const [pinClickComercioId, setPinClickComercioId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (comercioSeleccionado && comercioSeleccionado.id !== pinClickComercioId) {
+      setPinClickComercioId(null);
+    }
+  }, [comercioSeleccionado]);
 
   const {
     ubicacionReferencia,
@@ -748,6 +767,7 @@ export default function MapaComercios({
         <MapController
           selectedComercio={comercioSeleccionado}
           ubicacionReferencia={ubicacionReferencia}
+          skipFlyToId={pinClickComercioId}
         />
 
         {/* Círculo interactivo que dibuja el radio de entrega del comercio seleccionado */}
@@ -848,7 +868,10 @@ export default function MapaComercios({
                     dashArray: '6, 6',
                   }}
                   eventHandlers={{
-                    click: () => onSelectComercio(comercio),
+                    click: () => {
+                      setPinClickComercioId(comercio.id);
+                      onSelectComercio(comercio);
+                    },
                   }}
                 />
               )}
@@ -865,7 +888,10 @@ export default function MapaComercios({
                     dashArray: '6, 6',
                   }}
                   eventHandlers={{
-                    click: () => onSelectComercio(comercio),
+                    click: () => {
+                      setPinClickComercioId(comercio.id);
+                      onSelectComercio(comercio);
+                    },
                   }}
                 />
               )}
@@ -874,10 +900,13 @@ export default function MapaComercios({
                 position={[validLat, validLng]}
                 icon={pinIcon}
                 eventHandlers={{
-                  click: () => onSelectComercio(comercio),
+                  click: () => {
+                    setPinClickComercioId(comercio.id);
+                    onSelectComercio(comercio);
+                  },
                 }}
               >
-              <Popup className="custom-popup">
+              <Popup className="custom-popup" autoPan={true} autoPanPadding={[30, 30]}>
                 <div className="p-1 min-w-[240px] text-zinc-100 font-sans">
                   {/* Cabecera con Rubro temático y Estado */}
                   <div className="flex items-center justify-between gap-2 mb-2">

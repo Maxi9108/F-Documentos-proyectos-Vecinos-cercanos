@@ -4,14 +4,34 @@ import React from 'react';
 import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 
-interface SelectorZonaEnvioWrapperProps {
+export interface SelectorZonaEnvioWrapperProps {
   latitud: number;
   longitud: number;
   radioKm: number;
   poligono: [number, number][];
-  onChange: (nuevoRadioKm: number, nuevoPoligono: [number, number][]) => void;
+  onChange: (
+    nuevoRadioKm: number,
+    nuevoPoligono: [number, number][],
+    extraConfig?: any
+  ) => void;
   confirmado: boolean;
   onToggleConfirmado: (nuevoEstado: boolean) => void;
+  initialDescripcion?: string;
+  initialEnviosNacional?: boolean;
+  initialEnviosExterior?: boolean;
+  initialLocalidades?: string[];
+  initialPartidos?: string[];
+  initialProvincias?: string[];
+  alcanceEnvio?: 'radio' | 'poligono' | 'territorial';
+  onChangeAlcanceEnvio?: (modo: 'radio' | 'poligono' | 'territorial') => void;
+  enviosNacional?: boolean;
+  onChangeEnviosNacional?: (val: boolean) => void;
+  enviosExterior?: boolean;
+  onChangeEnviosExterior?: (val: boolean) => void;
+  zonasDetalle?: string[] | { localidades?: string[]; partidos?: string[]; provincias?: string[] };
+  onChangeZonasDetalle?: (val: any) => void;
+  zonaDescripcion?: string;
+  onChangeZonaDescripcion?: (val: string) => void;
 }
 
 const SelectorZonaEnvio = dynamic(() => import('./SelectorZonaEnvio'), {

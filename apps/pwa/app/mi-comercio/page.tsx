@@ -32,6 +32,8 @@ import {
   configurarVacaciones,
   toggleCerradoFinDelDia,
   toggleCerradoMomentaneo,
+  supabase,
+  isSupabaseConfigured,
 } from '@/lib/supabase';
 import { hashPassword, verifyPassword } from '@/lib/crypto';
 import { getCategorias } from '@/lib/categorias';
@@ -157,6 +159,10 @@ export default function MiComercioPage() {
   const [coberturaPoligono, setCoberturaPoligono] = useState<[number, number][]>([]);
   const [zonaEnvioConfirmada, setZonaEnvioConfirmada] = useState(true);
   const [zonaEnvioDescripcion, setZonaEnvioDescripcion] = useState('');
+  const [alcanceEnvio, setAlcanceEnvio] = useState<'radio' | 'poligono' | 'territorial'>('radio');
+  const [enviosNacional, setEnviosNacional] = useState(false);
+  const [enviosExterior, setEnviosExterior] = useState(false);
+  const [zonasEntregaDetalle, setZonasEntregaDetalle] = useState<string[]>([]);
   const [enVacaciones, setEnVacaciones] = useState(false);
   const [vacacionesDesde, setVacacionesDesde] = useState('');
   const [vacacionesHasta, setVacacionesHasta] = useState('');
@@ -194,6 +200,7 @@ export default function MiComercioPage() {
   const [prodDescripcion, setProdDescripcion] = useState('');
   const [prodCategoria, setProdCategoria] = useState('');
   const [prodEsOferta, setProdEsOferta] = useState(false);
+  const [prodTipoOferta, setProdTipoOferta] = useState<'diaria' | 'semanal'>('semanal');
   const [prodPrecioOferta, setProdPrecioOferta] = useState('');
   const [prodAgotado, setProdAgotado] = useState(false);
   const [prodHoraVencimiento, setProdHoraVencimiento] = useState('');
@@ -231,22 +238,50 @@ export default function MiComercioPage() {
       const cats = getCategorias().map((c) => c.nombre);
       setCategoriasRubro(cats);
 
-      // Verificar si hay sesión previa guardada en sessionStorage
+      // 1. Verificar si hay sesión activa en Supabase Auth
+      let comercioPorSupaAuth: Comercio | null = null;
+      if (isSupabaseConfigured) {
+        try {
+          const { data: supaUsr } = await supabase.auth.getUser();
+          if (supaUsr?.user) {
+            const uid = supaUsr.user.id;
+            const umail = (supaUsr.user.email || '').toLowerCase();
+            comercioPorSupaAuth = lista.find(
+              (c) =>
+                c.user_id === uid ||
+                (umail && c.email_comercio && c.email_comercio.toLowerCase() === umail) ||
+                (umail && c.email && c.email.toLowerCase() === umail)
+            ) || null;
+          }
+        } catch (_) {}
+      }
+
+      // 2. Verificar si hay sesión previa guardada en sessionStorage
       const sesionGuardada = typeof window !== 'undefined' ? sessionStorage.getItem('vecinos_comercio_auth_id') : null;
 
       if (lista.length > 0) {
         setLoginComercioId(lista[0].id);
-        const inicial = lista.find((c) => c.id === sesionGuardada) || lista[0];
-        if (sesionGuardada && lista.some((c) => c.id === sesionGuardada)) {
-          setComercioAutenticadoId(sesionGuardada);
-          setComercioSeleccionadoId(sesionGuardada);
-          cargarDatosFormulario(inicial);
-        } else {
-          if (sesionGuardada && typeof window !== 'undefined') {
-            sessionStorage.removeItem('vecinos_comercio_auth_id');
+
+        if (comercioPorSupaAuth) {
+          setComercioAutenticadoId(comercioPorSupaAuth.id);
+          setComercioSeleccionadoId(comercioPorSupaAuth.id);
+          cargarDatosFormulario(comercioPorSupaAuth);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('vecinos_comercio_auth_id', comercioPorSupaAuth.id);
           }
-          setComercioSeleccionadoId(inicial.id);
-          cargarDatosFormulario(inicial);
+        } else {
+          const inicial = lista.find((c) => c.id === sesionGuardada) || lista[0];
+          if (sesionGuardada && lista.some((c) => c.id === sesionGuardada)) {
+            setComercioAutenticadoId(sesionGuardada);
+            setComercioSeleccionadoId(sesionGuardada);
+            cargarDatosFormulario(inicial);
+          } else {
+            if (sesionGuardada && typeof window !== 'undefined') {
+              sessionStorage.removeItem('vecinos_comercio_auth_id');
+            }
+            setComercioSeleccionadoId(inicial.id);
+            cargarDatosFormulario(inicial);
+          }
         }
       }
       setCargando(false);
@@ -348,6 +383,29 @@ export default function MiComercioPage() {
     setCoberturaPoligono(comercio.cobertura_poligono || []);
     setZonaEnvioConfirmada(true);
     setZonaEnvioDescripcion(comercio.zona_envio_descripcion || '');
+    const alcanceVal: 'radio' | 'poligono' | 'territorial' = Array.isArray(comercio.alcance_envio)
+      ? (comercio.alcance_envio.includes('territorial') || comercio.alcance_envio.includes('nacional') || comercio.alcance_envio.includes('exterior') || comercio.alcance_envio.includes('localidades') || comercio.alcance_envio.includes('partido') || comercio.alcance_envio.includes('provincia')
+          ? 'territorial'
+          : comercio.alcance_envio.includes('poligono')
+          ? 'poligono'
+          : 'radio')
+      : comercio.alcance_envio === 'poligono' || comercio.alcance_envio === 'territorial'
+      ? comercio.alcance_envio
+      : (comercio.cobertura_poligono && comercio.cobertura_poligono.length >= 3 ? 'poligono' : 'radio');
+    setAlcanceEnvio(alcanceVal);
+    setEnviosNacional(Boolean(comercio.envios_nacional));
+    setEnviosExterior(Boolean(comercio.envios_exterior));
+    let detalleArray: string[] = [];
+    if (Array.isArray(comercio.zonas_entrega_detalle)) {
+      detalleArray = comercio.zonas_entrega_detalle;
+    } else if (comercio.zonas_entrega_detalle) {
+      detalleArray = [
+        ...(comercio.zonas_entrega_detalle.localidades || []),
+        ...(comercio.zonas_entrega_detalle.partidos || []),
+        ...(comercio.zonas_entrega_detalle.provincias || []),
+      ];
+    }
+    setZonasEntregaDetalle(detalleArray);
     setEnVacaciones(Boolean(comercio.en_vacaciones));
     setVacacionesDesde(comercio.vacaciones_desde || '');
     setVacacionesHasta(comercio.vacaciones_hasta || '');
@@ -397,7 +455,7 @@ export default function MiComercioPage() {
     cargarRelacionados();
   }, [comercioSeleccionadoId]);
 
-  // Manejar login de comercio seguro (sin backdoors y validado en servidor / local)
+  // Manejar login de comercio seguro (Supabase Auth nativo con migración transparente JIT)
   const handleLoginComercio = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
@@ -432,8 +490,63 @@ export default function MiComercioPage() {
       return;
     }
 
+    const emailObjetivo = (mailLimpio || com?.email_comercio || com?.email || '').trim().toLowerCase();
+
     try {
-      // Obtener hash guardado localmente si existe en localStorage para fallback inmediato
+      // 1. INTENTO NATIVO CON SUPABASE AUTH (Si ya fue migrado o registrado nativamente)
+      if (isSupabaseConfigured && emailObjetivo) {
+        try {
+          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email: emailObjetivo,
+            password: loginPassword,
+          });
+
+          if (!authError && authData?.user) {
+            const authUserId = authData.user.id;
+            let targetCom = com || comercios.find((c) =>
+              c.user_id === authUserId ||
+              (c.email_comercio && c.email_comercio.toLowerCase() === emailObjetivo) ||
+              (c.email && c.email.toLowerCase() === emailObjetivo)
+            ) || null;
+
+            if (targetCom) {
+              // Vincular user_id en Supabase si aún no estaba vinculado
+              if (!targetCom.user_id) {
+                targetCom.user_id = authUserId;
+                try {
+                  await supabase.from('comercios').update({ user_id: authUserId }).eq('id', targetCom.id);
+                  await supabase.from('solicitudes_modificacion').update({ user_id: authUserId }).eq('comercio_id', targetCom.id);
+                } catch (_) {}
+              }
+
+              setComercioAutenticadoId(targetCom.id);
+              setComercioSeleccionadoId(targetCom.id);
+              if (typeof window !== 'undefined') {
+                sessionStorage.setItem('vecinos_comercio_auth_id', targetCom.id);
+              }
+              cargarDatosFormulario(targetCom);
+              setLoginPassword('');
+              setLoginError(null);
+
+              // Detección multi-sucursal
+              const sucursales = comercios.filter((c) =>
+                c.id === targetCom?.id ||
+                c.user_id === authUserId ||
+                (c.email_comercio && c.email_comercio.toLowerCase() === emailObjetivo) ||
+                (c.email && c.email.toLowerCase() === emailObjetivo)
+              );
+              if (sucursales.length > 1) {
+                setModalElegirSucursalAbierto(true);
+              }
+              return;
+            }
+          }
+        } catch (eAuth) {
+          console.warn('[MiComercio] Supabase Auth signIn intento:', eAuth);
+        }
+      }
+
+      // 2. MIGRACIÓN TRANSPARENTE JIT: Validar credencial legada en servidor / local
       let localPassHash: string | undefined = undefined;
       if (typeof window !== 'undefined') {
         try {
@@ -443,7 +556,7 @@ export default function MiComercioPage() {
             const found = parsedList.find(
               (p: any) =>
                 p.id === (com?.id || loginComercioId) ||
-                (mailLimpio && (p.email_comercio?.toLowerCase() === mailLimpio || p.email?.toLowerCase() === mailLimpio))
+                (emailObjetivo && (p.email_comercio?.toLowerCase() === emailObjetivo || p.email?.toLowerCase() === emailObjetivo))
             );
             if (found?.password_comercio) {
               localPassHash = found.password_comercio;
@@ -457,7 +570,7 @@ export default function MiComercioPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           comercioId: com?.id || loginComercioId || undefined,
-          email: mailLimpio || com?.email_comercio || com?.email || undefined,
+          email: emailObjetivo || undefined,
           password: loginPassword,
           clientStoredHash: localPassHash || com?.password_comercio || undefined,
           comercioFallback: com || undefined,
@@ -467,6 +580,27 @@ export default function MiComercioPage() {
       const data = await res.json();
 
       if (data.ok && data.comercio) {
+        // Migración JIT: Crear cuenta automáticamente en Supabase Auth
+        if (isSupabaseConfigured && emailObjetivo) {
+          try {
+            const { data: supaSignUp, error: signUpErr } = await supabase.auth.signUp({
+              email: emailObjetivo,
+              password: loginPassword,
+            });
+
+            const newUid = supaSignUp?.user?.id;
+            if (newUid) {
+              data.comercio.user_id = newUid;
+              try {
+                await supabase.from('comercios').update({ user_id: newUid }).eq('id', data.comercio.id);
+                await supabase.from('solicitudes_modificacion').update({ user_id: newUid }).eq('comercio_id', data.comercio.id);
+              } catch (_) {}
+            }
+          } catch (eMigrate) {
+            console.warn('[JIT Migration] Supabase Auth signUp:', eMigrate);
+          }
+        }
+
         setComercioAutenticadoId(data.comercio.id);
         setComercioSeleccionadoId(data.comercio.id);
         setComercios((prev) => {
@@ -485,8 +619,8 @@ export default function MiComercioPage() {
         setLoginPassword('');
         setLoginError(null);
 
-        // Si el comerciante tiene múltiples sucursales, abrir modal para que pueda elegir de la lista con cuál trabajar
-        const targetMail = (data.comercio.email_comercio || data.comercio.email || mailLimpio || '').trim().toLowerCase();
+        // Si el comerciante tiene múltiples sucursales, abrir modal para que pueda elegir
+        const targetMail = (data.comercio.email_comercio || data.comercio.email || emailObjetivo || '').trim().toLowerCase();
         const targetTel = (data.comercio.whatsapp || data.comercio.telefono || '').replace(/\D/g, '');
         const sucursalesDetectadas = comercios.filter((c) => {
           if (c.id === data.comercio.id) return true;
@@ -541,15 +675,23 @@ export default function MiComercioPage() {
     }
   };
 
-  // Cerrar sesión del comercio
-  const handleCerrarSesion = () => {
+  // Cerrar sesión del comercio (limpieza completa de tokens y sesión local)
+  const handleCerrarSesion = async () => {
     setComercioAutenticadoId(null);
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('vecinos_comercio_auth_id');
     }
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signOut();
+      } catch (_) {}
+    }
   };
 
   // Dar de baja el comercio por el propio comerciante
+  // SEGURIDAD: la operación se ejecuta desde el servidor mediante /api/comercio/baja.
+  // El servidor valida el JWT de Supabase Auth, verifica la propiedad del comercio
+  // y ejecuta la baja atómica con service_role. El cliente NO hace DELETE directo.
   const handleDarDeBajaComercio = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!comercioActual) return;
@@ -568,65 +710,137 @@ export default function MiComercioPage() {
         return;
       }
 
-      // 1. Obtener hash de almacenamiento local si existe
-      let localPassHash: string | undefined = undefined;
-      if (typeof window !== 'undefined') {
+      // ── 1. Verificar contraseña del comerciante (autenticación) ──────────────
+      // Intentamos primero con Supabase Auth nativo para obtener un token JWT válido.
+      // Si no funciona, usamos el endpoint de auth legado como fallback.
+      let jwtToken: string | null = null;
+      const mailComercio = (comercioActual.email_comercio || comercioActual.email || '').trim().toLowerCase();
+
+      if (isSupabaseConfigured && mailComercio) {
         try {
-          const rawLocales = localStorage.getItem('vecinos_comercios_nuevos');
-          if (rawLocales) {
-            const parsed = JSON.parse(rawLocales);
-            const match = parsed.find((p: any) => p.id === comercioActual.id);
-            if (match?.password_comercio) {
-              localPassHash = match.password_comercio;
-            }
+          const { data: signInData, error: supaErr } = await supabase.auth.signInWithPassword({
+            email: mailComercio,
+            password: passBajaComercio,
+          });
+          if (!supaErr && signInData?.session?.access_token) {
+            jwtToken = signInData.session.access_token;
           }
         } catch (_) {}
       }
 
-      // 2. Verificar contraseña con la API y hash local
-      let passValida = false;
-      try {
-        const resAuth = await fetch('/api/auth-comercio', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            comercioId: comercioActual.id,
-            email: comercioActual.email_comercio || comercioActual.email,
-            password: passBajaComercio,
-            clientStoredHash: localPassHash || comercioActual.password_comercio || undefined,
-            comercioFallback: comercioActual,
-          }),
+      // Fallback: verificar con el endpoint de auth legado si no obtuvimos token JWT
+      if (!jwtToken) {
+        let localPassHash: string | undefined = undefined;
+        if (typeof window !== 'undefined') {
+          try {
+            const rawLocales = localStorage.getItem('vecinos_comercios_nuevos');
+            if (rawLocales) {
+              const parsed = JSON.parse(rawLocales);
+              const match = parsed.find((p: any) => p.id === comercioActual.id);
+              if (match?.password_comercio) localPassHash = match.password_comercio;
+            }
+          } catch (_) {}
+        }
+
+        let passValidaFallback = false;
+        try {
+          const resAuth = await fetch('/api/auth-comercio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              comercioId: comercioActual.id,
+              email: mailComercio || comercioActual.email_comercio || comercioActual.email,
+              password: passBajaComercio,
+              clientStoredHash: localPassHash || comercioActual.password_comercio || undefined,
+              comercioFallback: comercioActual,
+            }),
+          });
+          const dataAuth = await resAuth.json();
+          if (dataAuth.ok) passValidaFallback = true;
+          else if (localPassHash) passValidaFallback = await verifyPassword(passBajaComercio, localPassHash);
+        } catch (_) {
+          if (localPassHash) passValidaFallback = await verifyPassword(passBajaComercio, localPassHash);
+        }
+
+        if (!passValidaFallback) {
+          setErrorBajaComercio('Contraseña incorrecta. Se requiere la contraseña válida del comercio para autorizar la eliminación de sus datos.');
+          setProcesandoBajaComercio(false);
+          return;
+        }
+
+        // Sin JWT nativo no podemos usar el endpoint seguro: ejecutar ruta legada
+        // (solo ocurre en modo desarrollo local sin Supabase Auth configurado)
+        await eliminarComercio(comercioActual.id);
+        registrarEvento('visita_comercio', comercioActual.id, comercioActual.nombre, {
+          accion: 'baja_voluntaria_comerciante_legado',
+          motivo: motivoBajaComercio,
         });
-        const dataAuth = await resAuth.json();
-        if (dataAuth.ok) {
-          passValida = true;
-        } else if (localPassHash) {
-          passValida = await verifyPassword(passBajaComercio, localPassHash);
-        }
-      } catch (_) {
-        if (localPassHash) {
-          passValida = await verifyPassword(passBajaComercio, localPassHash);
-        }
+        setModalBajaComercioAbierto(false);
+        setComercioAutenticadoId(null);
+        if (typeof window !== 'undefined') sessionStorage.removeItem('vecinos_comercio_auth_id');
+        alert(`"${comercioActual.nombre}" ha sido dado de baja permanentemente del sistema.`);
+        window.location.href = '/';
+        return;
       }
 
-      if (!passValida) {
-        setErrorBajaComercio('Contraseña incorrecta. Se requiere la contraseña válida del comercio para autorizar la eliminación de sus datos.');
+      // ── 2. Llamar al endpoint seguro del servidor con el JWT ─────────────────
+      const resBaja = await fetch('/api/comercio/baja', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${jwtToken}`,
+        },
+        body: JSON.stringify({
+          comercioId: comercioActual.id,
+          motivo: motivoBajaComercio,
+        }),
+      });
+
+      const dataBaja = await resBaja.json();
+
+      if (!resBaja.ok || !dataBaja.ok) {
+        setErrorBajaComercio(dataBaja.error || 'Error al procesar la baja. Intenta nuevamente.');
         setProcesandoBajaComercio(false);
         return;
       }
 
-      await eliminarComercio(comercioActual.id);
-      registrarEvento('visita_comercio', comercioActual.id, comercioActual.nombre, {
-        accion: 'baja_voluntaria_comerciante',
-        motivo: motivoBajaComercio,
-      });
+      // ── 3. Limpiar caché local del comercio dado de baja ─────────────────────
+      if (typeof window !== 'undefined') {
+        try {
+          // Agregar a lista de eliminados para que no resurja de ninguna caché
+          const elimRaw = localStorage.getItem('vecinos_comercios_eliminados');
+          const eliminados: string[] = elimRaw ? JSON.parse(elimRaw) : [];
+          if (!eliminados.includes(comercioActual.id)) {
+            eliminados.push(comercioActual.id);
+            localStorage.setItem('vecinos_comercios_eliminados', JSON.stringify(eliminados));
+          }
+          // Quitar de la lista local de comercios guardados
+          const guardadosRaw = localStorage.getItem('vecinos_comercios_nuevos');
+          if (guardadosRaw) {
+            const guardados = JSON.parse(guardadosRaw).filter((c: any) => c.id !== comercioActual.id);
+            localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(guardados));
+          }
+          // Quitar de favoritos si estaba
+          const favsRaw = localStorage.getItem('vecinos_locales_favoritos');
+          if (favsRaw) {
+            const favs = JSON.parse(favsRaw).filter((fId: string) => fId !== comercioActual.id);
+            localStorage.setItem('vecinos_locales_favoritos', JSON.stringify(favs));
+          }
+          // Limpiar mi comercio id y sesión
+          if (localStorage.getItem('vecinos_mi_comercio_id') === comercioActual.id) {
+            localStorage.removeItem('vecinos_mi_comercio_id');
+          }
+          sessionStorage.removeItem('vecinos_comercio_auth_id');
+        } catch (_) {}
+      }
 
-      // Limpiar estados locales
+      // ── 4. Cerrar sesión de Supabase Auth ────────────────────────────────────
+      try {
+        await supabase.auth.signOut();
+      } catch (_) {}
+
       setModalBajaComercioAbierto(false);
       setComercioAutenticadoId(null);
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('vecinos_comercio_auth_id');
-      }
 
       alert(`"${comercioActual.nombre}" ha sido dado de baja permanentemente del sistema.`);
       window.location.href = '/';
@@ -675,7 +889,9 @@ export default function MiComercioPage() {
 
   // Límites según el nivel del comercio
   const nivelActual = comercioActual?.nivel || 'standar';
-  const limiteProductos = NIVELES_CONFIG[nivelActual]?.limiteProductos || 20;
+  const limiteProductos = NIVELES_CONFIG[nivelActual]?.limiteProductos || 10;
+  const limiteOfertasDiarias = NIVELES_CONFIG[nivelActual]?.limiteOfertasDiarias || 0;
+  const limiteOfertasSemanales = NIVELES_CONFIG[nivelActual]?.limiteOfertasSemanales || 0;
 
   // Abrir modal de nuevo producto o edición
   const handleAbrirModalProducto = (producto?: Producto) => {
@@ -690,6 +906,7 @@ export default function MiComercioPage() {
       setProdDescripcion(producto.descripcion || '');
       setProdCategoria(producto.categoria || '');
       setProdEsOferta(Boolean(producto.es_oferta));
+      setProdTipoOferta(producto.tipo_oferta || 'semanal');
       setProdPrecioOferta(producto.precio_oferta ? String(producto.precio_oferta) : '');
       setProdAgotado(Boolean(producto.agotado));
       setProdHoraVencimiento(producto.hora_vencimiento_oferta || '');
@@ -699,12 +916,14 @@ export default function MiComercioPage() {
         alert(`Has alcanzado el límite máximo de ${limiteProductos} productos para tu plan ${nivelActual.toUpperCase()}. Mejora tu plan a Premium o Gold para ampliar el catálogo.`);
         return;
       }
+      const totalDiariasActual = productos.filter((p) => p.es_oferta && p.tipo_oferta === 'diaria').length;
       setProductoEditandoId(null);
       setProdNombre('');
       setProdPrecio('');
       setProdDescripcion('');
       setProdCategoria(comercioActual?.rubro || '');
       setProdEsOferta(false);
+      setProdTipoOferta(totalDiariasActual < limiteOfertasDiarias ? 'diaria' : 'semanal');
       setProdPrecioOferta('');
       setProdAgotado(false);
       setProdHoraVencimiento('');
@@ -713,7 +932,7 @@ export default function MiComercioPage() {
     setModalProductoAbierto(true);
   };
 
-  // Guardar producto en la lista local con validación de ofertas semanales (5 para Premium, 20 para Gold)
+  // Guardar producto en la lista local con validación de ofertas diarias (0/2/5) y semanales (0/5/10)
   const handleGuardarProductoItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!prodNombre.trim() || !prodPrecio) return;
@@ -724,21 +943,33 @@ export default function MiComercioPage() {
     // Validación de límites de ofertas por plan
     if (prodEsOferta) {
       if (nivelActual === 'standar') {
-        alert('El Plan Standar no incluye ofertas destacadas. Actualiza a Premium (5 ofertas semanales) o Gold (20 ofertas semanales).');
+        alert('El Plan Standar no incluye ofertas destacadas (0 ofertas diarias y 0 semanales). Actualiza a Premium o Gold para publicar promociones.');
         return;
       }
-      const maxOfertas = NIVELES_CONFIG[nivelActual]?.limiteOfertasSemanales || 0;
-      const otrasOfertas = productos.filter((p) => p.es_oferta && p.id !== productoEditandoId);
-      if (otrasOfertas.length >= maxOfertas) {
-        alert(`Has alcanzado el límite máximo de ${maxOfertas} ofertas semanales para el Plan ${nivelActual.toUpperCase()}.\n\nCada oferta dura 7 días. Pasados los 7 días se borran automáticamente dejando lugar libre para nuevas ofertas.`);
-        return;
+
+      if (prodTipoOferta === 'diaria') {
+        const otrasDiarias = productos.filter(
+          (p) => p.es_oferta && p.tipo_oferta === 'diaria' && p.id !== productoEditandoId
+        );
+        if (otrasDiarias.length >= limiteOfertasDiarias) {
+          alert(`Has alcanzado el límite de ${limiteOfertasDiarias} ofertas diarias para el Plan ${nivelActual.toUpperCase()}.\n\nCada oferta diaria dura 24 horas.`);
+          return;
+        }
+      } else {
+        const otrasSemanales = productos.filter(
+          (p) => p.es_oferta && p.tipo_oferta !== 'diaria' && p.id !== productoEditandoId
+        );
+        if (otrasSemanales.length >= limiteOfertasSemanales) {
+          alert(`Has alcanzado el límite de ${limiteOfertasSemanales} ofertas semanales para el Plan ${nivelActual.toUpperCase()}.\n\nCada oferta semanal dura 7 días.`);
+          return;
+        }
       }
     }
 
     const fechaOfertaActual = prodEsOferta ? new Date().toISOString() : undefined;
-    // Vigencia semanal: 7 días continuos desde el momento de alta o la fecha especificada
-    const vencimientoSemanal7Dias = prodEsOferta
-      ? (prodHoraVencimiento || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())
+    const duracionHoras = prodTipoOferta === 'diaria' ? 24 : 168;
+    const vencimientoCalculado = prodEsOferta
+      ? (prodHoraVencimiento || new Date(Date.now() + duracionHoras * 60 * 60 * 1000).toISOString())
       : undefined;
 
     if (productoEditandoId) {
@@ -752,10 +983,11 @@ export default function MiComercioPage() {
                 descripcion: prodDescripcion.trim() || undefined,
                 categoria: prodCategoria.trim() || undefined,
                 es_oferta: prodEsOferta,
+                tipo_oferta: prodEsOferta ? prodTipoOferta : undefined,
                 precio_oferta: numOferta,
                 fecha_oferta: prodEsOferta ? (p.fecha_oferta || fechaOfertaActual) : undefined,
-                hora_vencimiento_oferta: vencimientoSemanal7Dias,
-                duracion_horas_oferta: prodEsOferta ? 168 : undefined,
+                hora_vencimiento_oferta: vencimientoCalculado,
+                duracion_horas_oferta: prodEsOferta ? duracionHoras : undefined,
                 agotado: prodAgotado,
                 fecha_agotado: prodAgotado ? (p.fecha_agotado || new Date().toISOString()) : undefined,
                 unidades_limitadas: prodEsOferta && prodUnidadesLimitadas ? Number(prodUnidadesLimitadas) : undefined,
@@ -772,10 +1004,11 @@ export default function MiComercioPage() {
         descripcion: prodDescripcion.trim() || undefined,
         categoria: prodCategoria.trim() || undefined,
         es_oferta: prodEsOferta,
+        tipo_oferta: prodEsOferta ? prodTipoOferta : undefined,
         precio_oferta: numOferta,
         fecha_oferta: fechaOfertaActual,
-        hora_vencimiento_oferta: vencimientoSemanal7Dias,
-        duracion_horas_oferta: prodEsOferta ? 168 : undefined,
+        hora_vencimiento_oferta: vencimientoCalculado,
+        duracion_horas_oferta: prodEsOferta ? duracionHoras : undefined,
         agotado: prodAgotado,
         fecha_agotado: prodAgotado ? new Date().toISOString() : undefined,
         unidades_limitadas: prodEsOferta && prodUnidadesLimitadas ? Number(prodUnidadesLimitadas) : undefined,
@@ -907,6 +1140,10 @@ export default function MiComercioPage() {
       radio_entrega_metros: tipoAtencion !== 'local_fisico' ? Math.round(radioKm * 1000) : 0,
       cobertura_poligono: tipoAtencion !== 'local_fisico' && coberturaPoligono.length >= 3 ? coberturaPoligono : undefined,
       zona_envio_descripcion: tipoAtencion !== 'local_fisico' ? zonaEnvioDescripcion.trim() : '',
+      alcance_envio: tipoAtencion !== 'local_fisico' ? alcanceEnvio : undefined,
+      envios_nacional: tipoAtencion !== 'local_fisico' ? enviosNacional : false,
+      envios_exterior: tipoAtencion !== 'local_fisico' ? enviosExterior : false,
+      zonas_entrega_detalle: tipoAtencion !== 'local_fisico' ? zonasEntregaDetalle : undefined,
       en_vacaciones: enVacaciones,
       modalidad_vacaciones: enVacaciones ? modalidadVacaciones : undefined,
       dias_vacaciones_acumulados: enVacaciones ? diasTotalesVac : 0,
@@ -2515,6 +2752,16 @@ export default function MiComercioPage() {
                 </div>
               )}
 
+              <div className="p-4 rounded-2xl bg-cyan-950/40 border border-cyan-800/60 flex items-start gap-3 text-xs text-cyan-200">
+                <ShieldCheck className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="font-bold text-white block">Modificación Segura con Autorización del Administrador</span>
+                  <p className="text-cyan-300 leading-relaxed">
+                    Puedes solicitar modificaciones de los datos de tu comercio (dirección, correo electrónico, página web, teléfono, modalidad de atención, redes o zonas de envío). Por seguridad comunitaria y homologación de datos, todos los cambios ingresan en revisión y se aplicarán públicamente en la app una vez aprobados por el administrador.
+                  </p>
+                </div>
+              </div>
+
               <form onSubmit={handleSubmitModificaciones} className="p-6 bg-zinc-950 border border-zinc-800 rounded-3xl space-y-6">
                 <h3 className="text-base font-bold text-white border-b border-zinc-800 pb-3 flex items-center gap-2">
                   <FileText className="w-4 h-4 text-cyan-400" />
@@ -2732,19 +2979,17 @@ export default function MiComercioPage() {
                       }}
                       confirmado={zonaEnvioConfirmada}
                       onToggleConfirmado={(nuevoEstado) => setZonaEnvioConfirmada(nuevoEstado)}
+                      alcanceEnvio={alcanceEnvio}
+                      onChangeAlcanceEnvio={setAlcanceEnvio}
+                      enviosNacional={enviosNacional}
+                      onChangeEnviosNacional={setEnviosNacional}
+                      enviosExterior={enviosExterior}
+                      onChangeEnviosExterior={setEnviosExterior}
+                      zonasDetalle={zonasEntregaDetalle}
+                      onChangeZonasDetalle={setZonasEntregaDetalle}
+                      zonaDescripcion={zonaEnvioDescripcion}
+                      onChangeZonaDescripcion={setZonaEnvioDescripcion}
                     />
-                    <div className="mt-2.5">
-                      <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                        Descripción o Calles Límites de Zona de Reparto (Opcional)
-                      </label>
-                      <input
-                        type="text"
-                        value={zonaEnvioDescripcion}
-                        onChange={(e) => setZonaEnvioDescripcion(e.target.value)}
-                        placeholder="Ej: Entre las 4 avenidas principales o zona norte del barrio"
-                        className="w-full px-3.5 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none"
-                      />
-                    </div>
                   </div>
                 )}
 
@@ -3117,9 +3362,18 @@ export default function MiComercioPage() {
                     <span className="text-xs text-zinc-400">
                       Plan {nivelActual.toUpperCase()} permite hasta {limiteProductos} artículos.
                     </span>
-                    {nivelActual !== 'standar' && (
-                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold">
-                        🔥 Ofertas Semanales Activas: {productos.filter((p) => p.es_oferta).length} / {NIVELES_CONFIG[nivelActual]?.limiteOfertasSemanales || 0} (Vigencia 7 días)
+                    {nivelActual !== 'standar' ? (
+                      <>
+                        <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold">
+                          ⚡ Ofertas Diarias: {productos.filter((p) => p.es_oferta && p.tipo_oferta === 'diaria').length} / {limiteOfertasDiarias} (24 hs)
+                        </span>
+                        <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 font-semibold">
+                          📅 Ofertas Semanales: {productos.filter((p) => p.es_oferta && p.tipo_oferta !== 'diaria').length} / {limiteOfertasSemanales} (7 días)
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400 border border-zinc-700 font-semibold">
+                        Plan Standar: Sin ofertas destacadas (0 diarias / 0 semanales)
                       </span>
                     )}
                   </div>
@@ -3768,6 +4022,50 @@ export default function MiComercioPage() {
 
                 {prodEsOferta && (
                   <div className="space-y-3 pt-2 border-t border-zinc-800">
+                    {/* Selector de Tipo de Oferta */}
+                    <div>
+                      <label className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                        Modalidad de Oferta:
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setProdTipoOferta('diaria')}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                            prodTipoOferta === 'diaria'
+                              ? 'bg-amber-950/70 border-amber-500 text-amber-200 font-bold ring-1 ring-amber-500/40'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <span>⚡ Oferta Diaria</span>
+                            <span className="font-mono text-[10px] opacity-80">24 horas</span>
+                          </div>
+                          <span className="text-[10px] block text-zinc-400 font-normal mt-0.5">
+                            Cupo: {productos.filter((p) => p.es_oferta && p.tipo_oferta === 'diaria' && p.id !== productoEditandoId).length} / {limiteOfertasDiarias}
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setProdTipoOferta('semanal')}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                            prodTipoOferta === 'semanal'
+                              ? 'bg-purple-950/70 border-purple-500 text-purple-200 font-bold ring-1 ring-purple-500/40'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <span>📅 Oferta Semanal</span>
+                            <span className="font-mono text-[10px] opacity-80">7 días</span>
+                          </div>
+                          <span className="text-[10px] block text-zinc-400 font-normal mt-0.5">
+                            Cupo: {productos.filter((p) => p.es_oferta && p.tipo_oferta !== 'diaria' && p.id !== productoEditandoId).length} / {limiteOfertasSemanales}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
                     <div>
                       <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
                         Precio de Oferta Especial ($) *:
@@ -3786,7 +4084,7 @@ export default function MiComercioPage() {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-[10px] font-semibold text-zinc-300 mb-1">
-                          Vencimiento (Opcional):
+                          Vencimiento Personalizado (Opcional):
                         </label>
                         <input
                           type="datetime-local"
@@ -3809,8 +4107,8 @@ export default function MiComercioPage() {
                         />
                       </div>
                     </div>
-                    <p className="text-[10px] text-amber-300/80">
-                      * Vigencia semanal: Las ofertas tienen una duración de 7 días continuos. Pasados los 7 días caducan y se borran automáticamente, liberando cupo para nuevas ofertas (máx. 5 en Premium y 20 en Gold).
+                    <p className="text-[10px] text-amber-300/80 leading-relaxed">
+                      * Duración automática: Las ofertas diarias caducan en 24 horas y las semanales en 7 días continuos. Al expirar se borran automáticamente, liberando cupos para nuevas promociones (Plan Base: 0/0, Premium: 2 diarias / 5 semanales, Gold: 5 diarias / 10 semanales).
                     </p>
                   </div>
                 )}

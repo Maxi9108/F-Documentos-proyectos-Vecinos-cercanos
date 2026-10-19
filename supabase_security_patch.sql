@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS public.comercios (
     motivo_cuarentena TEXT,
     strikes_reportes INTEGER DEFAULT 0,
     horarios_config JSONB,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     email_comercio TEXT,
     password_comercio TEXT,
     fecha_ultima_modificacion_catalogo TIMESTAMP WITH TIME ZONE,
@@ -165,6 +166,7 @@ CREATE TABLE IF NOT EXISTS public.debates_inconvenientes (
 CREATE TABLE IF NOT EXISTS public.solicitudes_modificacion (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     comercio_id UUID REFERENCES public.comercios(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     comercio_nombre TEXT NOT NULL,
     cambios JSONB NOT NULL,
     datos_anteriores JSONB,
