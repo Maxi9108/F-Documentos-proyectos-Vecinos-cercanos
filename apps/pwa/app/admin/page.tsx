@@ -151,6 +151,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from 'lucide-react';
+import ModalRestaurarBackup from '@/components/ModalRestaurarBackup';
 
 export default function AdminPage() {
   // Estado de Autenticación & 2FA
@@ -224,6 +225,7 @@ export default function AdminPage() {
 
   // Estados de Gestión de Usuarios Registrados
   const [usuariosSistema, setUsuariosSistema] = useState<UsuarioSistema[]>([]);
+  const [modalRestaurarOpen, setModalRestaurarOpen] = useState(false);
   const [busquedaUsuarios, setBusquedaUsuarios] = useState('');
   const [filtroEstadoUsuario, setFiltroEstadoUsuario] = useState<'todos' | 'activo' | 'bloqueado' | 'baja'>('todos');
   const [filtroRolUsuario, setFiltroRolUsuario] = useState<'todos' | 'usuario' | 'comerciante' | 'admin_nivel2' | 'superadmin'>('todos');
@@ -1867,12 +1869,23 @@ export default function AdminPage() {
               target="_blank"
               rel="noopener noreferrer"
               className="py-1.5 px-3 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 no-underline"
-              title="Descargar copia de seguridad completa en formato JSON (se genera también automáticamente cada 12 horas)"
+              title="Descargar copia de seguridad completa con todos los comercios y usuarios en formato JSON"
             >
-              <Database className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden sm:inline">Respaldar BD (12h)</span>
+              <Download className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Respaldar BD</span>
               <span className="sm:hidden">Respaldo</span>
             </a>
+
+            <button
+              type="button"
+              onClick={() => setModalRestaurarOpen(true)}
+              className="py-1.5 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Subir un archivo de respaldo JSON para restaurar comercios y usuarios a la base de datos"
+            >
+              <Upload className="w-3.5 h-3.5 text-purple-400" />
+              <span className="hidden sm:inline">Restaurar BD</span>
+              <span className="sm:hidden">Restaurar</span>
+            </button>
 
             <button
               type="button"
@@ -6338,6 +6351,32 @@ export default function AdminPage() {
           </button>
         </div>
       )}
+
+      {/* Modal para Restaurar / Importar Base de Datos desde JSON */}
+      <ModalRestaurarBackup
+        isOpen={modalRestaurarOpen}
+        onClose={() => setModalRestaurarOpen(false)}
+        onSuccess={async () => {
+          // Recargar tanto comercios como usuarios del sistema para reflejar los cambios
+          try {
+            setCargando(true);
+            const [coms, usrs] = await Promise.all([
+              getComercios(),
+              getUsuariosSistema(),
+            ]);
+            setComercios(coms);
+            setUsuariosSistema(usrs);
+            setNotificacionAdminAccion({
+              tipo: 'ok',
+              texto: '¡Base de datos restaurada! Se recargaron comercios y usuarios.',
+            });
+          } catch (e) {
+            console.error('Error al recargar datos tras restaurar:', e);
+          } finally {
+            setCargando(false);
+          }
+        }}
+      />
     </main>
   );
 }
