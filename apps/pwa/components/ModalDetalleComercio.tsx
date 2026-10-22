@@ -46,7 +46,7 @@ import {
 import { guardarCalificacionVecino } from '@/lib/supabase';
 import ModalCrearDebate from '@/components/ModalCrearDebate';
 import OfertaCountdown from '@/components/OfertaCountdown';
-import { construirEnlaceWhatsApp } from '@/lib/codigos-pais';
+import { construirEnlaceWhatsApp, abrirWhatsAppDirecto } from '@/lib/codigos-pais';
 
 interface ModalDetalleComercioProps {
   comercio: Comercio | null;
@@ -91,6 +91,12 @@ export default function ModalDetalleComercio({
     });
   };
 
+  // Fechas especiales calculadas con Hook (siempre invocado antes de cualquier return condicional)
+  const proximasFechas = useMemo<ProximaFechaEspecialInfo[]>(
+    () => (comercio ? obtenerProximasFechasEspeciales(comercio, new Date(), 21) : []),
+    [comercio]
+  );
+
   React.useEffect(() => {
     setPedidoItems({});
     setEstrellasSeleccionadas(0);
@@ -99,8 +105,10 @@ export default function ModalDetalleComercio({
     setCalificacionEnviada(false);
     if (comercio?.productos?.some((p) => p.es_oferta)) {
       setPestanaActiva('ofertas');
-    } else {
+    } else if (comercio?.tiene_catalogo && comercio?.productos && comercio.productos.length > 0) {
       setPestanaActiva('catalogo');
+    } else {
+      setPestanaActiva('info');
     }
   }, [comercio]);
 
@@ -179,10 +187,6 @@ export default function ModalDetalleComercio({
 
   // Badge de Estado Operativo en tiempo real con soporte de trasnoche y fechas especiales
   const infoHorario = verificarComercioAbierto(comercio);
-  const proximasFechas = useMemo<ProximaFechaEspecialInfo[]>(
-    () => (comercio ? obtenerProximasFechasEspeciales(comercio, new Date(), 21) : []),
-    [comercio]
-  );
 
   let estadoBadgeTexto = infoHorario.badgeTexto;
   let estadoBadgeClases = infoHorario.estaAbierto
@@ -214,11 +218,71 @@ export default function ModalDetalleComercio({
         className="relative w-full max-w-5xl lg:max-w-6xl h-[92vh] sm:h-[88vh] bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl flex flex-col lg:grid lg:grid-cols-12 overflow-hidden text-zinc-100"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Barra Superior Móvil Unificada (Tabs + Botón Cerrar) */}
+        <div className="flex lg:hidden items-center justify-between border-b border-zinc-800/90 px-3.5 py-2.5 bg-zinc-900/95 shrink-0 z-10">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            <button
+              type="button"
+              onClick={() => setPestanaActiva('info')}
+              className={`py-1.5 px-3 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
+                pestanaActiva === 'info'
+                  ? 'bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md'
+                  : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60'
+              }`}
+            >
+              <Info className="w-3.5 h-3.5" />
+              <span>Ficha</span>
+            </button>
+
+            {tieneCatalogo && (
+              <button
+                type="button"
+                onClick={() => setPestanaActiva('catalogo')}
+                className={`py-1.5 px-3 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
+                  pestanaActiva === 'catalogo'
+                    ? 'bg-gradient-to-r from-violet-600 to-cyan-600 text-white shadow-md'
+                    : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60'
+                }`}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Catálogo ({comercio.productos?.length || 0})</span>
+              </button>
+            )}
+
+            {ofertas.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPestanaActiva('ofertas')}
+                className={`py-1.5 px-3 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
+                  pestanaActiva === 'ofertas'
+                    ? 'bg-amber-500 text-black shadow-md'
+                    : 'text-zinc-400 hover:text-zinc-200 bg-zinc-800/60'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Ofertas ({ofertas.length})</span>
+              </button>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors cursor-pointer shrink-0 ml-2"
+            aria-label="Cerrar modal"
+            title="Cerrar ventana"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
         {/* ============================================================== */}
         {/* COLUMNA IZQUIERDA (PC/Tablet): Datos del Comercio y Contacto   */}
-        {/* En móvil se visualiza como panel deslizable / sección de datos  */}
+        {/* En móvil se visualiza en pantalla completa cuando pestanaActiva === 'info' */}
         {/* ============================================================== */}
-        <div className="lg:col-span-5 bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 border-b lg:border-b-0 lg:border-r border-zinc-800/80 p-5 sm:p-6 flex flex-col justify-between overflow-y-auto shrink-0 max-h-[45vh] lg:max-h-full">
+        <div className={`lg:col-span-5 bg-gradient-to-b from-zinc-900 via-zinc-950 to-zinc-950 border-b lg:border-b-0 lg:border-r border-zinc-800/80 p-5 sm:p-6 flex flex-col justify-between overflow-y-auto ${
+          pestanaActiva === 'info' ? 'flex-1 lg:flex-initial' : 'hidden lg:flex'
+        }`}>
           <div className="space-y-4">
             {/* Fila de Badges: Rubro, Nivel, Estado, Distancia y Botón de Favorito */}
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -620,7 +684,7 @@ export default function ModalDetalleComercio({
 
           {/* Botones de Acción (Llamar, WhatsApp, Mapa) */}
           <div className="pt-4 border-t border-zinc-800/80 space-y-2 mt-4">
-            {cleanWhatsapp && (
+            {cleanWhatsapp && Boolean(whatsappGeneralUrl) && (
               comercio.en_vacaciones && comercio.modalidad_vacaciones === 'descanso_total' ? (
                 <div className="w-full py-2.5 px-4 bg-zinc-800 text-zinc-400 font-bold text-xs rounded-xl border border-zinc-700 flex items-center justify-center gap-2 cursor-not-allowed text-center">
                   <Palmtree className="w-4 h-4 text-sky-400" />
@@ -631,7 +695,10 @@ export default function ModalDetalleComercio({
                   href={whatsappGeneralUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => registrarEvento('clic_whatsapp', comercio.id, comercio.nombre, { canal: 'modal_lateral' })}
+                  onClick={(e) => {
+                    registrarEvento('clic_whatsapp', comercio.id, comercio.nombre, { canal: 'modal_lateral' });
+                    abrirWhatsAppDirecto(e, whatsappGeneralUrl);
+                  }}
                   className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 cursor-pointer no-underline"
                 >
                   <MessageSquare className="w-4 h-4" />
@@ -770,11 +837,13 @@ export default function ModalDetalleComercio({
 
         {/* ============================================================== */}
         {/* COLUMNA DERECHA (PC/Tablet): El Escaparate Visual (Fotos/Ofertas) */}
-        {/* En móvil ocupa la pantalla completa de forma prominente        */}
+        {/* En móvil ocupa la pantalla completa de forma prominente cuando pestanaActiva !== 'info' */}
         {/* ============================================================== */}
-        <div className="lg:col-span-7 bg-zinc-950 flex flex-col h-full overflow-hidden flex-1">
-          {/* Cabecera Superior del Escaparate: Pestañas y Botón Cerrar */}
-          <div className="flex items-center justify-between border-b border-zinc-800/90 px-4 sm:px-6 py-2.5 bg-zinc-900/60 shrink-0">
+        <div className={`lg:col-span-7 bg-zinc-950 flex flex-col h-full overflow-hidden flex-1 ${
+          pestanaActiva === 'info' ? 'hidden lg:flex' : 'flex'
+        }`}>
+          {/* Cabecera Superior del Escaparate en Desktop: Pestañas y Botón Cerrar */}
+          <div className="hidden lg:flex items-center justify-between border-b border-zinc-800/90 px-4 sm:px-6 py-2.5 bg-zinc-900/60 shrink-0">
             <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar">
               {ofertas.length > 0 && (
                 <button
@@ -803,22 +872,9 @@ export default function ModalDetalleComercio({
                 <ShoppingBag className="w-3.5 h-3.5" />
                 Catálogo ({comercio.productos?.length || 0})
               </button>
-
-              <button
-                type="button"
-                onClick={() => setPestanaActiva('info')}
-                className={`lg:hidden py-2 px-3 text-xs font-semibold rounded-xl flex items-center gap-1 transition-all cursor-pointer ${
-                  pestanaActiva === 'info'
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <Info className="w-3.5 h-3.5" />
-                Datos
-              </button>
             </div>
 
-            {/* Botón Cerrar (X) Destacado */}
+            {/* Botón Cerrar (X) Destacado para Desktop */}
             <button
               type="button"
               onClick={onClose}
@@ -966,11 +1022,12 @@ export default function ModalDetalleComercio({
                     <p className="text-xs text-zinc-400 max-w-sm mx-auto mb-4">
                       Este comerciante aún no ha cargado sus productos digitales. Puedes comunicarte directamente por WhatsApp para consultar lista de precios y stock.
                     </p>
-                    {cleanWhatsapp && (
+                    {cleanWhatsapp && Boolean(whatsappGeneralUrl) && (
                       <a
                         href={whatsappGeneralUrl}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={(e) => abrirWhatsAppDirecto(e, whatsappGeneralUrl)}
                         className="inline-flex items-center gap-2 py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors no-underline shadow-md shadow-emerald-950/50"
                       >
                         <MessageSquare className="w-4 h-4" />
@@ -1233,11 +1290,12 @@ export default function ModalDetalleComercio({
                     </a>
                   )}
 
-                  {cleanWhatsapp && (
+                  {cleanWhatsapp && Boolean(whatsappGeneralUrl) && (
                     <a
                       href={whatsappGeneralUrl}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => abrirWhatsAppDirecto(e, whatsappGeneralUrl)}
                       className="flex-1 py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 no-underline transition-colors shadow-lg shadow-emerald-950/50"
                     >
                       <MessageSquare className="w-4 h-4" />
@@ -1287,11 +1345,12 @@ export default function ModalDetalleComercio({
                 </div>
               </div>
 
-              {cleanWhatsapp ? (
+              {cleanWhatsapp && Boolean(generarMensajePedidoWp()) ? (
                 <a
                   href={generarMensajePedidoWp()}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={(e) => abrirWhatsAppDirecto(e, generarMensajePedidoWp())}
                   className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-950/60 flex items-center justify-center gap-2 transition-all no-underline"
                 >
                   <Send className="w-4 h-4" />

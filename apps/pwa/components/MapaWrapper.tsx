@@ -18,7 +18,7 @@ function SkeletonMapaConRespaldo() {
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setDemoraDetectada(true);
-    }, 3500);
+    }, 7000);
     return () => clearTimeout(timer);
   }, []);
 
@@ -71,10 +71,10 @@ interface ErrorBoundaryState {
 }
 
 class MapaErrorBoundary extends React.Component<
-  { children: React.ReactNode },
+  { children: React.ReactNode; onReset?: () => void },
   ErrorBoundaryState
 > {
-  constructor(props: { children: React.ReactNode }) {
+  constructor(props: { children: React.ReactNode; onReset?: () => void }) {
     super(props);
     this.state = { hasError: false };
   }
@@ -102,7 +102,10 @@ class MapaErrorBoundary extends React.Component<
           </div>
           <button
             type="button"
-            onClick={() => this.setState({ hasError: false })}
+            onClick={() => {
+              this.setState({ hasError: false });
+              if (this.props.onReset) this.props.onReset();
+            }}
             className="px-4 py-2 bg-gradient-to-r from-violet-600 to-cyan-600 hover:from-violet-500 hover:to-cyan-500 text-white rounded-xl text-xs font-semibold shadow-md transition-all cursor-pointer"
           >
             Reintentar Mapa
@@ -118,7 +121,7 @@ export default function MapaWrapper(props: MapaWrapperProps) {
   const [mapKey, setMapKey] = React.useState(0);
 
   return (
-    <MapaErrorBoundary key={mapKey}>
+    <MapaErrorBoundary key={mapKey} onReset={() => setMapKey((k) => k + 1)}>
       <MapaComercios key={mapKey} {...props} />
     </MapaErrorBoundary>
   );

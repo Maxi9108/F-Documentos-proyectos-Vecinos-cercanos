@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useUser } from '@/context/user-context';
 import RadarSatelital from './RadarSatelital';
+import { construirEnlaceWhatsApp, abrirWhatsAppDirecto } from '@/lib/codigos-pais';
 
 export type ProveedorMapa = 'esri' | 'carto' | 'osm' | 'esriStreet';
 
@@ -329,27 +330,33 @@ function MapController({
 
   useEffect(() => {
     if (selectedComercio) {
-      // Si el comercio fue seleccionado tocando directamente el pin en el mapa,
-      // evitamos flyTo forzado para que no desplace la pantalla bruscamente en celulares
       if (skipFlyToId === selectedComercio.id) {
         return;
       }
-      map.flyTo([selectedComercio.latitud, selectedComercio.longitud], 15, {
-        duration: 0.9,
-        easeLinearity: 0.25,
-      });
+      const lat = Number(selectedComercio.latitud);
+      const lng = Number(selectedComercio.longitud);
+      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+        map.flyTo([lat, lng], 15, {
+          duration: 0.9,
+          easeLinearity: 0.25,
+        });
+      }
     }
   }, [selectedComercio, skipFlyToId, map]);
 
   useEffect(() => {
     if (ubicacionReferencia && !selectedComercio) {
-      const clave = `${ubicacionReferencia.latitud.toFixed(4)},${ubicacionReferencia.longitud.toFixed(4)}`;
-      if (ultimaRefVolada.current !== clave) {
-        ultimaRefVolada.current = clave;
-        map.flyTo([ubicacionReferencia.latitud, ubicacionReferencia.longitud], 14, {
-          duration: 1.0,
-          easeLinearity: 0.25,
-        });
+      const lat = Number(ubicacionReferencia.latitud);
+      const lng = Number(ubicacionReferencia.longitud);
+      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+        const clave = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+        if (ultimaRefVolada.current !== clave) {
+          ultimaRefVolada.current = clave;
+          map.flyTo([lat, lng], 14, {
+            duration: 1.0,
+            easeLinearity: 0.25,
+          });
+        }
       }
     }
   }, [ubicacionReferencia, selectedComercio, map]);
@@ -492,7 +499,7 @@ export default function MapaComercios({
   onOpenDetalle,
 }: MapaComerciosProps) {
   const [modoVisualizacion, setModoVisualizacion] = useState<'mapa' | 'radar'>('mapa');
-  const [proveedorActivo, setProveedorActivo] = useState<ProveedorMapa>('esri');
+  const [proveedorActivo, setProveedorActivo] = useState<ProveedorMapa>('carto');
   const [menuServidoresAbierto, setMenuServidoresAbierto] = useState(false);
   const [mostrarLeyenda, setMostrarLeyenda] = useState(false);
   const [avisoLentitudVisible, setAvisoLentitudVisible] = useState(false);
@@ -514,28 +521,41 @@ export default function MapaComercios({
     abrirModalUbicaciones,
   } = useUser();
 
-  // Detector de lentitud en la carga de mosaicos (4.5s sin recibir confirmación de carga)
+  // Detector de lentitud en la carga de mosaicos (7.5s sin recibir confirmación de carga)
   useEffect(() => {
     setTilesCargados(false);
     const timer = setTimeout(() => {
       if (!tilesCargados) {
         setAvisoLentitudVisible(true);
       }
-    }, 4500);
+    }, 7500);
     return () => clearTimeout(timer);
   }, [proveedorActivo]);
 
   const defaultCenter = useMemo<[number, number]>(() => {
     if (comercioSeleccionado) {
-      return [comercioSeleccionado.latitud, comercioSeleccionado.longitud];
+      const lat = Number(comercioSeleccionado.latitud);
+      const lng = Number(comercioSeleccionado.longitud);
+      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+        return [lat, lng];
+      }
     }
     if (ubicacionReferencia) {
-      return [ubicacionReferencia.latitud, ubicacionReferencia.longitud];
+      const lat = Number(ubicacionReferencia.latitud);
+      const lng = Number(ubicacionReferencia.longitud);
+      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+        return [lat, lng];
+      }
     }
-    if (comercios.length > 0) {
-      const latSum = comercios.reduce((acc, c) => acc + c.latitud, 0);
-      const lngSum = comercios.reduce((acc, c) => acc + c.longitud, 0);
-      return [latSum / comercios.length, lngSum / comercios.length];
+    const validos = (comercios || []).filter((c) => {
+      const lat = Number(c.latitud);
+      const lng = Number(c.longitud);
+      return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    });
+    if (validos.length > 0) {
+      const latSum = validos.reduce((acc, c) => acc + Number(c.latitud), 0);
+      const lngSum = validos.reduce((acc, c) => acc + Number(c.longitud), 0);
+      return [latSum / validos.length, lngSum / validos.length];
     }
     return [-34.6037, -58.3816];
   }, [comercios, comercioSeleccionado, ubicacionReferencia]);
@@ -773,10 +793,13 @@ export default function MapaComercios({
         {/* Círculo interactivo que dibuja el radio de entrega del comercio seleccionado */}
         {comercioSeleccionado &&
           comercioSeleccionado.radio_entrega_metros &&
-          comercioSeleccionado.radio_entrega_metros > 0 && (
+          comercioSeleccionado.radio_entrega_metros > 0 &&
+          !isNaN(Number(comercioSeleccionado.latitud)) &&
+          !isNaN(Number(comercioSeleccionado.longitud)) &&
+          !isNaN(Number(comercioSeleccionado.radio_entrega_metros)) && (
             <Circle
-              center={[comercioSeleccionado.latitud, comercioSeleccionado.longitud]}
-              radius={comercioSeleccionado.radio_entrega_metros}
+              center={[Number(comercioSeleccionado.latitud), Number(comercioSeleccionado.longitud)]}
+              radius={Number(comercioSeleccionado.radio_entrega_metros)}
               pathOptions={{
                 color: '#a855f7',
                 fillColor: '#7c3aed',
@@ -788,12 +811,14 @@ export default function MapaComercios({
           )}
 
         {/* Círculo y Pin Satelital GPS / Ubicación de Referencia del Usuario */}
-        {ubicacionReferencia && (
+        {ubicacionReferencia &&
+          !isNaN(Number(ubicacionReferencia.latitud)) &&
+          !isNaN(Number(ubicacionReferencia.longitud)) && (
           <>
             {ubicacionReferencia.esGps && (
               <Circle
-                center={[ubicacionReferencia.latitud, ubicacionReferencia.longitud]}
-                radius={ubicacionReferencia.precisionMetros || 40}
+                center={[Number(ubicacionReferencia.latitud), Number(ubicacionReferencia.longitud)]}
+                radius={Number(ubicacionReferencia.precisionMetros) || 40}
                 pathOptions={{
                   color: '#22d3ee',
                   fillColor: '#06b6d4',
@@ -804,7 +829,7 @@ export default function MapaComercios({
               />
             )}
             <Marker
-              position={[ubicacionReferencia.latitud, ubicacionReferencia.longitud]}
+              position={[Number(ubicacionReferencia.latitud), Number(ubicacionReferencia.longitud)]}
               icon={createUserSatellitePin(ubicacionReferencia.esGps, ubicacionReferencia.nombre)}
               zIndexOffset={1000}
             >
@@ -838,28 +863,37 @@ export default function MapaComercios({
         )}
 
         {comercios.map((comercio) => {
-          const validLat = typeof comercio.latitud === 'number' && !isNaN(comercio.latitud) ? comercio.latitud : null;
-          const validLng = typeof comercio.longitud === 'number' && !isNaN(comercio.longitud) ? comercio.longitud : null;
-          if (validLat === null || validLng === null) return null;
+          const lat = Number(comercio.latitud);
+          const lng = Number(comercio.longitud);
+          if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return null;
+          const validLat = lat;
+          const validLng = lng;
 
           const isSelected = comercioSeleccionado?.id === comercio.id;
           const pinIcon = createCustomPin(comercio, isSelected);
           const pinConfig = getRubroPinConfig(comercio.rubro, comercio.tipo_atencion);
-          const tieneEnvios = Boolean(comercio.radio_entrega_metros && comercio.radio_entrega_metros > 0);
+          const tieneEnvios = Boolean(comercio.radio_entrega_metros && Number(comercio.radio_entrega_metros) > 0);
           const esSoloEnvio = comercio.tipo_atencion === 'solo_envio';
-          const tienePoligono = Boolean(
+          const validPoligono = (
             comercio.cobertura_poligono &&
             Array.isArray(comercio.cobertura_poligono) &&
-            comercio.cobertura_poligono.length >= 3
-          );
-          const mostrarZona = esSoloEnvio || (isSelected && (tieneEnvios || tienePoligono));
-          const radioMetros = comercio.radio_entrega_metros || 2500;
+            comercio.cobertura_poligono.length >= 3 &&
+            comercio.cobertura_poligono.every(
+              (pt) =>
+                Array.isArray(pt) &&
+                pt.length >= 2 &&
+                !isNaN(Number(pt[0])) &&
+                !isNaN(Number(pt[1]))
+            )
+          ) ? (comercio.cobertura_poligono as [number, number][]) : null;
+          const mostrarZona = esSoloEnvio || (isSelected && (tieneEnvios || Boolean(validPoligono)));
+          const radioMetros = Number(comercio.radio_entrega_metros) || 2500;
 
           return (
             <React.Fragment key={comercio.id}>
-              {mostrarZona && tienePoligono && (
+              {mostrarZona && validPoligono && (
                 <Polygon
-                  positions={comercio.cobertura_poligono!}
+                  positions={validPoligono}
                   pathOptions={{
                     color: '#06b6d4',
                     fillColor: '#8b5cf6',
@@ -876,7 +910,7 @@ export default function MapaComercios({
                 />
               )}
 
-              {mostrarZona && !tienePoligono && (
+              {mostrarZona && !validPoligono && (
                 <Circle
                   center={[validLat, validLng]}
                   radius={radioMetros}
@@ -1066,11 +1100,12 @@ export default function MapaComercios({
                     )}
 
                     <div className="flex items-center justify-between gap-1.5">
-                      {comercio.whatsapp ? (
+                      {Boolean(comercio.whatsapp && construirEnlaceWhatsApp(comercio.whatsapp)) ? (
                         <a
-                          href={`https://wa.me/${comercio.whatsapp.replace(/[^0-9]/g, '')}`}
+                          href={construirEnlaceWhatsApp(comercio.whatsapp, `¡Hola ${comercio.nombre}! Te contacto desde la app NeoFaro.`)}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={(e) => abrirWhatsAppDirecto(e, construirEnlaceWhatsApp(comercio.whatsapp, `¡Hola ${comercio.nombre}! Te contacto desde la app NeoFaro.`))}
                           className="flex-1 text-center py-1.5 px-2 bg-emerald-700 hover:bg-emerald-600 text-white font-medium text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5 no-underline"
                         >
                           <Bike className="w-3 h-3" />

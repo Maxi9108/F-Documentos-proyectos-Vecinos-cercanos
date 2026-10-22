@@ -29,6 +29,20 @@ export const isSupabaseConfigured = Boolean(
 // Cliente de Supabase exportado para uso general
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
+/**
+ * Retorna el cliente Supabase con service_role si está disponible en el entorno del servidor.
+ * En el cliente o si no está configurada la service key, retorna el cliente estándar.
+ */
+export function getSupabaseAdminClient(): SupabaseClient {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (typeof window === 'undefined' && serviceKey) {
+    return createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false },
+    });
+  }
+  return supabase;
+}
+
 export const STORAGE_KEY_COMERCIOS_ELIMINADOS = 'vecinos_comercios_eliminados';
 
 export const FECHA_FIN_BONIFICACION_LANZAMIENTO = '2026-12-31T23:59:59.999Z';
@@ -324,6 +338,22 @@ export async function getComercios(): Promise<Comercio[]> {
     }
   }
 
+  // 0. Si se invoca en el cliente navegador, obtener datos hidratados del endpoint /api/comercios
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/comercios', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data && Array.isArray(json.data) && json.data.length > 0) {
+          const activos = json.data.filter((c: Comercio) => !eliminadosSet.has(c.id));
+          return verificarYRestaurarEstados(verificarYDegradarVencidos(activos));
+        }
+      }
+    } catch (eApi) {
+      console.warn('[getComercios Client] Error al consultar /api/comercios, fallback a lectura directa:', eApi);
+    }
+  }
+
   if (!isSupabaseConfigured) {
     if (typeof window !== 'undefined') {
       try {
@@ -341,10 +371,12 @@ export async function getComercios(): Promise<Comercio[]> {
   }
 
   try {
-    // 1. Consultar solicitudes de moderación pendientes de Supabase
+    const sb = getSupabaseAdminClient();
+
+    // 1. Consultar solicitudes de moderación de Supabase (contiene metadatos extendidos: tipo_atencion, whatsapp, delivery, etc)
     const solsPendientesMap = new Map<string, any>();
     try {
-      const { data: sols } = await supabase
+      const { data: sols } = await sb
         .from('solicitudes_modificacion')
         .select('*');
       if (sols) {
@@ -358,7 +390,24 @@ export async function getComercios(): Promise<Comercio[]> {
       console.warn('[Supabase] No se pudieron consultar solicitudes_modificacion:', e);
     }
 
-    const { data, error } = await supabase
+    // 1.5. Consultar catálogo de productos para enriquecer comercios
+    const prodsMap = new Map<string, any[]>();
+    try {
+      const { data: prods } = await sb
+        .from('productos')
+        .select('*');
+      if (prods && prods.length > 0) {
+        prods.forEach((p) => {
+          const lista = prodsMap.get(p.comercio_id) || [];
+          lista.push(p);
+          prodsMap.set(p.comercio_id, lista);
+        });
+      }
+    } catch (eP) {
+      console.warn('[Supabase] No se pudieron consultar productos:', eP);
+    }
+
+    const { data, error } = await sb
       .from('comercios')
       .select('*')
       .order('nombre', { ascending: true });
@@ -395,6 +444,14 @@ export async function getComercios(): Promise<Comercio[]> {
           }
         } else if (!safeDb.estado_aprobacion) {
           safeDb.estado_aprobacion = 'aprobado';
+        }
+
+        // Si no tiene productos cargados en cambios pero existen en la tabla productos, vincularlos
+        if (!safeDb.productos || safeDb.productos.length === 0) {
+          const listaProds = prodsMap.get(safeDb.id);
+          if (listaProds && listaProds.length > 0) {
+            safeDb.productos = listaProds;
+          }
         }
 
         mapa.set(safeDb.id, safeDb);

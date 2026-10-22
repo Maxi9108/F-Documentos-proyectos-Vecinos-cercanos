@@ -35,6 +35,26 @@ export default function DirectorioComercios({
   }, []);
 
   useEffect(() => {
+    if (initialComercios && initialComercios.length > 0) {
+      setComercios(initialComercios);
+    }
+  }, [initialComercios]);
+
+  // Si se inició con lista vacía (ej. precaché PWA offline), sincronizar con la API oficial
+  useEffect(() => {
+    if (comercios.length === 0) {
+      fetch('/api/comercios', { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((res) => {
+          if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+            setComercios(res.data);
+          }
+        })
+        .catch((err) => console.warn('[DirectorioComercios] Error al cargar comercios desde API:', err));
+    }
+  }, [comercios.length]);
+
+  useEffect(() => {
     try {
       const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
       if (localesRaw) {
@@ -536,7 +556,7 @@ export default function DirectorioComercios({
 
               {/* Tarjeta flotante rápida para móviles cuando se toca una tienda en el mapa */}
               {comercioSeleccionado && (
-                <div className="lg:hidden mt-3 p-3.5 bg-zinc-950/95 border border-cyan-500/50 rounded-2xl shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-2 duration-200">
+                <div className="lg:hidden fixed bottom-24 inset-x-3 z-45 p-3.5 bg-zinc-950/95 border border-cyan-500/60 rounded-2xl shadow-2xl shadow-black/80 backdrop-blur-md animate-in slide-in-from-bottom-2 duration-200">
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="w-9 h-9 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800/60 flex items-center justify-center font-bold text-xs shrink-0">

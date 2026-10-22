@@ -290,16 +290,17 @@ export function formatearWhatsAppCompleto(
 }
 
 /**
- * Genera la URL oficial de wa.me normalizada para cualquier país del mundo.
- * Aplica reglas especiales de la API de WhatsApp (por ejemplo, para Argentina +54 antepone '9'
+ * Genera la URL oficial de WhatsApp normalizada para cualquier país del mundo.
+ * Usa api.whatsapp.com/send con universal linking para evitar caídas de 302 redirects
+ * en navegadores integrados (Instagram in-app browser, Facebook, WebViews, etc).
+ * Aplica reglas especiales de la API de WhatsApp (ej. para Argentina +54 antepone '9'
  * y remueve '0' de larga distancia o '15' de celular).
  */
-export function construirEnlaceWhatsApp(numeroCompleto: string, mensaje?: string): string {
+export function construirEnlaceWhatsApp(numeroCompleto?: string, mensaje?: string): string {
   if (!numeroCompleto) return '';
   const parsed = extraerCodigoYNumero(numeroCompleto);
   let cod = parsed.codigoPais.replace('+', '');
   let local = parsed.numeroLocal.replace(/\D/g, '');
-
 
   if (!local) return '';
 
@@ -315,7 +316,36 @@ export function construirEnlaceWhatsApp(numeroCompleto: string, mensaje?: string
   }
 
   const numFinal = `${cod}${local}`;
-  const base = `https://wa.me/${numFinal}`;
-  return mensaje ? `${base}?text=${encodeURIComponent(mensaje)}` : base;
+  if (numFinal.length < 8) return '';
+
+  const params = new URLSearchParams();
+  params.set('phone', numFinal);
+  if (mensaje) {
+    params.set('text', mensaje);
+  }
+
+  return `https://api.whatsapp.com/send?${params.toString()}`;
 }
+
+/**
+ * Abre enlaces de WhatsApp de forma segura en cualquier dispositivo y navegador.
+ * En navegadores integrados (Instagram in-app, Facebook, etc.) evita el error
+ * "This page couldn't load" provocado por 'target="_blank"' y fallos de deep link.
+ */
+export function abrirWhatsAppDirecto(e?: React.MouseEvent | null, url?: string): void {
+  if (!url) {
+    if (e) e.preventDefault();
+    return;
+  }
+
+  if (typeof window !== 'undefined') {
+    const ua = navigator.userAgent || '';
+    const esInApp = /FBAN|FBAV|Instagram|Line|Twitter|MicroMessenger/i.test(ua);
+    if (esInApp) {
+      if (e) e.preventDefault();
+      window.location.href = url;
+    }
+  }
+}
+
 

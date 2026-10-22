@@ -34,7 +34,7 @@ import { registrarEvento } from '@/lib/analytics';
 import { useUser } from '@/context/user-context';
 import { calcularDistanciaKm, formatearDistancia, estimarTiempo } from '@/lib/geolocation';
 import OfertaCountdown from '@/components/OfertaCountdown';
-import { construirEnlaceWhatsApp } from '@/lib/codigos-pais';
+import { construirEnlaceWhatsApp, abrirWhatsAppDirecto } from '@/lib/codigos-pais';
 
 interface TarjetaComercioProps {
   comercio: Comercio;
@@ -508,12 +508,15 @@ export default function TarjetaComercio({
             {tieneEnvios ? 'Ver radio en mapa' : 'Ubicar en mapa'}
           </button>
 
-          {cleanWhatsapp && (
+          {cleanWhatsapp && Boolean(construirEnlaceWhatsApp(cleanWhatsapp)) && (
             <a
               href={construirEnlaceWhatsApp(cleanWhatsapp)}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => registrarEvento('clic_whatsapp', comercio.id, comercio.nombre, { canal: 'tarjeta_directa' })}
+              onClick={(e) => {
+                registrarEvento('clic_whatsapp', comercio.id, comercio.nombre, { canal: 'tarjeta_directa' });
+                abrirWhatsAppDirecto(e, construirEnlaceWhatsApp(cleanWhatsapp));
+              }}
               title="Pedir por WhatsApp"
               className="p-2 sm:p-2 min-w-[38px] min-h-[38px] rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition-all flex items-center justify-center cursor-pointer no-underline shadow-md shadow-emerald-950/50"
             >
