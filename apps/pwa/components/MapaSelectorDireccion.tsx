@@ -29,6 +29,7 @@ interface MapaSelectorDireccionProps {
   onUbicacionChange: (lat: number, lng: number, direccionSugerida?: string) => void;
   radioEntregaMetros?: number;
   mostrarRadio?: boolean;
+  ocultarBuscador?: boolean;
 }
 
 // Icono personalizado para el pin arrastrable
@@ -79,11 +80,18 @@ export default function MapaSelectorDireccion({
   onUbicacionChange,
   radioEntregaMetros,
   mostrarRadio,
+  ocultarBuscador = false,
 }: MapaSelectorDireccionProps) {
   const [busqueda, setBusqueda] = useState(direccionTexto || '');
   const [cargando, setCargando] = useState(false);
   const [resultados, setResultados] = useState<ResultadoNominatim[]>([]);
   const [mensajeEstado, setMensajeEstado] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (direccionTexto !== undefined && direccionTexto !== busqueda) {
+      setBusqueda(direccionTexto);
+    }
+  }, [direccionTexto]);
 
   const markerRef = useRef<L.Marker | null>(null);
   const pinIcon = useMemo(() => createDraggablePin(), []);
@@ -172,66 +180,68 @@ export default function MapaSelectorDireccion({
 
   return (
     <div className="space-y-3">
-      {/* Barra de Búsqueda Geográfica de Dirección */}
-      <div className="relative">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
-            <input
-              type="text"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  buscarDireccion(busqueda);
-                }
-              }}
-              placeholder="Escribe la dirección de tu local (ej. Av. Corrientes 1500, Balvanera)..."
-              className="w-full pl-10 pr-4 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-inner"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => buscarDireccion(busqueda)}
-            disabled={cargando}
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl transition-all shadow-md shadow-indigo-950/50 flex items-center gap-2 shrink-0 cursor-pointer"
-          >
-            {cargando ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Buscando...
-              </>
-            ) : (
-              <>
-                <Navigation className="w-4 h-4" />
-                Evaluar en Mapa
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Desplegable de Resultados Encontrados */}
-        {resultados.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden divide-y divide-zinc-800">
-            <div className="px-3 py-1.5 bg-zinc-950 text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
-              Sugerencias encontradas en el mapa
+      {/* Barra de Búsqueda Geográfica de Dirección (si no se oculta externamente) */}
+      {!ocultarBuscador && (
+        <div className="relative">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+              <input
+                type="text"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    buscarDireccion(busqueda);
+                  }
+                }}
+                placeholder="Escribe la dirección de tu local (ej. Av. Corrientes 1500, Balvanera)..."
+                className="w-full pl-10 pr-4 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-inner"
+              />
             </div>
-            {resultados.map((item) => (
-              <button
-                key={item.place_id}
-                type="button"
-                onClick={() => seleccionarResultado(item)}
-                className="w-full text-left p-3 hover:bg-zinc-800 transition-colors flex items-start gap-2.5 text-xs text-zinc-200 cursor-pointer"
-              >
-                <MapPin className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-                <span className="leading-snug">{item.display_name}</span>
-              </button>
-            ))}
+
+            <button
+              type="button"
+              onClick={() => buscarDireccion(busqueda)}
+              disabled={cargando}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl transition-all shadow-md shadow-indigo-950/50 flex items-center gap-2 shrink-0 cursor-pointer"
+            >
+              {cargando ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Buscando...
+                </>
+              ) : (
+                <>
+                  <Navigation className="w-4 h-4" />
+                  Evaluar en Mapa
+                </>
+              )}
+            </button>
           </div>
-        )}
-      </div>
+
+          {/* Desplegable de Resultados Encontrados */}
+          {resultados.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1.5 z-50 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden divide-y divide-zinc-800">
+              <div className="px-3 py-1.5 bg-zinc-950 text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+                Sugerencias encontradas en el mapa
+              </div>
+              {resultados.map((item) => (
+                <button
+                  key={item.place_id}
+                  type="button"
+                  onClick={() => seleccionarResultado(item)}
+                  className="w-full text-left p-3 hover:bg-zinc-800 transition-colors flex items-start gap-2.5 text-xs text-zinc-200 cursor-pointer"
+                >
+                  <MapPin className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                  <span className="leading-snug">{item.display_name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {mensajeEstado && (
         <div className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 flex items-center gap-2 text-xs text-zinc-300">

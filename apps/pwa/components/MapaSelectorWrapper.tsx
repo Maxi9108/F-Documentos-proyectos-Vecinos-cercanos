@@ -11,6 +11,7 @@ interface MapaSelectorWrapperProps {
   onUbicacionChange: (lat: number, lng: number, direccionSugerida?: string) => void;
   radioEntregaMetros?: number;
   mostrarRadio?: boolean;
+  ocultarBuscador?: boolean;
 }
 
 const MapaSelectorDireccion = dynamic(() => import('./MapaSelectorDireccion'), {

@@ -35,6 +35,8 @@ import {
   Mail,
   Eye,
   EyeOff,
+  Search,
+  Navigation,
 } from 'lucide-react';
 import { getCategorias } from '@/lib/categorias';
 import { registrarEvento } from '@/lib/analytics';
@@ -64,10 +66,30 @@ export default function CargarComercioPage() {
   const [nombre, setNombre] = useState('');
   const [rubro, setRubro] = useState('Almacén');
   const [descripcion, setDescripcion] = useState('');
-  const [direccion, setDireccion] = useState('Av. San Martín 1500');
+  const [direccion, setDireccion] = useState('');
   const [localidad, setLocalidad] = useState('');
   const [telefono, setTelefono] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
+
+  // Estados de búsqueda y geocodificación de dirección
+  const [buscandoDireccion, setBuscandoDireccion] = useState(false);
+  const [sugerenciasDireccion, setSugerenciasDireccion] = useState<Array<{
+    place_id: number;
+    display_name: string;
+    lat: string;
+    lon: string;
+    address?: {
+      road?: string;
+      house_number?: string;
+      suburb?: string;
+      neighbourhood?: string;
+      city?: string;
+      town?: string;
+      state?: string;
+    };
+  }>>([]);
+  const [mensajeDireccion, setMensajeDireccion] = useState<{ tipo: 'exito' | 'error' | 'info'; texto: string } | null>(null);
+  const [ubicacionConfirmada, setUbicacionConfirmada] = useState(false);
 
   // Redes Sociales y Presencia Digital (Opcionales)
   const [sitioWeb, setSitioWeb] = useState('');
@@ -147,12 +169,167 @@ export default function CargarComercioPage() {
   const [exito, setExito] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Manejador del cambio de ubicación desde el mapa interactivo
+  // Geocodificación y búsqueda precisa de la dirección del comercio
+  const ubicarEnMapa = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
+    const queryDir = direccion.trim();
+    if (!queryDir || queryDir.length < 2) {
+      setMensajeDireccion({ tipo: 'error', texto: 'Por favor escribe la calle y número de tu local.' });
+      return;
+    }
+
+    setBuscandoDireccion(true);
+    setMensajeDireccion(null);
+    setSugerenciasDireccion([]);
+
+    try {
+      const termino = localidad.trim()
+        ? `${queryDir}, ${localidad.trim()}, Argentina`
+        : `${queryDir}, Argentina`;
+
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        termino
+      )}&limit=5&addressdetails=1`;
+
+      const res = await fetch(url, {
+        headers: { 'Accept-Language': 'es' },
+      });
+
+      if (!res.ok) throw new Error('Error en el servicio de mapas');
+      const data = await res.json();
+
+      if (!data || data.length === 0) {
+        // Fallback: búsqueda directa por dirección
+        const urlFb = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          queryDir
+        )}&limit=5&addressdetails=1`;
+        const resFb = await fetch(urlFb, { headers: { 'Accept-Language': 'es' } });
+        const dataFb = resFb.ok ? await resFb.json() : [];
+
+        if (dataFb && dataFb.length > 0) {
+          procesarResultadosGeocodificacion(dataFb);
+        } else {
+          setMensajeDireccion({
+            tipo: 'info',
+            texto: 'No encontramos la dirección exacta en el mapa. Puedes arrastrar el marcador con el mouse o pulsar sobre el mapa para fijar tu local.',
+          });
+        }
+      } else {
+        procesarResultadosGeocodificacion(data);
+      }
+    } catch (err) {
+      console.warn('[Geocoding] Error al buscar dirección:', err);
+      setMensajeDireccion({
+        tipo: 'error',
+        texto: 'Hubo un inconveniente al consultar el mapa. Puedes posicionar el marcador manualmente.',
+      });
+    } finally {
+      setBuscandoDireccion(false);
+    }
+  };
+
+  const procesarResultadosGeocodificacion = (resultados: any[]) => {
+    if (resultados.length === 1) {
+      seleccionarSugerenciaDireccion(resultados[0]);
+    } else {
+      setSugerenciasDireccion(resultados);
+      setMensajeDireccion({
+        tipo: 'info',
+        texto: `Se encontraron ${resultados.length} coincidencias. Selecciona la opción que corresponde a tu zona:`,
+      });
+    }
+  };
+
+  const seleccionarSugerenciaDireccion = (item: any) => {
+    const lat = parseFloat(item.lat);
+    const lon = parseFloat(item.lon);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      setLatitud(lat);
+      setLongitud(lon);
+      setUbicacionConfirmada(true);
+
+      if (item.address) {
+        const calle = item.address.road || '';
+        const num = item.address.house_number ? ` ${item.address.house_number}` : '';
+        const barrio = item.address.neighbourhood || item.address.suburb || item.address.city || item.address.town || '';
+        if (calle) {
+          setDireccion(`${calle}${num}`.trim());
+        } else if (item.display_name) {
+          setDireccion(item.display_name.split(',')[0].trim());
+        }
+        if (barrio && !localidad) {
+          setLocalidad(barrio);
+        }
+      }
+      setSugerenciasDireccion([]);
+      setMensajeDireccion({
+        tipo: 'exito',
+        texto: `Ubicación fijada con éxito: ${item.display_name.slice(0, 50)}...`,
+      });
+    }
+  };
+
+  const obtenerUbicacionGps = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      setMensajeDireccion({ tipo: 'error', texto: 'Tu dispositivo o navegador no soporta geolocalización GPS.' });
+      return;
+    }
+
+    setBuscandoDireccion(true);
+    setMensajeDireccion({ tipo: 'info', texto: 'Obteniendo coordenadas GPS...' });
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setLatitud(lat);
+        setLongitud(lng);
+        setUbicacionConfirmada(true);
+
+        try {
+          const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`;
+          const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.address) {
+              const calle = data.address.road || '';
+              const num = data.address.house_number ? ` ${data.address.house_number}` : '';
+              const barrio = data.address.neighbourhood || data.address.suburb || data.address.city || data.address.town || '';
+              if (calle) setDireccion(`${calle}${num}`.trim());
+              if (barrio) setLocalidad(barrio);
+            }
+          }
+        } catch (_) {}
+
+        setMensajeDireccion({
+          tipo: 'exito',
+          texto: '✓ Ubicación GPS detectada y fijada en el mapa.',
+        });
+        setBuscandoDireccion(false);
+      },
+      (err) => {
+        console.warn('[GPS] Error:', err);
+        setMensajeDireccion({
+          tipo: 'error',
+          texto: 'No se pudo obtener la ubicación GPS. Puedes escribir tu dirección manualmente.',
+        });
+        setBuscandoDireccion(false);
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  };
+
+  // Manejador del cambio de ubicación desde el mapa interactivo (clic o arrastre de pin)
   const handleUbicacionChange = (nuevaLat: number, nuevaLng: number, direccionSugerida?: string) => {
     setLatitud(nuevaLat);
     setLongitud(nuevaLng);
+    setUbicacionConfirmada(true);
     if (direccionSugerida) {
       setDireccion(direccionSugerida);
+      setMensajeDireccion({
+        tipo: 'exito',
+        texto: `✓ Marcador ajustado en: ${direccionSugerida.slice(0, 50)}...`,
+      });
     }
   };
 
@@ -165,7 +342,7 @@ export default function CargarComercioPage() {
   const agregarProducto = () => {
     if (productos.length >= limiteProductos) {
       setErrorMsg(
-        `Has alcanzado el límite máximo de ${limiteProductos} productos para el nivel ${nivelConfig.nombre}. Puedes cambiar de nivel en el paso 2 si necesitas mayor capacidad.`
+        `Has alcanzado el límite máximo de ${limiteProductos} productos para el nivel ${nivelConfig.nombre}. Puedes cambiar de nivel en el paso 3 si necesitas mayor capacidad.`
       );
       return;
     }
@@ -193,7 +370,7 @@ export default function CargarComercioPage() {
     if (nuevoEstado) {
       if (limiteOfertasDiarias === 0 && limiteOfertasSemanales === 0) {
         setErrorMsg(
-          'El nivel Standar no incluye ofertas destacadas (0 ofertas diarias y 0 semanales). Selecciona el nivel Premium o Gold en el paso 2 para publicar promociones barriales.'
+          'El nivel Standar no incluye ofertas destacadas (0 ofertas diarias y 0 semanales). Selecciona el nivel Premium o Gold en el paso 3 para publicar promociones barriales.'
         );
         return;
       }
@@ -249,19 +426,19 @@ export default function CargarComercioPage() {
     e.preventDefault();
     setErrorMsg(null);
 
-    if (!nombre.trim()) {
-      setErrorMsg('Por favor ingresa el nombre de tu comercio.');
-      return;
-    }
-
     let direccionFinal = direccion.trim();
     if (!direccionFinal) {
       if (tipoAtencion === 'solo_envio') {
         direccionFinal = localidad.trim() ? `Zona de reparto (${localidad.trim()})` : 'Zona de reparto / Despacho a domicilio';
       } else {
-        setErrorMsg('Por favor indica una dirección válida en el mapa.');
+        setErrorMsg('Por favor ingresa la dirección de tu comercio y ubícalo en el mapa.');
         return;
       }
+    }
+
+    if (!nombre.trim()) {
+      setErrorMsg('Por favor ingresa el nombre de tu comercio.');
+      return;
     }
 
     if (!telefono.trim()) {
@@ -594,169 +771,379 @@ export default function CargarComercioPage() {
               </div>
             )}
 
-            {/* SECCIÓN 1: Datos Generales */}
-            <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800 space-y-4">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Store className="w-4 h-4 text-indigo-400" />
-                1. Datos del Comercio
-              </h2>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* SECCIÓN 1: Dirección, Ubicación en Mapa y Tipo de Comercio */}
+            <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                    Nombre del Comercio *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={nombre}
-                    onChange={(e) => setNombre(e.target.value)}
-                    placeholder="Ej. Panadería San Antonio o Reparto de Agua Los Andes"
-                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                  />
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-indigo-400" />
+                    1. Dirección y Tipo de Comercio *
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Ingresa primero la dirección de tu local. El sistema lo ubicará automáticamente en el mapa para que verifiques la entrada y definas el tipo de comercio.
+                  </p>
                 </div>
+                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 w-fit">
+                  Paso 1 de 4
+                </span>
+              </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-zinc-300">
-                      Rubro / Categoría *
+              {/* Campos de Dirección */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center justify-between">
+                      <span>Dirección del Local (Calle y número) *</span>
+                      <span className="text-[10px] text-zinc-500 font-normal">Paso prioritario</span>
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => setSolicitaNuevaCategoria(!solicitaNuevaCategoria)}
-                      className="text-[11px] text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
-                    >
-                      {solicitaNuevaCategoria ? 'Elegir de la lista' : '¿No figura tu rubro?'}
-                    </button>
-                  </div>
-
-                  {!solicitaNuevaCategoria ? (
-                    <select
-                      value={rubro}
-                      onChange={(e) => {
-                        if (e.target.value === '__solicitar_nueva__') {
-                          setSolicitaNuevaCategoria(true);
-                        } else {
-                          setRubro(e.target.value);
+                    <input
+                      type="text"
+                      required
+                      value={direccion}
+                      onChange={(e) => setDireccion(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          ubicarEnMapa();
                         }
                       }}
-                      className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                    >
-                      {listaCategorias.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                      <option value="__solicitar_nueva__">➕ Solicitar otra categoría...</option>
-                    </select>
-                  ) : (
-                    <div className="space-y-1.5 animate-in fade-in duration-200">
-                      <input
-                        type="text"
-                        required
-                        value={categoriaSolicitada}
-                        onChange={(e) => setCategoriaSolicitada(e.target.value)}
-                        placeholder="Ej. Reparación de Celulares, Imprenta, Herrería..."
-                        className="w-full px-3.5 py-2.5 bg-zinc-950 border border-indigo-500/50 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                      />
-                      <p className="text-[11px] text-zinc-400 flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-indigo-400 shrink-0" />
-                        El administrador revisará esta categoría y la sumará al directorio oficial.
-                      </p>
+                      placeholder="Ej. Av. Rivadavia 5420 o Mitre 845"
+                      className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                      Localidad / Barrio
+                    </label>
+                    <input
+                      type="text"
+                      value={localidad}
+                      onChange={(e) => setLocalidad(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          ubicarEnMapa();
+                        }
+                      }}
+                      placeholder="Ej. Caballito, Quilmes, San Isidro..."
+                      className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Botones de Acción de Ubicación */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={ubicarEnMapa}
+                    disabled={buscandoDireccion}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl transition-all shadow-md shadow-indigo-950/50 flex items-center gap-2 cursor-pointer"
+                  >
+                    {buscandoDireccion ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Ubicando en mapa...
+                      </>
+                    ) : (
+                      <>
+                        <Navigation className="w-3.5 h-3.5" />
+                        Ubicar en el Mapa
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={obtenerUbicacionGps}
+                    disabled={buscandoDireccion}
+                    className="px-3.5 py-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 text-zinc-200 font-medium text-xs rounded-xl border border-zinc-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                    Usar mi ubicación GPS
+                  </button>
+
+                  {ubicacionConfirmada && (
+                    <span className="text-[11px] text-zinc-400 font-mono ml-auto hidden sm:inline">
+                      📍 {latitud.toFixed(4)}, {longitud.toFixed(4)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Mensaje de estado de la geocodificación */}
+                {mensajeDireccion && (
+                  <div
+                    className={`p-3 rounded-xl border text-xs flex items-center gap-2 animate-in fade-in duration-200 ${
+                      mensajeDireccion.tipo === 'exito'
+                        ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
+                        : mensajeDireccion.tipo === 'error'
+                        ? 'bg-rose-950/40 border-rose-800 text-rose-300'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-300'
+                    }`}
+                  >
+                    {mensajeDireccion.tipo === 'exito' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : mensajeDireccion.tipo === 'error' ? (
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    ) : (
+                      <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+                    )}
+                    <span>{mensajeDireccion.texto}</span>
+                  </div>
+                )}
+
+                {/* Desplegable de Sugerencias Nominatim */}
+                {sugerenciasDireccion.length > 0 && (
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-2 space-y-1 shadow-xl">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-2 block pt-1">
+                      Selecciona tu dirección exacta:
+                    </span>
+                    {sugerenciasDireccion.map((sug) => (
+                      <button
+                        key={sug.place_id}
+                        type="button"
+                        onClick={() => seleccionarSugerenciaDireccion(sug)}
+                        className="w-full text-left p-2.5 hover:bg-zinc-900 rounded-xl transition-colors flex items-start gap-2 text-xs text-zinc-200 cursor-pointer"
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
+                        <span className="leading-snug">{sug.display_name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Componente de Mapa Interactivo con Pin Arrastrable */}
+                <div className="pt-2">
+                  <MapaSelectorWrapper
+                    latitud={latitud}
+                    longitud={longitud}
+                    direccionTexto={direccion}
+                    onUbicacionChange={handleUbicacionChange}
+                    radioEntregaMetros={Math.round(radioKm * 1000)}
+                    mostrarRadio={tipoAtencion !== 'local_fisico'}
+                    ocultarBuscador={true}
+                  />
+                </div>
+              </div>
+
+              {/* Subsección: Tipo de Comercio y Modalidad de Atención */}
+              <div className="pt-4 border-t border-zinc-800 space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                    <Store className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                      Tipo de Comercio y Modalidad de Atención *
+                    </h3>
+                    <p className="text-[11px] text-zinc-400">
+                      Selecciona a qué se dedica tu negocio y cómo atenderás a tus vecinos.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs font-semibold text-zinc-300">
+                        Rubro / Categoría *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setSolicitaNuevaCategoria(!solicitaNuevaCategoria)}
+                        className="text-[11px] text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                      >
+                        {solicitaNuevaCategoria ? 'Elegir de la lista' : '¿No figura tu rubro?'}
+                      </button>
+                    </div>
+
+                    {!solicitaNuevaCategoria ? (
+                      <select
+                        value={rubro}
+                        onChange={(e) => {
+                          if (e.target.value === '__solicitar_nueva__') {
+                            setSolicitaNuevaCategoria(true);
+                          } else {
+                            setRubro(e.target.value);
+                          }
+                        }}
+                        className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+                      >
+                        {listaCategorias.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                        <option value="__solicitar_nueva__">➕ Solicitar otra categoría...</option>
+                      </select>
+                    ) : (
+                      <div className="space-y-1.5 animate-in fade-in duration-200">
+                        <input
+                          type="text"
+                          required
+                          value={categoriaSolicitada}
+                          onChange={(e) => setCategoriaSolicitada(e.target.value)}
+                          placeholder="Ej. Reparación de Celulares, Imprenta, Herrería..."
+                          className="w-full px-3.5 py-2.5 bg-zinc-950 border border-indigo-500/50 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+                        />
+                        <p className="text-[11px] text-zinc-400 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-indigo-400 shrink-0" />
+                          El administrador revisará esta categoría y la sumará al directorio oficial.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Casilla especial para Farmacias: ¿Está de Turno? */}
+                  {(rubro === 'Farmacia' || (solicitaNuevaCategoria && categoriaSolicitada.toLowerCase().includes('farmacia'))) && (
+                    <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                          <ShieldCheck className="w-4 h-4" />
+                          ¿Farmacia de Turno 24hs?
+                        </span>
+                        <p className="text-[10px] text-zinc-400 mt-0.5">
+                          Activa esta opción si tu farmacia cubre guardia nocturna hoy.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setEstaDeTurno(!estaDeTurno)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                          estaDeTurno
+                            ? 'bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/30'
+                            : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                        }`}
+                      >
+                        {estaDeTurno ? '● DE TURNO HOY' : '○ Turno regular'}
+                      </button>
                     </div>
                   )}
                 </div>
+
+                {/* Selector de Modalidad de Atención */}
+                <div className="pt-2">
+                  <label className="block text-xs font-semibold text-zinc-300 mb-2">
+                    Modalidad de Atención y Envíos *
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setTipoAtencion('local_fisico')}
+                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                        tipoAtencion === 'local_fisico'
+                          ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Store className="w-4 h-4 text-indigo-400" />
+                        <span className="text-xs font-bold">Local Físico</span>
+                      </div>
+                      <span className="text-[11px] text-zinc-500 leading-tight">
+                        Atención al público en local a la calle
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTipoAtencion('solo_envio')}
+                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                        tipoAtencion === 'solo_envio'
+                          ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Bike className="w-4 h-4 text-amber-400" />
+                        <span className="text-xs font-bold">Solo a Domicilio</span>
+                      </div>
+                      <span className="text-[11px] text-zinc-500 leading-tight">
+                        Reparto exclusivo / Sin local a la calle
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTipoAtencion('ambos')}
+                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                        tipoAtencion === 'ambos'
+                          ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Truck className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold">Ambos (Local y Delivery)</span>
+                      </div>
+                      <span className="text-[11px] text-zinc-500 leading-tight">
+                        Atención en local y envíos con radio
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Configuración de Zona de Cobertura si hace envíos con Mapa y Confirmación */}
+                {tipoAtencion !== 'local_fisico' && (
+                  <div className="pt-2 animate-in fade-in duration-200">
+                    <SelectorZonaEnvioWrapper
+                      latitud={latitud}
+                      longitud={longitud}
+                      radioKm={radioKm}
+                      poligono={coberturaPoligono}
+                      onChange={(nuevoRadio, nuevoPoligono) => {
+                        setRadioKm(nuevoRadio);
+                        setCoberturaPoligono(nuevoPoligono);
+                      }}
+                      confirmado={zonaEnvioConfirmada}
+                      onToggleConfirmado={(nuevoEstado) => setZonaEnvioConfirmada(nuevoEstado)}
+                      alcanceEnvio={alcanceEnvio}
+                      onChangeAlcanceEnvio={setAlcanceEnvio}
+                      enviosNacional={enviosNacional}
+                      onChangeEnviosNacional={setEnviosNacional}
+                      enviosExterior={enviosExterior}
+                      onChangeEnviosExterior={setEnviosExterior}
+                      zonasDetalle={zonasEntregaDetalle}
+                      onChangeZonasDetalle={setZonasEntregaDetalle}
+                      zonaDescripcion={zonaEnvioDescripcion}
+                      onChangeZonaDescripcion={setZonaEnvioDescripcion}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* SECCIÓN 2: Datos de Identificación, Contacto y Gestión */}
+            <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    <Store className="w-4 h-4 text-cyan-400" />
+                    2. Datos del Comercio y Contacto *
+                  </h2>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Información que verán los vecinos en tu ficha comercial y datos de acceso para administrar tu negocio.
+                  </p>
+                </div>
+                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 w-fit">
+                  Paso 2 de 4
+                </span>
               </div>
 
-              {/* Selector de Modalidad de Atención */}
-              <div className="pt-2">
-                <label className="block text-xs font-semibold text-zinc-300 mb-2">
-                  Modalidad de Atención y Envíos *
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Nombre del Comercio *
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setTipoAtencion('local_fisico')}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                      tipoAtencion === 'local_fisico'
-                        ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Store className="w-4 h-4 text-indigo-400" />
-                      <span className="text-xs font-bold">Local Físico</span>
-                    </div>
-                    <span className="text-[11px] text-zinc-500 leading-tight">
-                      Atención al público en local a la calle
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTipoAtencion('solo_envio')}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                      tipoAtencion === 'solo_envio'
-                        ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Bike className="w-4 h-4 text-amber-400" />
-                      <span className="text-xs font-bold">Solo a Domicilio</span>
-                    </div>
-                    <span className="text-[11px] text-zinc-500 leading-tight">
-                      Reparto exclusivo / Sin local a la calle
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTipoAtencion('ambos')}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                      tipoAtencion === 'ambos'
-                        ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Truck className="w-4 h-4 text-emerald-400" />
-                      <span className="text-xs font-bold">Ambos (Local y Delivery)</span>
-                    </div>
-                    <span className="text-[11px] text-zinc-500 leading-tight">
-                      Atención en local y envíos con radio
-                    </span>
-                  </button>
-                </div>
+                <input
+                  type="text"
+                  required
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  placeholder="Ej. Panadería San Antonio o Reparto de Agua Los Andes"
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+                />
               </div>
-
-              {/* Configuración de Zona de Cobertura si hace envíos con Mapa y Confirmación */}
-              {tipoAtencion !== 'local_fisico' && (
-                <div className="pt-2 animate-in fade-in duration-200">
-                  <SelectorZonaEnvioWrapper
-                    latitud={latitud}
-                    longitud={longitud}
-                    radioKm={radioKm}
-                    poligono={coberturaPoligono}
-                    onChange={(nuevoRadio, nuevoPoligono) => {
-                      setRadioKm(nuevoRadio);
-                      setCoberturaPoligono(nuevoPoligono);
-                    }}
-                    confirmado={zonaEnvioConfirmada}
-                    onToggleConfirmado={(nuevoEstado) => setZonaEnvioConfirmada(nuevoEstado)}
-                    alcanceEnvio={alcanceEnvio}
-                    onChangeAlcanceEnvio={setAlcanceEnvio}
-                    enviosNacional={enviosNacional}
-                    onChangeEnviosNacional={setEnviosNacional}
-                    enviosExterior={enviosExterior}
-                    onChangeEnviosExterior={setEnviosExterior}
-                    zonasDetalle={zonasEntregaDetalle}
-                    onChangeZonasDetalle={setZonasEntregaDetalle}
-                    zonaDescripcion={zonaEnvioDescripcion}
-                    onChangeZonaDescripcion={setZonaEnvioDescripcion}
-                  />
-                </div>
-              )}
 
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
@@ -976,35 +1363,6 @@ export default function CargarComercioPage() {
                 </div>
               </div>
 
-              {/* Casilla especial para Farmacias: ¿Está de Turno? */}
-              {(rubro === 'Farmacia' || (solicitaNuevaCategoria && categoriaSolicitada.toLowerCase().includes('farmacia'))) && (
-                <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4" />
-                        ¿Farmacia de Turno 24hs?
-                      </span>
-                      <p className="text-[11px] text-zinc-400 mt-0.5">
-                        Activa esta opción si tu farmacia está cubriendo la guardia/turno nocturno hoy.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setEstaDeTurno(!estaDeTurno)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                        estaDeTurno
-                          ? 'bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/30'
-                          : 'bg-zinc-900 text-zinc-400 border-zinc-800'
-                      }`}
-                    >
-                      {estaDeTurno ? '● DE TURNO HOY' : '○ Turno regular'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {/* Estado Operativo Inicial (Abierto, Cerrado momentáneamente, Vacaciones) */}
               <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">
                 <label className="block text-xs font-semibold text-zinc-300">
@@ -1103,20 +1461,20 @@ export default function CargarComercioPage() {
               </div>
             </div>
 
-              {/* SECCIÓN 2: Nivel y Plan de Membresía */}
+              {/* SECCIÓN 3: Nivel y Plan de Membresía */}
             <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h2 className="text-base font-bold text-white flex items-center gap-2">
                     <Award className="w-4 h-4 text-amber-400" />
-                    2. Selecciona el Nivel de tu Comercio *
+                    3. Selecciona el Nivel de tu Comercio *
                   </h2>
                   <p className="text-xs text-zinc-400 mt-0.5">
                     Elige el plan que mejor se adapte a tus necesidades. Durante el lanzamiento todos los planes son 100% bonificados hasta el 31 de diciembre.
                   </p>
                 </div>
                 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 w-fit">
-                  Paso 2 de 4
+                  Paso 3 de 4
                 </span>
               </div>
 
@@ -1295,70 +1653,7 @@ export default function CargarComercioPage() {
               </div>
             </div>
 
-            {/* SECCIÓN 3: Mapa y Evaluación de Direcciones en Tiempo Real */}
-            <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-indigo-400" />
-                  {tipoAtencion === 'solo_envio'
-                    ? '3. Base de Operaciones / Punto de Despacho'
-                    : '3. Ubicación del Local en el Mapa en Tiempo Real'}
-                </h2>
-                <span className="text-[11px] text-zinc-400 font-mono">
-                  {latitud.toFixed(4)}, {longitud.toFixed(4)}
-                </span>
-              </div>
 
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                {tipoAtencion === 'solo_envio'
-                  ? 'Fija en el mapa el punto de salida de tus repartos (depósito, cocina o base). No se publicará como local a la calle con atención al público.'
-                  : 'Escribe tu dirección para evaluarla automáticamente en el mapa. También puedes arrastrar el marcador con el mouse o pulsar sobre el mapa para fijar la entrada exacta de tu local.'}
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                    {tipoAtencion === 'solo_envio'
-                      ? 'Dirección o Punto de Referencia de Despacho *'
-                      : 'Dirección que verán los vecinos *'}
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={direccion}
-                    onChange={(e) => setDireccion(e.target.value)}
-                    placeholder={
-                      tipoAtencion === 'solo_envio'
-                        ? 'Ej. Depósito central, taller o punto de partida de envíos...'
-                        : 'Calle y número de tu local...'
-                    }
-                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                    Localidad / Barrio
-                  </label>
-                  <input
-                    type="text"
-                    value={localidad}
-                    onChange={(e) => setLocalidad(e.target.value)}
-                    placeholder="Ej. Belgrano, San Isidro..."
-                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              {/* Componente de Mapa Interactivo Geocodificador */}
-              <MapaSelectorWrapper
-                latitud={latitud}
-                longitud={longitud}
-                direccionTexto={direccion}
-                onUbicacionChange={handleUbicacionChange}
-                radioEntregaMetros={Math.round(radioKm * 1000)}
-                mostrarRadio={tipoAtencion !== 'local_fisico'}
-              />
-            </div>
 
             {/* SECCIÓN 4: Catálogo Digital de Productos y Ofertas */}
             <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800 space-y-4">
