@@ -47,6 +47,8 @@ export const ZONAS_PRECARGADAS: ZonaGeografica[] = [
   { nombre: 'San Miguel', tipo: 'partido', provincia: 'Buenos Aires', latitud: -34.5428, longitud: -58.7125 },
   { nombre: 'Bella Vista', tipo: 'localidad', provincia: 'Buenos Aires', latitud: -34.5667, longitud: -58.6833 },
   { nombre: 'Tortuguitas', tipo: 'localidad', provincia: 'Buenos Aires', latitud: -34.4739, longitud: -58.7561 },
+  { nombre: 'Grand Bourg', tipo: 'localidad', provincia: 'Buenos Aires', latitud: -34.4845, longitud: -58.7160 },
+  { nombre: 'Maquinista Savio', tipo: 'localidad', provincia: 'Buenos Aires', latitud: -34.4362, longitud: -58.7845 },
   { nombre: 'Los Polvorines', tipo: 'localidad', provincia: 'Buenos Aires', latitud: -34.5083, longitud: -58.6944 },
 
   // CABA

@@ -44,6 +44,14 @@ import InputWhatsAppConPais from '@/components/InputWhatsAppConPais';
 import { obtenerHorariosConfigPorDefecto } from '@/lib/horarios';
 import { hashPassword } from '@/lib/crypto';
 
+export function normalizarUrlWeb(url?: string): string | undefined {
+  if (!url) return undefined;
+  const clean = url.trim();
+  if (!clean) return undefined;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(clean)) return clean;
+  return `https://${clean}`;
+}
+
 export default function CargarComercioPage() {
   const router = useRouter();
 
@@ -345,7 +353,7 @@ export default function CargarComercioPage() {
               p.es_oferta && p.precio && p.precio_oferta
                 ? Math.round(((Number(p.precio) - Number(p.precio_oferta)) / Number(p.precio)) * 100)
                 : undefined,
-            imagen_url: p.imagen_url || 'https://images.unsplash.com/photo-1534723452862-4c874018d66d?w=600&auto=format&fit=crop&q=80',
+            imagen_url: normalizarUrlWeb(p.imagen_url) || 'https://images.unsplash.com/photo-1534723452862-4c874018d66d?w=600&auto=format&fit=crop&q=80',
             categoria: p.categoria || rubroFinal,
             fecha_oferta: p.es_oferta ? new Date().toISOString().split('T')[0] : undefined,
             duracion_horas_oferta: p.es_oferta ? (p.tipo_oferta === 'diaria' ? 24 : 168) : undefined,
@@ -422,11 +430,11 @@ export default function CargarComercioPage() {
       horarios_config: horariosConfig,
       email: emailComercio.trim().toLowerCase(),
       email_comercio: emailComercio.trim().toLowerCase(),
-      sitio_web: sitioWeb.trim() || undefined,
+      sitio_web: normalizarUrlWeb(sitioWeb),
       instagram: instagram.trim() || undefined,
       tiktok: tiktok.trim() || undefined,
       facebook: facebook.trim() || undefined,
-      otros_links: otrosLinks.trim() || undefined,
+      otros_links: normalizarUrlWeb(otrosLinks),
       password_comercio: hashedPassword,
       fecha_ultima_modificacion_catalogo: deseaCatalogo && productosValidos.length > 0 ? new Date().toISOString() : undefined,
       esta_abierto: estaAbierto && !cerradoMomentaneo && !enVacaciones,
@@ -805,10 +813,17 @@ export default function CargarComercioPage() {
                       Página Web Oficial
                     </label>
                     <input
-                      type="url"
+                      type="text"
+                      inputMode="url"
                       value={sitioWeb}
                       onChange={(e) => setSitioWeb(e.target.value)}
-                      placeholder="https://www.tucomercio.com"
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        if (val && !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(val)) {
+                          setSitioWeb(`https://${val}`);
+                        }
+                      }}
+                      placeholder="www.tucomercio.com o https://..."
                       className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
@@ -858,9 +873,16 @@ export default function CargarComercioPage() {
                     </label>
                     <input
                       type="text"
+                      inputMode="url"
                       value={otrosLinks}
                       onChange={(e) => setOtrosLinks(e.target.value)}
-                      placeholder="https://..."
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        if (val && !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(val)) {
+                          setOtrosLinks(`https://${val}`);
+                        }
+                      }}
+                      placeholder="www.tuenlace.com o https://..."
                       className="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500"
                     />
                   </div>
@@ -1465,7 +1487,8 @@ export default function CargarComercioPage() {
                             URL de Imagen Ilustrativa
                           </label>
                           <input
-                            type="url"
+                            type="text"
+                            inputMode="url"
                             value={prod.imagen_url || ''}
                             onChange={(e) => actualizarProducto(index, 'imagen_url', e.target.value)}
                             placeholder="https://..."

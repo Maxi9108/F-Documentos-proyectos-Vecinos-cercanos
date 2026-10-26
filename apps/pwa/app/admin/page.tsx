@@ -4198,7 +4198,7 @@ export default function AdminPage() {
 
                         <td className="py-3 px-4 text-[10.5px] text-zinc-400 space-y-0.5">
                           {c.sitio_web && (
-                            <a href={c.sitio_web} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline block truncate max-w-[120px]">
+                            <a href={c.sitio_web.startsWith('http') ? c.sitio_web : `https://${c.sitio_web}`} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline block truncate max-w-[120px]">
                               Web
                             </a>
                           )}

@@ -14,6 +14,14 @@ interface ComercioModalProps {
   comercioToEdit?: Comercio | null;
 }
 
+function normalizarUrlWeb(url?: string): string | undefined {
+  if (!url) return undefined;
+  const clean = url.trim();
+  if (!clean) return undefined;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(clean)) return clean;
+  return `https://${clean}`;
+}
+
 export default function ComercioModal({
   isOpen,
   onClose,
@@ -164,11 +172,11 @@ export default function ComercioModal({
       whatsapp: whatsapp.trim() || undefined,
       email: email.trim().toLowerCase(),
       email_comercio: email.trim().toLowerCase(),
-      sitio_web: sitioWeb.trim() || undefined,
+      sitio_web: normalizarUrlWeb(sitioWeb),
       instagram: instagram.trim() || undefined,
       tiktok: tiktok.trim() || undefined,
       facebook: facebook.trim() || undefined,
-      otros_links: otrosLinks.trim() || undefined,
+      otros_links: normalizarUrlWeb(otrosLinks),
       tipo_atencion: tipoAtencion,
       radio_entrega_metros: tipoAtencion !== 'local_fisico' ? Math.round(radioKm * 1000) : 0,
       cobertura_poligono: tipoAtencion !== 'local_fisico' && coberturaPoligono.length >= 3 ? coberturaPoligono : undefined,
@@ -370,10 +378,17 @@ export default function ComercioModal({
                   Página Web Oficial
                 </label>
                 <input
-                  type="url"
+                  type="text"
+                  inputMode="url"
                   value={sitioWeb}
                   onChange={(e) => setSitioWeb(e.target.value)}
-                  placeholder="https://www.tucomercio.com"
+                  onBlur={(e) => {
+                    const val = e.target.value.trim();
+                    if (val && !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(val)) {
+                      setSitioWeb(`https://${val}`);
+                    }
+                  }}
+                  placeholder="www.tucomercio.com o https://..."
                   className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -423,9 +438,16 @@ export default function ComercioModal({
                 </label>
                 <input
                   type="text"
+                  inputMode="url"
                   value={otrosLinks}
                   onChange={(e) => setOtrosLinks(e.target.value)}
-                  placeholder="https://..."
+                  onBlur={(e) => {
+                    const val = e.target.value.trim();
+                    if (val && !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(val)) {
+                      setOtrosLinks(`https://${val}`);
+                    }
+                  }}
+                  placeholder="www.tuenlace.com o https://..."
                   className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-indigo-500"
                 />
               </div>

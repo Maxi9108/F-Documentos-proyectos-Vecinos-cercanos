@@ -101,6 +101,14 @@ import {
 } from 'lucide-react';
 import SelectorZonaEnvioWrapper from '@/components/SelectorZonaEnvioWrapper';
 
+function normalizarUrlWeb(url?: string): string | undefined {
+  if (!url) return undefined;
+  const clean = url.trim();
+  if (!clean) return undefined;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(clean)) return clean;
+  return `https://${clean}`;
+}
+
 export default function MiComercioPage() {
   const { usuario, abrirModalSoporte } = useUser();
   const [comercios, setComercios] = useState<Comercio[]>([]);
@@ -1127,11 +1135,11 @@ export default function MiComercioPage() {
       telefono: telefono.trim(),
       email: email.trim().toLowerCase(),
       email_comercio: email.trim().toLowerCase(),
-      sitio_web: sitioWeb.trim() || undefined,
+      sitio_web: normalizarUrlWeb(sitioWeb),
       instagram: instagram.trim() || undefined,
       tiktok: tiktok.trim() || undefined,
       facebook: facebook.trim() || undefined,
-      otros_links: otrosLinks.trim() || undefined,
+      otros_links: normalizarUrlWeb(otrosLinks),
       whatsapp: whatsapp.trim() || telefono.trim(),
       descripcion: descripcion.trim(),
       horario: horarioResumen,
@@ -2891,10 +2899,17 @@ export default function MiComercioPage() {
                         Página Web Oficial
                       </label>
                       <input
-                        type="url"
+                        type="text"
+                        inputMode="url"
                         value={sitioWeb}
                         onChange={(e) => setSitioWeb(e.target.value)}
-                        placeholder="https://www.tucomercio.com"
+                        onBlur={(e) => {
+                          const val = e.target.value.trim();
+                          if (val && !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(val)) {
+                            setSitioWeb(`https://${val}`);
+                          }
+                        }}
+                        placeholder="www.tucomercio.com o https://..."
                         className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500"
                       />
                     </div>
@@ -2944,9 +2959,16 @@ export default function MiComercioPage() {
                       </label>
                       <input
                         type="text"
+                        inputMode="url"
                         value={otrosLinks}
                         onChange={(e) => setOtrosLinks(e.target.value)}
-                        placeholder="https://..."
+                        onBlur={(e) => {
+                          const val = e.target.value.trim();
+                          if (val && !/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(val)) {
+                            setOtrosLinks(`https://${val}`);
+                          }
+                        }}
+                        placeholder="www.tuenlace.com o https://..."
                         className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500"
                       />
                     </div>
