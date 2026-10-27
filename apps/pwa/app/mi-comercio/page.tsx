@@ -98,8 +98,12 @@ import {
   ChevronRight,
   KeyRound,
   Search,
+  Truck,
+  Navigation,
+  Compass,
+  Loader2,
 } from 'lucide-react';
-import SelectorZonaEnvioWrapper from '@/components/SelectorZonaEnvioWrapper';
+import MapaSelectorWrapper from '@/components/MapaSelectorWrapper';
 
 function normalizarUrlWeb(url?: string): string | undefined {
   if (!url) return undefined;
@@ -153,6 +157,11 @@ export default function MiComercioPage() {
   const [rubro, setRubro] = useState('');
   const [direccion, setDireccion] = useState('');
   const [localidad, setLocalidad] = useState('');
+  const [latitud, setLatitud] = useState<number>(-34.6);
+  const [longitud, setLongitud] = useState<number>(-58.4);
+  const [buscandoDireccion, setBuscandoDireccion] = useState(false);
+  const [mensajeDireccion, setMensajeDireccion] = useState<{ tipo: 'exito' | 'error' | 'info'; texto: string } | null>(null);
+  const [sugerenciasDireccion, setSugerenciasDireccion] = useState<any[]>([]);
   const [telefono, setTelefono] = useState('');
   const [email, setEmail] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
@@ -377,6 +386,8 @@ export default function MiComercioPage() {
     setRubro(comercio.rubro || 'Almacén');
     setDireccion(comercio.direccion || '');
     setLocalidad(comercio.localidad || '');
+    setLatitud(typeof comercio.latitud === 'number' && !isNaN(comercio.latitud) ? comercio.latitud : -34.6);
+    setLongitud(typeof comercio.longitud === 'number' && !isNaN(comercio.longitud) ? comercio.longitud : -58.4);
     setTelefono(comercio.telefono || '');
     setEmail(comercio.email || comercio.email_comercio || '');
     setWhatsapp(comercio.whatsapp || comercio.telefono || '');
@@ -1082,6 +1093,157 @@ export default function MiComercioPage() {
     }
   };
 
+  // Localizar en mapa por texto de dirección usando OpenStreetMap en español
+  const ubicarEnMapa = async () => {
+    const dirLimpia = direccion.trim();
+    if (!dirLimpia) {
+      setMensajeDireccion({
+        tipo: 'error',
+        texto: 'Por favor, ingresa una calle y número para buscar en el mapa.',
+      });
+      return;
+    }
+
+    setBuscandoDireccion(true);
+    setMensajeDireccion({
+      tipo: 'info',
+      texto: 'Buscando coordenadas exactas en la cartografía en español...',
+    });
+    setSugerenciasDireccion([]);
+
+    try {
+      const consulta = `${dirLimpia}, ${localidad.trim() || 'Buenos Aires'}, Argentina`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        consulta
+      )}&limit=5&countrycodes=ar&addressdetails=1`;
+
+      const res = await fetch(url, {
+        headers: {
+          'Accept-Language': 'es',
+        },
+      });
+
+      if (!res.ok) throw new Error('Error al consultar el servicio de mapas.');
+
+      const data = await res.json();
+
+      if (data && data.length > 0) {
+        if (data.length === 1) {
+          const primerResultado = data[0];
+          const nLat = parseFloat(primerResultado.lat);
+          const nLng = parseFloat(primerResultado.lon);
+          setLatitud(nLat);
+          setLongitud(nLng);
+          setMensajeDireccion({
+            tipo: 'exito',
+            texto: `✓ Dirección localizada con precisión. Marcador centrado en el mapa.`,
+          });
+        } else {
+          setSugerenciasDireccion(data);
+          setMensajeDireccion({
+            tipo: 'info',
+            texto: `Encontramos ${data.length} coincidencias. Elige la que corresponda abajo o ajusta el marcador directamente en el mapa.`,
+          });
+        }
+      } else {
+        setMensajeDireccion({
+          tipo: 'error',
+          texto:
+            'No encontramos esa dirección exacta. Puedes mover el pin en el mapa manualmente hasta la puerta de tu local.',
+        });
+      }
+    } catch (err) {
+      console.warn('[Geocodificación] Error:', err);
+      setMensajeDireccion({
+        tipo: 'error',
+        texto:
+          'Hubo una demora al conectar con la cartografía. Mueve el marcador directamente en el mapa.',
+      });
+    } finally {
+      setBuscandoDireccion(false);
+    }
+  };
+
+  const seleccionarSugerenciaDireccion = (sug: any) => {
+    const nLat = parseFloat(sug.lat);
+    const nLng = parseFloat(sug.lon);
+    setLatitud(nLat);
+    setLongitud(nLng);
+    setSugerenciasDireccion([]);
+    setMensajeDireccion({
+      tipo: 'exito',
+      texto: `✓ Ubicación confirmada en el mapa: ${sug.display_name.slice(0, 50)}...`,
+    });
+  };
+
+  const obtenerUbicacionGps = () => {
+    if (!navigator.geolocation) {
+      setMensajeDireccion({
+        tipo: 'error',
+        texto: 'La geolocalización no está soportada en tu navegador actual.',
+      });
+      return;
+    }
+
+    setBuscandoDireccion(true);
+    setMensajeDireccion({
+      tipo: 'info',
+      texto: 'Obteniendo coordenadas GPS de tu dispositivo...',
+    });
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const nLat = pos.coords.latitude;
+        const nLng = pos.coords.longitude;
+        setLatitud(nLat);
+        setLongitud(nLng);
+
+        // Geocodificación inversa
+        try {
+          const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${nLat}&lon=${nLng}&addressdetails=1`;
+          const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.address) {
+              const calle = data.address.road || '';
+              const num = data.address.house_number ? ` ${data.address.house_number}` : '';
+              const barrio = data.address.neighbourhood || data.address.suburb || data.address.city || data.address.town || '';
+              if (calle && !direccion) setDireccion(`${calle}${num}`.trim());
+              if (barrio && !localidad) setLocalidad(barrio);
+            }
+          }
+        } catch (_) {}
+
+        setMensajeDireccion({
+          tipo: 'exito',
+          texto: '✓ Ubicación GPS detectada y fijada en el mapa.',
+        });
+        setBuscandoDireccion(false);
+      },
+      (err) => {
+        console.warn('[GPS] Error:', err);
+        setMensajeDireccion({
+          tipo: 'error',
+          texto: 'No se pudo obtener la ubicación GPS. Puedes mover el marcador directamente en el mapa.',
+        });
+        setBuscandoDireccion(false);
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  };
+
+  const handleUbicacionChange = (nuevaLat: number, nuevaLng: number, direccionSugerida?: string) => {
+    setLatitud(nuevaLat);
+    setLongitud(nuevaLng);
+    if (direccionSugerida) {
+      setDireccion(direccionSugerida);
+      setMensajeDireccion({
+        tipo: 'exito',
+        texto: `✓ Marcador ajustado en: ${direccionSugerida.slice(0, 50)}...`,
+      });
+    }
+  };
+
   // Enviar Modificaciones para Aprobación del Administrador
   const handleSubmitModificaciones = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1132,6 +1294,8 @@ export default function MiComercioPage() {
       rubro: rubro.trim(),
       direccion: direccion.trim(),
       localidad: localidad.trim() || undefined,
+      latitud: typeof latitud === 'number' && !isNaN(latitud) ? latitud : (comercioActual.latitud || -34.6),
+      longitud: typeof longitud === 'number' && !isNaN(longitud) ? longitud : (comercioActual.longitud || -58.4),
       telefono: telefono.trim(),
       email: email.trim().toLowerCase(),
       email_comercio: email.trim().toLowerCase(),
@@ -2776,113 +2940,342 @@ export default function MiComercioPage() {
                   <span>Datos Básicos y de Contacto</span>
                 </h3>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
+                <div className="space-y-5">
+                  {/* Fila 1: Nombre del Comercio y Rubro */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                        Nombre del Comercio *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={nombre}
+                        onChange={(e) => setNombre(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                        Rubro / Categoría Comercial *
+                      </label>
+                      <select
+                        value={rubro}
+                        onChange={(e) => setRubro(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                      >
+                        {categoriasRubro.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Fila 2: Debajo Dirección Comercial y Localidad */}
+                  <div className="space-y-3 pt-2 border-t border-zinc-800/80">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                          Dirección Comercial *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={direccion}
+                          onChange={(e) => setDireccion(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              ubicarEnMapa();
+                            }
+                          }}
+                          placeholder="Ej. Calle y número"
+                          className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                          Localidad / Barrio
+                        </label>
+                        <input
+                          type="text"
+                          value={localidad}
+                          onChange={(e) => setLocalidad(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              ubicarEnMapa();
+                            }
+                          }}
+                          placeholder="Ej. San Isidro, Palermo..."
+                          className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Botones de acción geográfica */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={ubicarEnMapa}
+                        disabled={buscandoDireccion}
+                        className="px-3.5 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-semibold text-xs rounded-xl transition-all shadow-md shadow-cyan-950/50 flex items-center gap-2 cursor-pointer"
+                      >
+                        {buscandoDireccion ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Ubicando en mapa...
+                          </>
+                        ) : (
+                          <>
+                            <Navigation className="w-3.5 h-3.5" />
+                            Ubicar en el Mapa
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={obtenerUbicacionGps}
+                        disabled={buscandoDireccion}
+                        className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 text-zinc-200 font-medium text-xs rounded-xl border border-zinc-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                        Usar mi ubicación GPS
+                      </button>
+
+                      <span className="text-[11px] text-zinc-400 font-mono ml-auto hidden sm:inline">
+                        📍 {latitud.toFixed(4)}, {longitud.toFixed(4)}
+                      </span>
+                    </div>
+
+                    {mensajeDireccion && (
+                      <div
+                        className={`p-3 rounded-xl border text-xs flex items-center gap-2 animate-in fade-in duration-200 ${
+                          mensajeDireccion.tipo === 'exito'
+                            ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
+                            : mensajeDireccion.tipo === 'error'
+                            ? 'bg-rose-950/40 border-rose-800 text-rose-300'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-300'
+                        }`}
+                      >
+                        {mensajeDireccion.tipo === 'exito' ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : mensajeDireccion.tipo === 'error' ? (
+                          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                        ) : (
+                          <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+                        )}
+                        <span>{mensajeDireccion.texto}</span>
+                      </div>
+                    )}
+
+                    {sugerenciasDireccion.length > 0 && (
+                      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-2 space-y-1 shadow-xl">
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider px-2 block pt-1">
+                          Selecciona tu dirección exacta:
+                        </span>
+                        {sugerenciasDireccion.map((sug) => (
+                          <button
+                            key={sug.place_id}
+                            type="button"
+                            onClick={() => seleccionarSugerenciaDireccion(sug)}
+                            className="w-full text-left p-2.5 hover:bg-zinc-800 rounded-xl transition-colors flex items-start gap-2 text-xs text-zinc-200 cursor-pointer"
+                          >
+                            <MapPin className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                            <span className="leading-snug">{sug.display_name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Fila 3: Debajo Tipo de Comercio y Modalidad de Atención */}
+                  <div className="space-y-3 pt-2 border-t border-zinc-800/80">
                     <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Nombre del Comercio *
+                      Tipo de Comercio y Modalidad de Atención *
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={nombre}
-                      onChange={(e) => setNombre(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setTipoAtencion('local_fisico')}
+                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                          tipoAtencion === 'local_fisico'
+                            ? 'bg-cyan-950/60 border-cyan-500 text-white shadow-md shadow-cyan-950/50 ring-1 ring-cyan-500/40'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Store className="w-4 h-4 text-cyan-400" />
+                          <span className="text-xs font-bold">Local Físico</span>
+                        </div>
+                        <span className="text-[11px] text-zinc-500 leading-tight">
+                          Atención al público en local a la calle
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setTipoAtencion('solo_envio')}
+                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                          tipoAtencion === 'solo_envio'
+                            ? 'bg-cyan-950/60 border-cyan-500 text-white shadow-md shadow-cyan-950/50 ring-1 ring-cyan-500/40'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Bike className="w-4 h-4 text-amber-400" />
+                          <span className="text-xs font-bold">Solo a Domicilio</span>
+                        </div>
+                        <span className="text-[11px] text-zinc-500 leading-tight">
+                          Reparto exclusivo / Sin local a la calle
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setTipoAtencion('ambos')}
+                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                          tipoAtencion === 'ambos'
+                            ? 'bg-cyan-950/60 border-cyan-500 text-white shadow-md shadow-cyan-950/50 ring-1 ring-cyan-500/40'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Truck className="w-4 h-4 text-emerald-400" />
+                          <span className="text-xs font-bold">Ambos (Local y Delivery)</span>
+                        </div>
+                        <span className="text-[11px] text-zinc-500 leading-tight">
+                          Atención en local y envíos con radio
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Si ofrece delivery: Selector de radio con presets y slider */}
+                    {tipoAtencion !== 'local_fisico' && (
+                      <div className="p-4 rounded-2xl bg-zinc-900/80 border border-cyan-500/30 space-y-3 animate-in fade-in duration-200">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                              <Bike className="w-4 h-4 text-cyan-400" />
+                              Radio de Cobertura de Envíos: <span className="text-cyan-400 font-mono">{radioKm} km</span> ({Math.round(radioKm * 1000)} metros)
+                            </span>
+                            <p className="text-[11px] text-zinc-400 mt-0.5">
+                              Se representa automáticamente con el círculo celeste en el mapa a continuación.
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1">
+                            {[1, 2, 3, 5, 8, 10, 15].map((km) => (
+                              <button
+                                key={km}
+                                type="button"
+                                onClick={() => setRadioKm(km)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                  radioKm === km
+                                    ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/20'
+                                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
+                                }`}
+                              >
+                                {km} km
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min="0.5"
+                            max="25"
+                            step="0.5"
+                            value={radioKm}
+                            onChange={(e) => setRadioKm(parseFloat(e.target.value) || 1)}
+                            className="flex-1 accent-cyan-500 cursor-pointer"
+                          />
+                          <div className="flex items-center gap-1 shrink-0">
+                            <input
+                              type="number"
+                              min="0.5"
+                              max="50"
+                              step="0.5"
+                              value={radioKm}
+                              onChange={(e) => setRadioKm(Math.max(0.5, parseFloat(e.target.value) || 0.5))}
+                              className="w-16 px-2 py-1 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white text-center font-mono focus:outline-none focus:border-cyan-500"
+                            />
+                            <span className="text-xs text-zinc-400">km</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Fila 4: Debajo UN SOLO MAPA INTERACTIVO */}
+                  <div className="pt-2 border-t border-zinc-800/80">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+                        Mapa de Ubicación {tipoAtencion !== 'local_fisico' && 'y Radio de Cobertura'}
+                      </span>
+                      <span className="text-[11px] text-zinc-400 font-mono">
+                        Cartografía en Español
+                      </span>
+                    </div>
+
+                    <MapaSelectorWrapper
+                      latitud={latitud}
+                      longitud={longitud}
+                      direccionTexto={direccion}
+                      onUbicacionChange={handleUbicacionChange}
+                      radioEntregaMetros={Math.round(radioKm * 1000)}
+                      mostrarRadio={tipoAtencion !== 'local_fisico'}
+                      onRadioChange={(metros) => setRadioKm(Math.round((metros / 1000) * 10) / 10)}
+                      ocultarBuscador={true}
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Rubro / Categoría Comercial *
-                    </label>
-                    <select
-                      value={rubro}
-                      onChange={(e) => setRubro(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
-                    >
-                      {categoriasRubro.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {/* Fila 5: Teléfono, Email, WhatsApp */}
+                  <div className="pt-3 border-t border-zinc-800/80 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                        Teléfono de Contacto * <span className="text-[10px] text-cyan-400 font-bold lowercase">(obligatorio)</span>
+                      </label>
+                      <input
+                        type="tel"
+                        required
+                        value={telefono}
+                        onChange={(e) => setTelefono(e.target.value)}
+                        placeholder="+54 11 4000-0000"
+                        className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Dirección Comercial *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={direccion}
-                      onChange={(e) => setDireccion(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
-                    />
-                  </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
+                        Correo Electrónico * <span className="text-[10px] text-cyan-400 font-bold lowercase">(obligatorio)</span>
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="contacto@comercio.com"
+                        className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Localidad / Barrio
-                    </label>
-                    <input
-                      type="text"
-                      value={localidad}
-                      onChange={(e) => setLocalidad(e.target.value)}
-                      placeholder="Ej. San Isidro, Palermo, etc."
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Teléfono de Contacto * <span className="text-[10px] text-cyan-400 font-bold lowercase">(obligatorio)</span>
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      value={telefono}
-                      onChange={(e) => setTelefono(e.target.value)}
-                      placeholder="+54 11 4000-0000"
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Correo Electrónico * <span className="text-[10px] text-cyan-400 font-bold lowercase">(obligatorio)</span>
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="contacto@comercio.com"
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-1">
-                    <InputWhatsAppConPais
-                      value={whatsapp}
-                      onChange={setWhatsapp}
-                      label="WhatsApp Comercial"
-                      placeholder="Ej: 9 11 5000-0000"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Modalidad de Atención
-                    </label>
-                    <select
-                      value={tipoAtencion}
-                      onChange={(e) => setTipoAtencion(e.target.value as any)}
-                      className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
-                    >
-                      <option value="local_fisico">Local Físico (Atención al público)</option>
-                      <option value="solo_envio">Solo Envíos a Domicilio (Delivery)</option>
-                      <option value="ambos">Ambos (Local Físico y Delivery)</option>
-                    </select>
+                    <div>
+                      <InputWhatsAppConPais
+                        value={whatsapp}
+                        onChange={setWhatsapp}
+                        label="WhatsApp Comercial"
+                        placeholder="Ej: 9 11 5000-0000"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -2987,33 +3380,6 @@ export default function MiComercioPage() {
                     className="w-full px-3.5 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-500 resize-none"
                   />
                 </div>
-
-                {tipoAtencion !== 'local_fisico' && (
-                  <div className="pt-2 animate-in fade-in duration-200">
-                    <SelectorZonaEnvioWrapper
-                      latitud={comercioActual?.latitud || -34.6}
-                      longitud={comercioActual?.longitud || -58.4}
-                      radioKm={radioKm}
-                      poligono={coberturaPoligono}
-                      onChange={(nuevoRadio, nuevoPoligono) => {
-                        setRadioKm(nuevoRadio);
-                        setCoberturaPoligono(nuevoPoligono);
-                      }}
-                      confirmado={zonaEnvioConfirmada}
-                      onToggleConfirmado={(nuevoEstado) => setZonaEnvioConfirmada(nuevoEstado)}
-                      alcanceEnvio={alcanceEnvio}
-                      onChangeAlcanceEnvio={setAlcanceEnvio}
-                      enviosNacional={enviosNacional}
-                      onChangeEnviosNacional={setEnviosNacional}
-                      enviosExterior={enviosExterior}
-                      onChangeEnviosExterior={setEnviosExterior}
-                      zonasDetalle={zonasEntregaDetalle}
-                      onChangeZonasDetalle={setZonasEntregaDetalle}
-                      zonaDescripcion={zonaEnvioDescripcion}
-                      onChangeZonaDescripcion={setZonaEnvioDescripcion}
-                    />
-                  </div>
-                )}
 
                 {/* SELECTOR AVANZADO DE DÍAS Y HORARIOS CON SOPORTE DE TRASNOCHE */}
                 <div className="space-y-3 pt-3 border-t border-zinc-800">

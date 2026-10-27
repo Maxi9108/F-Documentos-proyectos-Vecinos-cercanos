@@ -41,7 +41,6 @@ import {
 import { getCategorias } from '@/lib/categorias';
 import { registrarEvento } from '@/lib/analytics';
 import SelectorHorariosAvanzados from '@/components/SelectorHorariosAvanzados';
-import SelectorZonaEnvioWrapper from '@/components/SelectorZonaEnvioWrapper';
 import InputWhatsAppConPais from '@/components/InputWhatsAppConPais';
 import { obtenerHorariosConfigPorDefecto } from '@/lib/horarios';
 import { hashPassword } from '@/lib/crypto';
@@ -771,16 +770,16 @@ export default function CargarComercioPage() {
               </div>
             )}
 
-            {/* SECCIÓN 1: Dirección, Ubicación en Mapa y Tipo de Comercio */}
+            {/* SECCIÓN 1: Identificación, Ubicación y Modalidad del Comercio */}
             <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800 space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-indigo-400" />
-                    1. Dirección y Tipo de Comercio *
+                    <Store className="w-4 h-4 text-indigo-400" />
+                    1. Datos Básicos, Ubicación y Modalidad *
                   </h2>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Ingresa primero la dirección de tu local. El sistema lo ubicará automáticamente en el mapa para que verifiques la entrada y definas el tipo de comercio.
+                    Ingresa el nombre, rubro, dirección y tipo de comercio. En el mapa podrás ubicar la entrada exacta y delimitar el radio de envíos.
                   </p>
                 </div>
                 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 w-fit">
@@ -788,8 +787,103 @@ export default function CargarComercioPage() {
                 </span>
               </div>
 
-              {/* Campos de Dirección */}
-              <div className="space-y-3">
+              {/* 1. Nombre del Comercio */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center justify-between">
+                  <span>Nombre del Comercio *</span>
+                  <span className="text-[10px] text-zinc-500 font-normal">Identificación</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  placeholder="Ej. Panadería San Antonio o Reparto de Agua Los Andes"
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+                />
+              </div>
+
+              {/* 2. Rubro / Categoría */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-zinc-300">
+                    Rubro / Categoría *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setSolicitaNuevaCategoria(!solicitaNuevaCategoria)}
+                    className="text-[11px] text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                  >
+                    {solicitaNuevaCategoria ? 'Elegir de la lista' : '¿No figura tu rubro?'}
+                  </button>
+                </div>
+
+                {!solicitaNuevaCategoria ? (
+                  <select
+                    value={rubro}
+                    onChange={(e) => {
+                      if (e.target.value === '__solicitar_nueva__') {
+                        setSolicitaNuevaCategoria(true);
+                      } else {
+                        setRubro(e.target.value);
+                      }
+                    }}
+                    className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+                  >
+                    {listaCategorias.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                    <option value="__solicitar_nueva__">➕ Solicitar otra categoría...</option>
+                  </select>
+                ) : (
+                  <div className="space-y-1.5 animate-in fade-in duration-200">
+                    <input
+                      type="text"
+                      required
+                      value={categoriaSolicitada}
+                      onChange={(e) => setCategoriaSolicitada(e.target.value)}
+                      placeholder="Ej. Reparación de Celulares, Imprenta, Herrería..."
+                      className="w-full px-3.5 py-2.5 bg-zinc-950 border border-indigo-500/50 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
+                    />
+                    <p className="text-[11px] text-zinc-400 flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-indigo-400 shrink-0" />
+                      El administrador revisará esta categoría y la sumará al directorio oficial.
+                    </p>
+                  </div>
+                )}
+
+                {/* Casilla especial para Farmacias: ¿Está de Turno? */}
+                {(rubro === 'Farmacia' || (solicitaNuevaCategoria && categoriaSolicitada.toLowerCase().includes('farmacia'))) && (
+                  <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 flex items-center justify-between gap-2 mt-2">
+                    <div>
+                      <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4" />
+                        ¿Farmacia de Turno 24hs?
+                      </span>
+                      <p className="text-[10px] text-zinc-400 mt-0.5">
+                        Activa esta opción si tu farmacia cubre guardia nocturna hoy.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setEstaDeTurno(!estaDeTurno)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        estaDeTurno
+                          ? 'bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/30'
+                          : 'bg-zinc-900 text-zinc-400 border-zinc-800'
+                      }`}
+                    >
+                      {estaDeTurno ? '● DE TURNO HOY' : '○ Turno regular'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Dirección Comercial (debajo de rubro) */}
+              <div className="space-y-3 pt-2 border-t border-zinc-800/80">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center justify-between">
@@ -911,251 +1005,168 @@ export default function CargarComercioPage() {
                     ))}
                   </div>
                 )}
-
-                {/* Componente de Mapa Interactivo con Pin Arrastrable */}
-                <div className="pt-2">
-                  <MapaSelectorWrapper
-                    latitud={latitud}
-                    longitud={longitud}
-                    direccionTexto={direccion}
-                    onUbicacionChange={handleUbicacionChange}
-                    radioEntregaMetros={Math.round(radioKm * 1000)}
-                    mostrarRadio={tipoAtencion !== 'local_fisico'}
-                    ocultarBuscador={true}
-                  />
-                </div>
               </div>
 
-              {/* Subsección: Tipo de Comercio y Modalidad de Atención */}
-              <div className="pt-4 border-t border-zinc-800 space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                    <Store className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                      Tipo de Comercio y Modalidad de Atención *
-                    </h3>
-                    <p className="text-[11px] text-zinc-400">
-                      Selecciona a qué se dedica tu negocio y cómo atenderás a tus vecinos.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-semibold text-zinc-300">
-                        Rubro / Categoría *
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setSolicitaNuevaCategoria(!solicitaNuevaCategoria)}
-                        className="text-[11px] text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
-                      >
-                        {solicitaNuevaCategoria ? 'Elegir de la lista' : '¿No figura tu rubro?'}
-                      </button>
+              {/* 4. Tipo de Comercio y Modalidad de Atención (debajo de dirección) */}
+              <div className="space-y-3 pt-2 border-t border-zinc-800/80">
+                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                  Tipo de Comercio y Modalidad de Atención *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setTipoAtencion('local_fisico')}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      tipoAtencion === 'local_fisico'
+                        ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Store className="w-4 h-4 text-indigo-400" />
+                      <span className="text-xs font-bold">Local Físico</span>
                     </div>
+                    <span className="text-[11px] text-zinc-500 leading-tight">
+                      Atención al público en local a la calle
+                    </span>
+                  </button>
 
-                    {!solicitaNuevaCategoria ? (
-                      <select
-                        value={rubro}
-                        onChange={(e) => {
-                          if (e.target.value === '__solicitar_nueva__') {
-                            setSolicitaNuevaCategoria(true);
-                          } else {
-                            setRubro(e.target.value);
-                          }
-                        }}
-                        className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                      >
-                        {listaCategorias.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                        <option value="__solicitar_nueva__">➕ Solicitar otra categoría...</option>
-                      </select>
-                    ) : (
-                      <div className="space-y-1.5 animate-in fade-in duration-200">
-                        <input
-                          type="text"
-                          required
-                          value={categoriaSolicitada}
-                          onChange={(e) => setCategoriaSolicitada(e.target.value)}
-                          placeholder="Ej. Reparación de Celulares, Imprenta, Herrería..."
-                          className="w-full px-3.5 py-2.5 bg-zinc-950 border border-indigo-500/50 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                        />
-                        <p className="text-[11px] text-zinc-400 flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-indigo-400 shrink-0" />
-                          El administrador revisará esta categoría y la sumará al directorio oficial.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Casilla especial para Farmacias: ¿Está de Turno? */}
-                  {(rubro === 'Farmacia' || (solicitaNuevaCategoria && categoriaSolicitada.toLowerCase().includes('farmacia'))) && (
-                    <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 flex items-center justify-between gap-2">
-                      <div>
-                        <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                          <ShieldCheck className="w-4 h-4" />
-                          ¿Farmacia de Turno 24hs?
-                        </span>
-                        <p className="text-[10px] text-zinc-400 mt-0.5">
-                          Activa esta opción si tu farmacia cubre guardia nocturna hoy.
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setEstaDeTurno(!estaDeTurno)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                          estaDeTurno
-                            ? 'bg-emerald-500 text-black border-emerald-400 shadow-md shadow-emerald-500/30'
-                            : 'bg-zinc-900 text-zinc-400 border-zinc-800'
-                        }`}
-                      >
-                        {estaDeTurno ? '● DE TURNO HOY' : '○ Turno regular'}
-                      </button>
+                  <button
+                    type="button"
+                    onClick={() => setTipoAtencion('solo_envio')}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      tipoAtencion === 'solo_envio'
+                        ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Bike className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-bold">Solo a Domicilio</span>
                     </div>
-                  )}
+                    <span className="text-[11px] text-zinc-500 leading-tight">
+                      Reparto exclusivo / Sin local a la calle
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTipoAtencion('ambos')}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                      tipoAtencion === 'ambos'
+                        ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Truck className="w-4 h-4 text-emerald-400" />
+                      <span className="text-xs font-bold">Ambos (Local y Delivery)</span>
+                    </div>
+                    <span className="text-[11px] text-zinc-500 leading-tight">
+                      Atención en local y envíos con radio
+                    </span>
+                  </button>
                 </div>
 
-                {/* Selector de Modalidad de Atención */}
-                <div className="pt-2">
-                  <label className="block text-xs font-semibold text-zinc-300 mb-2">
-                    Modalidad de Atención y Envíos *
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setTipoAtencion('local_fisico')}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                        tipoAtencion === 'local_fisico'
-                          ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Store className="w-4 h-4 text-indigo-400" />
-                        <span className="text-xs font-bold">Local Físico</span>
-                      </div>
-                      <span className="text-[11px] text-zinc-500 leading-tight">
-                        Atención al público en local a la calle
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setTipoAtencion('solo_envio')}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                        tipoAtencion === 'solo_envio'
-                          ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Bike className="w-4 h-4 text-amber-400" />
-                        <span className="text-xs font-bold">Solo a Domicilio</span>
-                      </div>
-                      <span className="text-[11px] text-zinc-500 leading-tight">
-                        Reparto exclusivo / Sin local a la calle
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setTipoAtencion('ambos')}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                        tipoAtencion === 'ambos'
-                          ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
-                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Truck className="w-4 h-4 text-emerald-400" />
-                        <span className="text-xs font-bold">Ambos (Local y Delivery)</span>
-                      </div>
-                      <span className="text-[11px] text-zinc-500 leading-tight">
-                        Atención en local y envíos con radio
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Configuración de Zona de Cobertura si hace envíos con Mapa y Confirmación */}
+                {/* Si ofrece envíos: Selector rápido de radio de cobertura en km */}
                 {tipoAtencion !== 'local_fisico' && (
-                  <div className="pt-2 animate-in fade-in duration-200">
-                    <SelectorZonaEnvioWrapper
-                      latitud={latitud}
-                      longitud={longitud}
-                      radioKm={radioKm}
-                      poligono={coberturaPoligono}
-                      onChange={(nuevoRadio, nuevoPoligono) => {
-                        setRadioKm(nuevoRadio);
-                        setCoberturaPoligono(nuevoPoligono);
-                      }}
-                      confirmado={zonaEnvioConfirmada}
-                      onToggleConfirmado={(nuevoEstado) => setZonaEnvioConfirmada(nuevoEstado)}
-                      alcanceEnvio={alcanceEnvio}
-                      onChangeAlcanceEnvio={setAlcanceEnvio}
-                      enviosNacional={enviosNacional}
-                      onChangeEnviosNacional={setEnviosNacional}
-                      enviosExterior={enviosExterior}
-                      onChangeEnviosExterior={setEnviosExterior}
-                      zonasDetalle={zonasEntregaDetalle}
-                      onChangeZonasDetalle={setZonasEntregaDetalle}
-                      zonaDescripcion={zonaEnvioDescripcion}
-                      onChangeZonaDescripcion={setZonaEnvioDescripcion}
-                    />
+                  <div className="p-4 rounded-2xl bg-zinc-950/80 border border-cyan-500/30 space-y-3 animate-in fade-in duration-200">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <Bike className="w-4 h-4 text-cyan-400" />
+                          Radio de Cobertura de Envíos: <span className="text-cyan-400 font-mono">{radioKm} km</span> ({Math.round(radioKm * 1000)} metros)
+                        </span>
+                        <p className="text-[11px] text-zinc-400 mt-0.5">
+                          Se representa automáticamente con el círculo celeste en el mapa a continuación.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1">
+                        {[1, 2, 3, 5, 8, 10, 15].map((km) => (
+                          <button
+                            key={km}
+                            type="button"
+                            onClick={() => setRadioKm(km)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                              radioKm === km
+                                ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/20'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
+                            }`}
+                          >
+                            {km} km
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="25"
+                        step="0.5"
+                        value={radioKm}
+                        onChange={(e) => setRadioKm(parseFloat(e.target.value) || 1)}
+                        className="flex-1 accent-cyan-500 cursor-pointer"
+                      />
+                      <div className="flex items-center gap-1 shrink-0">
+                        <input
+                          type="number"
+                          min="0.5"
+                          max="50"
+                          step="0.5"
+                          value={radioKm}
+                          onChange={(e) => setRadioKm(Math.max(0.5, parseFloat(e.target.value) || 0.5))}
+                          className="w-16 px-2 py-1 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-white text-center font-mono focus:outline-none focus:border-cyan-500"
+                        />
+                        <span className="text-xs text-zinc-400">km</span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
+
+              {/* 5. UN SOLO MAPA INTERACTIVO (debajo de tipo de comercio) */}
+              <div className="pt-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-indigo-400" />
+                    Mapa de Ubicación {tipoAtencion !== 'local_fisico' && 'y Radio de Cobertura'}
+                  </span>
+                  <span className="text-[11px] text-zinc-400 font-mono">
+                    Cartografía en Español
+                  </span>
+                </div>
+
+                <MapaSelectorWrapper
+                  latitud={latitud}
+                  longitud={longitud}
+                  direccionTexto={direccion}
+                  onUbicacionChange={handleUbicacionChange}
+                  radioEntregaMetros={Math.round(radioKm * 1000)}
+                  mostrarRadio={tipoAtencion !== 'local_fisico'}
+                  onRadioChange={(metros) => setRadioKm(Math.round((metros / 1000) * 10) / 10)}
+                  ocultarBuscador={true}
+                />
+              </div>
             </div>
 
-            {/* SECCIÓN 2: Datos de Identificación, Contacto y Gestión */}
+            {/* SECCIÓN 2: Contacto, Presencia Digital y Gestión */}
             <div className="p-6 rounded-3xl bg-zinc-900/80 border border-zinc-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h2 className="text-base font-bold text-white flex items-center gap-2">
-                    <Store className="w-4 h-4 text-cyan-400" />
-                    2. Datos del Comercio y Contacto *
+                    <Phone className="w-4 h-4 text-cyan-400" />
+                    2. Contacto, Redes y Administración del Local *
                   </h2>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Información que verán los vecinos en tu ficha comercial y datos de acceso para administrar tu negocio.
+                    Canales de comunicación para tus clientes y credenciales de acceso para gestionar tu negocio.
                   </p>
                 </div>
                 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 w-fit">
                   Paso 2 de 4
                 </span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                  Nombre del Comercio *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  placeholder="Ej. Panadería San Antonio o Reparto de Agua Los Andes"
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                  Descripción o reseña para los vecinos
-                </label>
-                <textarea
-                  rows={2}
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  placeholder="Cuenta a qué se dedica tu comercio, especialidades o historia..."
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
-                />
               </div>
 
               {/* Teléfono y WhatsApp */}
@@ -1172,7 +1183,7 @@ export default function CargarComercioPage() {
                       value={telefono}
                       onChange={(e) => setTelefono(e.target.value)}
                       placeholder="+54 11 4000-0000"
-                      className="w-full pl-10 pr-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white"
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500"
                     />
                   </div>
                 </div>
@@ -1186,6 +1197,21 @@ export default function CargarComercioPage() {
                   />
                 </div>
               </div>
+
+              {/* Descripción o reseña para los vecinos */}
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  Descripción o reseña para los vecinos
+                </label>
+                <textarea
+                  rows={2}
+                  value={descripcion}
+                  onChange={(e) => setDescripcion(e.target.value)}
+                  placeholder="Cuenta a qué se dedica tu comercio, especialidades o historia..."
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-none"
+                />
+              </div>
+
 
               {/* Presencia Digital & Redes Sociales (Opcionales) */}
               <div className="p-4 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-3">

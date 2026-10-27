@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polygon, useMap, ZoomControl } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Comercio } from '@/types/comercio';
@@ -30,7 +30,7 @@ import { useUser } from '@/context/user-context';
 import RadarSatelital from './RadarSatelital';
 import { construirEnlaceWhatsApp, abrirWhatsAppDirecto } from '@/lib/codigos-pais';
 
-export type ProveedorMapa = 'esri' | 'carto' | 'osm' | 'esriStreet';
+export type ProveedorMapa = 'osm' | 'osmClaro' | 'carto' | 'esri';
 
 export const PROVEEDORES_MAPA: Record<
   ProveedorMapa,
@@ -47,42 +47,42 @@ export const PROVEEDORES_MAPA: Record<
     className?: string;
   }
 > = {
-  esri: {
-    id: 'esri',
-    nombre: 'ESRI Dark',
-    badge: 'Principal (Rápido)',
-    descripcion: 'CDN Akamai con baja latencia en Sudamérica y modo oscuro nativo',
-    urlBase: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-    urlRef: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
-    maxZoom: 16,
-    attribution: '&copy; Esri, HERE, Garmin, OpenStreetMap',
-  },
-  carto: {
-    id: 'carto',
-    nombre: 'CartoDB Dark',
-    badge: 'CDN Ultra Rápido',
-    descripcion: 'CDN Fastly con respuesta instantánea y modo oscuro nativo para celulares',
-    urlBase: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-    subdomains: ['a', 'b', 'c', 'd'],
-  },
   osm: {
     id: 'osm',
-    nombre: 'OSM Nocturno',
-    badge: 'Respaldo 1',
-    descripcion: 'Servidor global libre OpenStreetMap con filtro nocturno',
-    urlBase: 'https://{s}.tile.openstreetmap.org/{z}/{y}/{x}.png',
+    nombre: 'OSM en Español (Nocturno)',
+    badge: 'Principal (Español)',
+    descripcion: 'Cartografía comunitaria en español con nombres oficiales de calles y modo oscuro',
+    urlBase: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">Colaboradores de OpenStreetMap</a>',
     subdomains: ['a', 'b', 'c'],
     className: 'filter invert-[0.92] hue-rotate-180 brightness-95 contrast-125 saturate-[0.8]',
   },
-  esriStreet: {
-    id: 'esriStreet',
-    nombre: 'Calles Claras',
-    badge: 'Respaldo 2',
-    descripcion: 'Servidor cartográfico de alta definición de calles y avenidas',
+  osmClaro: {
+    id: 'osmClaro',
+    nombre: 'OSM Calles Claras (Español)',
+    badge: 'Respaldo 1 (Español)',
+    descripcion: 'Cartografía estándar en español con máxima visibilidad de calles, plazas y alturas',
+    urlBase: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">Colaboradores de OpenStreetMap</a>',
+    subdomains: ['a', 'b', 'c'],
+  },
+  carto: {
+    id: 'carto',
+    nombre: 'CartoDB Rápido',
+    badge: 'Respaldo 2 (CDN)',
+    descripcion: 'Servidor CDN de respuesta ultra rápida y bajo consumo en datos móviles',
+    urlBase: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    subdomains: ['a', 'b', 'c', 'd'],
+  },
+  esri: {
+    id: 'esri',
+    nombre: 'ESRI Callejero',
+    badge: 'Respaldo 3 (Alternativo)',
+    descripcion: 'Servidor cartográfico mundial de alta disponibilidad',
     urlBase: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
     maxZoom: 18,
     attribution: '&copy; Esri',
@@ -499,7 +499,7 @@ export default function MapaComercios({
   onOpenDetalle,
 }: MapaComerciosProps) {
   const [modoVisualizacion, setModoVisualizacion] = useState<'mapa' | 'radar'>('mapa');
-  const [proveedorActivo, setProveedorActivo] = useState<ProveedorMapa>('carto');
+  const [proveedorActivo, setProveedorActivo] = useState<ProveedorMapa>('osm');
   const [menuServidoresAbierto, setMenuServidoresAbierto] = useState(false);
   const [mostrarLeyenda, setMostrarLeyenda] = useState(false);
   const [avisoLentitudVisible, setAvisoLentitudVisible] = useState(false);
@@ -738,6 +738,7 @@ export default function MapaComercios({
       <MapContainer
         center={defaultCenter}
         zoom={14}
+        zoomControl={false}
         scrollWheelZoom={true}
         touchZoom={true}
         bounceAtZoomLimits={false}
@@ -747,6 +748,8 @@ export default function MapaComercios({
         markerZoomAnimation={true}
         className="w-full h-full"
       >
+        <ZoomControl zoomInTitle="Acercar mapa" zoomOutTitle="Alejar mapa" position="bottomright" />
+
         {/* Capa de mosaicos activa según el proveedor seleccionado */}
         <TileLayer
           key={`${proveedorActivo}-base`}
@@ -766,7 +769,7 @@ export default function MapaComercios({
                 const next = prev + 1;
                 if (next >= 5) {
                   setProveedorActivo((curr) =>
-                    curr === 'esri' ? 'carto' : curr === 'carto' ? 'osm' : curr === 'osm' ? 'esriStreet' : 'carto'
+                    curr === 'osm' ? 'osmClaro' : curr === 'osmClaro' ? 'carto' : curr === 'carto' ? 'esri' : 'osm'
                   );
                   return 0;
                 }
@@ -1149,7 +1152,7 @@ export default function MapaComercios({
             </div>
             <div className="min-w-0">
               <p className="font-bold text-amber-300 truncate">¿El mapa tarda en mostrarse en tu zona?</p>
-              <p className="text-[11px] text-zinc-400 truncate">Podés probar el Servidor de Respaldo o activar el Modo Radar sin descarga.</p>
+              <p className="text-[11px] text-zinc-400 truncate">Podés probar un Servidor de Respaldo en Español o activar el Modo Radar sin descarga.</p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -1157,13 +1160,13 @@ export default function MapaComercios({
               type="button"
               onClick={() => {
                 setProveedorActivo((prev) =>
-                  prev === 'esri' ? 'carto' : prev === 'carto' ? 'osm' : prev === 'osm' ? 'esriStreet' : 'esri'
+                  prev === 'osm' ? 'osmClaro' : prev === 'osmClaro' ? 'carto' : prev === 'carto' ? 'esri' : 'osm'
                 );
                 setAvisoLentitudVisible(false);
               }}
               className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 font-semibold transition-colors cursor-pointer text-xs"
             >
-              🔄 Probar Respaldo
+              🔄 Probar Respaldo en Español
             </button>
             <button
               type="button"

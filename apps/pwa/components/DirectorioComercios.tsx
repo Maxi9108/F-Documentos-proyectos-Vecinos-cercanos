@@ -485,9 +485,9 @@ export default function DirectorioComercios({
               </div>
               <div className="flex-1">
                 <p className="font-bold text-white flex items-center gap-1.5">
-                  <span>Smart Radius Activo ({radioEfectivo} km)</span>
+                  <span>Radio Cercano Activo ({radioEfectivo} km)</span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono">
-                    Fallback Automático
+                    Ajuste Automático
                   </span>
                 </p>
                 <p className="text-zinc-300 text-[11px] mt-0.5">
