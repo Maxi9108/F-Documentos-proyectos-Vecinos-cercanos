@@ -85,14 +85,9 @@ function createDraggablePin() {
 }
 
 // Icono para los vértices del polígono
-function createVertexIcon(index: number, esPrimerPuntoParaCerrar: boolean = false) {
-  const bgColor = esPrimerPuntoParaCerrar
-    ? 'bg-emerald-500 animate-pulse ring-4 ring-emerald-400/50'
-    : 'bg-amber-500';
+function createVertexIcon(index: number) {
   const html = `
-    <div class="w-6 h-6 rounded-full ${bgColor} border-2 border-white shadow-lg flex items-center justify-center text-[10px] font-black text-white cursor-pointer select-none transition-transform hover:scale-125" title="${
-      esPrimerPuntoParaCerrar ? 'Clic para cerrar la zona con este punto' : `Punto ${index + 1}`
-    }">
+    <div class="w-6 h-6 rounded-full bg-amber-500 border-2 border-white shadow-lg flex items-center justify-center text-[10px] font-black text-white cursor-pointer select-none transition-transform hover:scale-125" title="Vértice ${index + 1} (arrastra para ajustar posición)">
       ${index + 1}
     </div>
   `;
@@ -166,16 +161,22 @@ export default function MapaSelectorDireccion({
     }
   }, [modoZona]);
 
-  // Puntos del polígono y estado de cierre
+  // Bandera para evitar que useEffect cierre la zona automáticamente mientras el usuario dibuja
+  const interactuandoRef = useRef(false);
+
+  // Puntos del polígono y estado de cierre (la zona solo se cierra cuando el usuario pulsa 'Cerrar Polígono')
   const [puntosPoligono, setPuntosPoligono] = useState<[number, number][]>(poligono || []);
   const [zonaCerrada, setZonaCerrada] = useState<boolean>(Boolean(poligono && poligono.length >= 3));
 
+  // Solo precargar cerrado si viene un polígono ya guardado desde la base de datos (p. ej. edición)
   useEffect(() => {
-    if (poligono) {
+    if (interactuandoRef.current) {
+      // El usuario está dibujando en el mapa: NO cerrar automáticamente
+      return;
+    }
+    if (poligono && poligono.length >= 3) {
       setPuntosPoligono(poligono);
-      if (poligono.length >= 3) {
-        setZonaCerrada(true);
-      }
+      setZonaCerrada(true);
     }
   }, [poligono]);
 
@@ -196,8 +197,9 @@ export default function MapaSelectorDireccion({
     }
   };
 
-  // Agregar punto al polígono
+  // Agregar punto al polígono: el usuario puede poner cuantos puntos quiera sin que se cierre solo
   const handleAddPoint = (lat: number, lng: number) => {
+    interactuandoRef.current = true;
     if (zonaCerrada) return;
     const nuevo = [...puntosPoligono, [lat, lng] as [number, number]];
     setPuntosPoligono(nuevo);
@@ -206,7 +208,7 @@ export default function MapaSelectorDireccion({
     }
   };
 
-  // Cerrar zona poligonal
+  // Cerrar zona poligonal: la zona se cierra cuando se pone "Cerrar Polígono"
   const handleCerrarZona = () => {
     if (puntosPoligono.length < 3) return;
     setZonaCerrada(true);
@@ -217,6 +219,7 @@ export default function MapaSelectorDireccion({
 
   // Deshacer último punto del polígono
   const handleUndoPoint = () => {
+    interactuandoRef.current = true;
     if (puntosPoligono.length === 0) return;
     const nuevo = puntosPoligono.slice(0, -1);
     setPuntosPoligono(nuevo);
@@ -230,6 +233,7 @@ export default function MapaSelectorDireccion({
 
   // Limpiar todos los puntos del polígono
   const handleClearPolygon = () => {
+    interactuandoRef.current = true;
     setPuntosPoligono([]);
     setZonaCerrada(false);
     if (onPoligonoChange) {
@@ -239,6 +243,7 @@ export default function MapaSelectorDireccion({
 
   // Generar un hexágono regular centrado en el comercio
   const handleGenerarHexagono = () => {
+    interactuandoRef.current = true;
     const rKm = Math.max(0.5, (radioEntregaMetros || 3000) / 1000);
     const puntos: [number, number][] = [];
     for (let i = 0; i < 6; i++) {
@@ -527,14 +532,14 @@ export default function MapaSelectorDireccion({
                   {zonaCerrada && puntosPoligono.length >= 3 ? (
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      Zona cerrada ({puntosPoligono.length} puntos)
+                      Polígono cerrado ({puntosPoligono.length} puntos)
                     </span>
                   ) : (
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-950/90 text-amber-300 border border-amber-500/40 flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
                       {puntosPoligono.length === 0
-                        ? 'Haz clic sobre el mapa para marcar esquinas'
-                        : `Marcando esquinas (${puntosPoligono.length} puntos)`}
+                        ? 'Haz clic en el mapa para marcar puntos'
+                        : `${puntosPoligono.length} puntos marcados (agrega los que quieras y pulsa Cerrar Polígono)`}
                     </span>
                   )}
                 </div>
@@ -546,29 +551,31 @@ export default function MapaSelectorDireccion({
                       type="button"
                       onClick={handleCerrarZona}
                       disabled={puntosPoligono.length < 3}
-                      className={`py-1 px-3 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-md ${
+                      className={`py-1 px-3 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md ${
                         puntosPoligono.length >= 3
-                          ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-950/50 animate-pulse'
+                          ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-950/50'
                           : 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed opacity-60'
                       }`}
                       title={
                         puntosPoligono.length >= 3
-                          ? 'Unir el último punto con el primero y cubrir toda la zona'
-                          : 'Marca al menos 3 puntos en el mapa para cerrar la zona'
+                          ? 'Cierra el polígono uniendo el último punto con el primero'
+                          : 'Marca al menos 3 puntos en el mapa para poder cerrar el polígono'
                       }
                     >
                       <Check className="w-3.5 h-3.5" />
-                      <span>Cerrar Zona {puntosPoligono.length >= 3 ? '(Unir)' : `(${puntosPoligono.length}/3)`}</span>
+                      <span>
+                        Cerrar Polígono {puntosPoligono.length >= 3 ? `(${puntosPoligono.length} puntos)` : `(${puntosPoligono.length}/3 mín)`}
+                      </span>
                     </button>
                   ) : (
                     <button
                       type="button"
                       onClick={() => setZonaCerrada(false)}
                       className="py-1 px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                      title="Permite agregar más esquinas o ajustar puntos"
+                      title="Permite agregar más puntos o ajustar los existentes"
                     >
                       <Unlock className="w-3.5 h-3.5" />
-                      <span>Agregar Puntos</span>
+                      <span>Agregar Más Puntos</span>
                     </button>
                   )}
 
@@ -687,17 +694,12 @@ export default function MapaSelectorDireccion({
                   key={`vertex-${idx}-${pt[0]}-${pt[1]}`}
                   position={pt}
                   draggable={true}
-                  icon={createVertexIcon(idx, idx === 0 && !zonaCerrada && puntosPoligono.length >= 3)}
+                  icon={createVertexIcon(idx)}
                   eventHandlers={{
                     dragend: (e) => {
                       const marker = e.target;
                       const pos = marker.getLatLng();
                       handleVertexDragEnd(idx, pos.lat, pos.lng);
-                    },
-                    click: () => {
-                      if (idx === 0 && !zonaCerrada && puntosPoligono.length >= 3) {
-                        handleCerrarZona();
-                      }
                     },
                   }}
                 />
@@ -760,7 +762,7 @@ export default function MapaSelectorDireccion({
             <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
             {modoPoligonoActivo ? (
               <span>
-                💡 <strong>Modo Polígono:</strong> Haz clic en el mapa para marcar esquinas de entrega. Al tener 3 o más, presiona <strong>&quot;Cerrar Zona&quot;</strong>.
+                💡 <strong>Modo Polígono:</strong> Haz clic en el mapa para marcar todos los puntos que quieras. Al terminar, presiona <strong>&quot;Cerrar Polígono&quot;</strong> arriba.
               </span>
             ) : (
               <span>
