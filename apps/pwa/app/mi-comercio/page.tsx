@@ -3094,11 +3094,63 @@ export default function MiComercioPage() {
                     )}
                   </div>
 
-                  {/* Fila 3: Debajo Tipo de Comercio y Modalidad de Atención */}
-                  <div className="space-y-3 pt-2 border-t border-zinc-800/80">
-                    <label className="block text-xs font-semibold text-zinc-300 uppercase tracking-wider mb-1">
-                      Tipo de Comercio y Modalidad de Atención *
-                    </label>
+                  {/* Fila 3: Debajo UN SOLO MAPA INTERACTIVO (inmediatamente debajo de dirección) */}
+                  <div className="pt-2 border-t border-zinc-800/80 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+                          Mapa de Ubicación {tipoAtencion !== 'local_fisico' && 'y Radio de Cobertura'}
+                        </span>
+                        <p className="text-[11px] text-zinc-400 mt-0.5">
+                          Arrastra el marcador o haz clic sobre la calle para fijar la entrada exacta de tu local.
+                        </p>
+                      </div>
+                      <span className="text-[11px] text-zinc-400 font-mono">
+                        Cartografía en Español
+                      </span>
+                    </div>
+
+                    <MapaSelectorWrapper
+                      latitud={latitud}
+                      longitud={longitud}
+                      direccionTexto={direccion}
+                      onUbicacionChange={handleUbicacionChange}
+                      radioEntregaMetros={Math.round(radioKm * 1000)}
+                      mostrarRadio={tipoAtencion !== 'local_fisico'}
+                      onRadioChange={(metros) => setRadioKm(Math.round((metros / 1000) * 10) / 10)}
+                      ocultarBuscador={true}
+                    />
+
+                    {/* Barra de Confirmación de Ubicación */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-zinc-900 border border-zinc-800">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Ubicación del Local (📍 {latitud.toFixed(4)}, {longitud.toFixed(4)})
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-zinc-400">
+                        Los cambios de coordenadas se enviarán a revisión al guardar.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Fila 4: Debajo del mapa: Tipo de Comercio y Modalidad de Atención */}
+                  <div className="space-y-3 pt-3 border-t border-zinc-800/80">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <div>
+                        <label className="block text-xs font-bold text-white uppercase tracking-wider mb-0.5">
+                          Tipo de Comercio y Modalidad de Atención *
+                        </label>
+                        <p className="text-[11px] text-zinc-400">
+                          Define si atiendes al público en el local, si realizas repartos o ambas modalidades.
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 w-fit">
+                        Ubicación fijada en el mapa
+                      </span>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                       <button
                         type="button"
@@ -3164,8 +3216,9 @@ export default function MiComercioPage() {
                               <Bike className="w-4 h-4 text-cyan-400" />
                               Radio de Cobertura de Envíos: <span className="text-cyan-400 font-mono">{radioKm} km</span> ({Math.round(radioKm * 1000)} metros)
                             </span>
-                            <p className="text-[11px] text-zinc-400 mt-0.5">
-                              Se representa automáticamente con el círculo celeste en el mapa a continuación.
+                            <p className="text-[11px] text-emerald-400 mt-0.5 flex items-center gap-1">
+                              <Check className="w-3.5 h-3.5 shrink-0" />
+                              Se actualiza automáticamente con el círculo celeste en el mapa superior (sin abrir otro mapa).
                             </p>
                           </div>
 
@@ -3212,30 +3265,6 @@ export default function MiComercioPage() {
                         </div>
                       </div>
                     )}
-                  </div>
-
-                  {/* Fila 4: Debajo UN SOLO MAPA INTERACTIVO */}
-                  <div className="pt-2 border-t border-zinc-800/80">
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-                        Mapa de Ubicación {tipoAtencion !== 'local_fisico' && 'y Radio de Cobertura'}
-                      </span>
-                      <span className="text-[11px] text-zinc-400 font-mono">
-                        Cartografía en Español
-                      </span>
-                    </div>
-
-                    <MapaSelectorWrapper
-                      latitud={latitud}
-                      longitud={longitud}
-                      direccionTexto={direccion}
-                      onUbicacionChange={handleUbicacionChange}
-                      radioEntregaMetros={Math.round(radioKm * 1000)}
-                      mostrarRadio={tipoAtencion !== 'local_fisico'}
-                      onRadioChange={(metros) => setRadioKm(Math.round((metros / 1000) * 10) / 10)}
-                      ocultarBuscador={true}
-                    />
                   </div>
 
                   {/* Fila 5: Teléfono, Email, WhatsApp */}

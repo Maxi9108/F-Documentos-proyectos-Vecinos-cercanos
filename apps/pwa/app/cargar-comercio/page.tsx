@@ -1007,133 +1007,18 @@ export default function CargarComercioPage() {
                 )}
               </div>
 
-              {/* 4. Tipo de Comercio y Modalidad de Atención (debajo de dirección) */}
-              <div className="space-y-3 pt-2 border-t border-zinc-800/80">
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  Tipo de Comercio y Modalidad de Atención *
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setTipoAtencion('local_fisico')}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                      tipoAtencion === 'local_fisico'
-                        ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Store className="w-4 h-4 text-indigo-400" />
-                      <span className="text-xs font-bold">Local Físico</span>
-                    </div>
-                    <span className="text-[11px] text-zinc-500 leading-tight">
-                      Atención al público en local a la calle
+              {/* 4. UN SOLO MAPA INTERACTIVO (debajo de dirección para ubicar y confirmar) */}
+              <div className="pt-2 border-t border-zinc-800/80 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-indigo-400" />
+                      Ubicación en el Mapa en Tiempo Real
                     </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTipoAtencion('solo_envio')}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                      tipoAtencion === 'solo_envio'
-                        ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Bike className="w-4 h-4 text-amber-400" />
-                      <span className="text-xs font-bold">Solo a Domicilio</span>
-                    </div>
-                    <span className="text-[11px] text-zinc-500 leading-tight">
-                      Reparto exclusivo / Sin local a la calle
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setTipoAtencion('ambos')}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
-                      tipoAtencion === 'ambos'
-                        ? 'bg-indigo-950/60 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Truck className="w-4 h-4 text-emerald-400" />
-                      <span className="text-xs font-bold">Ambos (Local y Delivery)</span>
-                    </div>
-                    <span className="text-[11px] text-zinc-500 leading-tight">
-                      Atención en local y envíos con radio
-                    </span>
-                  </button>
-                </div>
-
-                {/* Si ofrece envíos: Selector rápido de radio de cobertura en km */}
-                {tipoAtencion !== 'local_fisico' && (
-                  <div className="p-4 rounded-2xl bg-zinc-950/80 border border-cyan-500/30 space-y-3 animate-in fade-in duration-200">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                          <Bike className="w-4 h-4 text-cyan-400" />
-                          Radio de Cobertura de Envíos: <span className="text-cyan-400 font-mono">{radioKm} km</span> ({Math.round(radioKm * 1000)} metros)
-                        </span>
-                        <p className="text-[11px] text-zinc-400 mt-0.5">
-                          Se representa automáticamente con el círculo celeste en el mapa a continuación.
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-1">
-                        {[1, 2, 3, 5, 8, 10, 15].map((km) => (
-                          <button
-                            key={km}
-                            type="button"
-                            onClick={() => setRadioKm(km)}
-                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                              radioKm === km
-                                ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/20'
-                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
-                            }`}
-                          >
-                            {km} km
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="25"
-                        step="0.5"
-                        value={radioKm}
-                        onChange={(e) => setRadioKm(parseFloat(e.target.value) || 1)}
-                        className="flex-1 accent-cyan-500 cursor-pointer"
-                      />
-                      <div className="flex items-center gap-1 shrink-0">
-                        <input
-                          type="number"
-                          min="0.5"
-                          max="50"
-                          step="0.5"
-                          value={radioKm}
-                          onChange={(e) => setRadioKm(Math.max(0.5, parseFloat(e.target.value) || 0.5))}
-                          className="w-16 px-2 py-1 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-white text-center font-mono focus:outline-none focus:border-cyan-500"
-                        />
-                        <span className="text-xs text-zinc-400">km</span>
-                      </div>
-                    </div>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Ubica la entrada exacta de tu local moviendo el marcador o haciendo clic. Luego confirma la ubicación.
+                    </p>
                   </div>
-                )}
-              </div>
-
-              {/* 5. UN SOLO MAPA INTERACTIVO (debajo de tipo de comercio) */}
-              <div className="pt-2">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-indigo-400" />
-                    Mapa de Ubicación {tipoAtencion !== 'local_fisico' && 'y Radio de Cobertura'}
-                  </span>
                   <span className="text-[11px] text-zinc-400 font-mono">
                     Cartografía en Español
                   </span>
@@ -1149,7 +1034,184 @@ export default function CargarComercioPage() {
                   onRadioChange={(metros) => setRadioKm(Math.round((metros / 1000) * 10) / 10)}
                   ocultarBuscador={true}
                 />
+
+                {/* Barra de Confirmación de Ubicación */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-zinc-950 border border-zinc-800">
+                  <div className="flex items-center gap-2">
+                    {ubicacionConfirmada ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Ubicación Confirmada (📍 {latitud.toFixed(4)}, {longitud.toFixed(4)})
+                      </span>
+                    ) : (
+                      <span className="text-xs text-amber-300 flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" /> Verifica el pin en el mapa y confirma tu ubicación para definir la modalidad
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUbicacionConfirmada(true);
+                      if (!mensajeDireccion) {
+                        setMensajeDireccion({
+                          tipo: 'exito',
+                          texto: '✓ Ubicación confirmada. Ahora selecciona tu modalidad de atención debajo.',
+                        });
+                      }
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 ${
+                      ubicacionConfirmada
+                        ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/50'
+                    }`}
+                  >
+                    <Check className="w-4 h-4" />
+                    {ubicacionConfirmada ? 'Reconfirmar Ubicación' : 'Confirmar Ubicación en el Mapa'}
+                  </button>
+                </div>
               </div>
+
+              {/* 5. MODALIDAD DE ATENCIÓN (Aparece una vez confirmada la ubicación debajo del mapa) */}
+              {ubicacionConfirmada ? (
+                <div className="space-y-4 pt-4 border-t border-zinc-800 animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div>
+                      <label className="block text-xs font-bold text-white uppercase tracking-wider mb-0.5">
+                        Modalidad de Atención del Comercio *
+                      </label>
+                      <p className="text-[11px] text-zinc-400">
+                        Indica si recibes clientes en el local, si haces repartos a domicilio o ambos.
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 w-fit">
+                      ✓ Ubicación fijada en el mapa
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setTipoAtencion('local_fisico')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                        tipoAtencion === 'local_fisico'
+                          ? 'bg-indigo-950/70 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Store className="w-4 h-4 text-indigo-400" />
+                        <span className="text-xs font-bold">Local Físico</span>
+                      </div>
+                      <span className="text-[11px] text-zinc-500 leading-tight">
+                        Atención presencial en local a la calle
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTipoAtencion('solo_envio')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                        tipoAtencion === 'solo_envio'
+                          ? 'bg-indigo-950/70 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Bike className="w-4 h-4 text-amber-400" />
+                        <span className="text-xs font-bold">Solo a Domicilio</span>
+                      </div>
+                      <span className="text-[11px] text-zinc-500 leading-tight">
+                        Reparto exclusivo / Sin atención al público
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTipoAtencion('ambos')}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                        tipoAtencion === 'ambos'
+                          ? 'bg-indigo-950/70 border-indigo-500 text-white shadow-md shadow-indigo-950/50 ring-1 ring-indigo-500/40'
+                          : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Truck className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold">Ambos (Local y Delivery)</span>
+                      </div>
+                      <span className="text-[11px] text-zinc-500 leading-tight">
+                        Atención en local y envíos por radio
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* En caso de marcar con envío: el radio se ajusta directamente sobre el mapa superior */}
+                  {tipoAtencion !== 'local_fisico' && (
+                    <div className="p-4 rounded-2xl bg-zinc-950/90 border border-cyan-500/40 space-y-3 animate-in fade-in duration-200">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <Bike className="w-4 h-4 text-cyan-400" />
+                            Radio de Cobertura de Envíos: <span className="text-cyan-400 font-mono">{radioKm} km</span> ({Math.round(radioKm * 1000)} metros)
+                          </span>
+                          <p className="text-[11px] text-emerald-400 mt-0.5 flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5 shrink-0" />
+                            Se marca y actualiza automáticamente con el círculo celeste sobre el mapa superior (sin abrir otro mapa).
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1">
+                          {[1, 2, 3, 5, 8, 10, 15].map((km) => (
+                            <button
+                              key={km}
+                              type="button"
+                              onClick={() => setRadioKm(km)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                                radioKm === km
+                                  ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/20'
+                                  : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
+                              }`}
+                            >
+                              {km} km
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="range"
+                          min="0.5"
+                          max="25"
+                          step="0.5"
+                          value={radioKm}
+                          onChange={(e) => setRadioKm(parseFloat(e.target.value) || 1)}
+                          className="flex-1 accent-cyan-500 cursor-pointer"
+                        />
+                        <div className="flex items-center gap-1 shrink-0">
+                          <input
+                            type="number"
+                            min="0.5"
+                            max="50"
+                            step="0.5"
+                            value={radioKm}
+                            onChange={(e) => setRadioKm(Math.max(0.5, parseFloat(e.target.value) || 0.5))}
+                            className="w-16 px-2 py-1 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-white text-center font-mono focus:outline-none focus:border-cyan-500"
+                          />
+                          <span className="text-xs text-zinc-400">km</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-zinc-950/60 border border-zinc-800/80 text-xs text-zinc-400 flex items-center gap-2.5">
+                  <Info className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>
+                    Confirma tu ubicación en el mapa de arriba para seleccionar tu modalidad de atención (local presencial o envíos a domicilio con radio de cobertura).
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* SECCIÓN 2: Contacto, Presencia Digital y Gestión */}
