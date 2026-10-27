@@ -1033,6 +1033,10 @@ export default function CargarComercioPage() {
                   mostrarRadio={tipoAtencion !== 'local_fisico'}
                   onRadioChange={(metros) => setRadioKm(Math.round((metros / 1000) * 10) / 10)}
                   ocultarBuscador={true}
+                  poligono={coberturaPoligono}
+                  onPoligonoChange={setCoberturaPoligono}
+                  modoZona={alcanceEnvio === 'poligono' ? 'poligono' : 'radio'}
+                  onModoZonaChange={(modo) => setAlcanceEnvio(modo)}
                 />
 
                 {/* Barra de Confirmación de Ubicación */}
@@ -1145,62 +1149,12 @@ export default function CargarComercioPage() {
                     </button>
                   </div>
 
-                  {/* En caso de marcar con envío: el radio se ajusta directamente sobre el mapa superior */}
                   {tipoAtencion !== 'local_fisico' && (
-                    <div className="p-4 rounded-2xl bg-zinc-950/90 border border-cyan-500/40 space-y-3 animate-in fade-in duration-200">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div>
-                          <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                            <Bike className="w-4 h-4 text-cyan-400" />
-                            Radio de Cobertura de Envíos: <span className="text-cyan-400 font-mono">{radioKm} km</span> ({Math.round(radioKm * 1000)} metros)
-                          </span>
-                          <p className="text-[11px] text-emerald-400 mt-0.5 flex items-center gap-1">
-                            <Check className="w-3.5 h-3.5 shrink-0" />
-                            Se marca y actualiza automáticamente con el círculo celeste sobre el mapa superior (sin abrir otro mapa).
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-1">
-                          {[1, 2, 3, 5, 8, 10, 15].map((km) => (
-                            <button
-                              key={km}
-                              type="button"
-                              onClick={() => setRadioKm(km)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                                radioKm === km
-                                  ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/20'
-                                  : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
-                              }`}
-                            >
-                              {km} km
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="range"
-                          min="0.5"
-                          max="25"
-                          step="0.5"
-                          value={radioKm}
-                          onChange={(e) => setRadioKm(parseFloat(e.target.value) || 1)}
-                          className="flex-1 accent-cyan-500 cursor-pointer"
-                        />
-                        <div className="flex items-center gap-1 shrink-0">
-                          <input
-                            type="number"
-                            min="0.5"
-                            max="50"
-                            step="0.5"
-                            value={radioKm}
-                            onChange={(e) => setRadioKm(Math.max(0.5, parseFloat(e.target.value) || 0.5))}
-                            className="w-16 px-2 py-1 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-white text-center font-mono focus:outline-none focus:border-cyan-500"
-                          />
-                          <span className="text-xs text-zinc-400">km</span>
-                        </div>
-                      </div>
+                    <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/30 flex items-center gap-2 text-xs text-cyan-300 animate-in fade-in duration-200">
+                      <Bike className="w-4 h-4 shrink-0 text-cyan-400" />
+                      <span>
+                        El radio o polígono con puntos de tu zona de entrega se ajusta en los controles situados <strong>arriba del mapa</strong>.
+                      </span>
                     </div>
                   )}
                 </div>

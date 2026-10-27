@@ -1,10 +1,35 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, Circle, useMap, useMapEvents, ZoomControl } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Circle,
+  Polygon,
+  Polyline,
+  useMap,
+  useMapEvents,
+  ZoomControl,
+} from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Search, MapPin, Loader2, Navigation, CheckCircle2, AlertCircle, Sun, Moon, Bike } from 'lucide-react';
+import {
+  Search,
+  MapPin,
+  Loader2,
+  Navigation,
+  CheckCircle2,
+  AlertCircle,
+  Sun,
+  Moon,
+  Bike,
+  Hexagon,
+  Undo2,
+  Trash2,
+  Check,
+  Unlock,
+} from 'lucide-react';
 
 interface ResultadoNominatim {
   place_id: number;
@@ -31,6 +56,10 @@ export interface MapaSelectorDireccionProps {
   mostrarRadio?: boolean;
   onRadioChange?: (radioMetros: number) => void;
   ocultarBuscador?: boolean;
+  poligono?: [number, number][];
+  onPoligonoChange?: (poligono: [number, number][]) => void;
+  modoZona?: 'radio' | 'poligono';
+  onModoZonaChange?: (modo: 'radio' | 'poligono') => void;
 }
 
 // Icono personalizado para el pin arrastrable del comercio
@@ -55,20 +84,52 @@ function createDraggablePin() {
   });
 }
 
+// Icono para los vértices del polígono
+function createVertexIcon(index: number, esPrimerPuntoParaCerrar: boolean = false) {
+  const bgColor = esPrimerPuntoParaCerrar
+    ? 'bg-emerald-500 animate-pulse ring-4 ring-emerald-400/50'
+    : 'bg-amber-500';
+  const html = `
+    <div class="w-6 h-6 rounded-full ${bgColor} border-2 border-white shadow-lg flex items-center justify-center text-[10px] font-black text-white cursor-pointer select-none transition-transform hover:scale-125" title="${
+      esPrimerPuntoParaCerrar ? 'Clic para cerrar la zona con este punto' : `Punto ${index + 1}`
+    }">
+      ${index + 1}
+    </div>
+  `;
+  return L.divIcon({
+    html,
+    className: 'vertex-pin',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
+}
+
 // Subcomponente para mover la cámara suavemente al cambiar coordenadas
 function CentrarMapa({ lat, lng }: { lat: number; lng: number }) {
   const map = useMap();
   useEffect(() => {
-    map.flyTo([lat, lng], 16, { duration: 1.2 });
+    map.flyTo([lat, lng], 15, { duration: 1.2 });
   }, [lat, lng, map]);
   return null;
 }
 
-// Manejador de clics directos sobre el mapa para colocar el pin
-function ClickMapaListener({ onMapClick }: { onMapClick: (lat: number, lng: number) => void }) {
+// Manejador de clics directos sobre el mapa (ubica local o agrega puntos según el modo)
+function ClickMapaListener({
+  onMapClick,
+  modoPoligonoActivo,
+  onAddPoint,
+}: {
+  onMapClick: (lat: number, lng: number) => void;
+  modoPoligonoActivo: boolean;
+  onAddPoint: (lat: number, lng: number) => void;
+}) {
   useMapEvents({
     click(e) {
-      onMapClick(e.latlng.lat, e.latlng.lng);
+      if (modoPoligonoActivo) {
+        onAddPoint(Number(e.latlng.lat.toFixed(6)), Number(e.latlng.lng.toFixed(6)));
+      } else {
+        onMapClick(e.latlng.lat, e.latlng.lng);
+      }
     },
   });
   return null;
@@ -83,12 +144,40 @@ export default function MapaSelectorDireccion({
   mostrarRadio = false,
   onRadioChange,
   ocultarBuscador = false,
+  poligono = [],
+  onPoligonoChange,
+  modoZona,
+  onModoZonaChange,
 }: MapaSelectorDireccionProps) {
   const [busqueda, setBusqueda] = useState(direccionTexto || '');
   const [cargando, setCargando] = useState(false);
   const [resultados, setResultados] = useState<ResultadoNominatim[]>([]);
   const [mensajeEstado, setMensajeEstado] = useState<string | null>(null);
   const [modoOscuro, setModoOscuro] = useState(true);
+
+  // Modo de cobertura de zona: 'radio' (circular) o 'poligono' (puntos)
+  const [modoZonaInterno, setModoZonaInterno] = useState<'radio' | 'poligono'>(
+    modoZona || (poligono && poligono.length >= 3 ? 'poligono' : 'radio')
+  );
+
+  useEffect(() => {
+    if (modoZona && modoZona !== modoZonaInterno) {
+      setModoZonaInterno(modoZona);
+    }
+  }, [modoZona]);
+
+  // Puntos del polígono y estado de cierre
+  const [puntosPoligono, setPuntosPoligono] = useState<[number, number][]>(poligono || []);
+  const [zonaCerrada, setZonaCerrada] = useState<boolean>(Boolean(poligono && poligono.length >= 3));
+
+  useEffect(() => {
+    if (poligono) {
+      setPuntosPoligono(poligono);
+      if (poligono.length >= 3) {
+        setZonaCerrada(true);
+      }
+    }
+  }, [poligono]);
 
   useEffect(() => {
     if (direccionTexto !== undefined && direccionTexto !== busqueda) {
@@ -99,7 +188,86 @@ export default function MapaSelectorDireccion({
   const markerRef = useRef<L.Marker | null>(null);
   const pinIcon = useMemo(() => createDraggablePin(), []);
 
-  // Buscar dirección con el geocodificador Nominatim (OpenStreetMap en español)
+  // Cambiar modo de zona (radio o polígono)
+  const handleCambioModoZona = (nuevoModo: 'radio' | 'poligono') => {
+    setModoZonaInterno(nuevoModo);
+    if (onModoZonaChange) {
+      onModoZonaChange(nuevoModo);
+    }
+  };
+
+  // Agregar punto al polígono
+  const handleAddPoint = (lat: number, lng: number) => {
+    if (zonaCerrada) return;
+    const nuevo = [...puntosPoligono, [lat, lng] as [number, number]];
+    setPuntosPoligono(nuevo);
+    if (onPoligonoChange) {
+      onPoligonoChange(nuevo);
+    }
+  };
+
+  // Cerrar zona poligonal
+  const handleCerrarZona = () => {
+    if (puntosPoligono.length < 3) return;
+    setZonaCerrada(true);
+    if (onPoligonoChange) {
+      onPoligonoChange(puntosPoligono);
+    }
+  };
+
+  // Deshacer último punto del polígono
+  const handleUndoPoint = () => {
+    if (puntosPoligono.length === 0) return;
+    const nuevo = puntosPoligono.slice(0, -1);
+    setPuntosPoligono(nuevo);
+    if (nuevo.length < 3) {
+      setZonaCerrada(false);
+    }
+    if (onPoligonoChange) {
+      onPoligonoChange(nuevo);
+    }
+  };
+
+  // Limpiar todos los puntos del polígono
+  const handleClearPolygon = () => {
+    setPuntosPoligono([]);
+    setZonaCerrada(false);
+    if (onPoligonoChange) {
+      onPoligonoChange([]);
+    }
+  };
+
+  // Generar un hexágono regular centrado en el comercio
+  const handleGenerarHexagono = () => {
+    const rKm = Math.max(0.5, (radioEntregaMetros || 3000) / 1000);
+    const puntos: [number, number][] = [];
+    for (let i = 0; i < 6; i++) {
+      const angulo = (i * 60) * (Math.PI / 180);
+      const deltaLat = (rKm / 110.574) * Math.cos(angulo);
+      const deltaLng = (rKm / (111.320 * Math.cos(latitud * (Math.PI / 180)))) * Math.sin(angulo);
+      puntos.push([
+        Number((latitud + deltaLat).toFixed(6)),
+        Number((longitud + deltaLng).toFixed(6)),
+      ]);
+    }
+    setPuntosPoligono(puntos);
+    setZonaCerrada(true);
+    if (onPoligonoChange) {
+      onPoligonoChange(puntos);
+    }
+  };
+
+  // Arrastre manual de vértice
+  const handleVertexDragEnd = (index: number, newLat: number, newLng: number) => {
+    const copia: [number, number][] = [...puntosPoligono];
+    copia[index] = [Number(newLat.toFixed(6)), Number(newLng.toFixed(6))];
+    setPuntosPoligono(copia);
+    if (onPoligonoChange) {
+      onPoligonoChange(copia);
+    }
+  };
+
+  // Buscar dirección con Nominatim
   const buscarDireccion = async (queryTexto: string) => {
     if (!queryTexto || queryTexto.trim().length < 3) return;
 
@@ -112,9 +280,7 @@ export default function MapaSelectorDireccion({
       )}&limit=5&addressdetails=1`;
 
       const response = await fetch(url, {
-        headers: {
-          'Accept-Language': 'es',
-        },
+        headers: { 'Accept-Language': 'es' },
       });
 
       if (!response.ok) throw new Error('Error en el servicio de geocodificación');
@@ -133,7 +299,7 @@ export default function MapaSelectorDireccion({
     }
   };
 
-  // Geocodificación inversa cuando el comerciante arrastra el pin (forzada en español)
+  // Geocodificación inversa cuando el comerciante arrastra el pin
   const reverseGeocode = async (lat: number, lon: number) => {
     try {
       const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&addressdetails=1`;
@@ -182,6 +348,7 @@ export default function MapaSelectorDireccion({
   }, []);
 
   const radioKmActual = Math.max(0.5, (radioEntregaMetros || 3000) / 1000);
+  const modoPoligonoActivo = Boolean(mostrarRadio && modoZonaInterno === 'poligono' && !zonaCerrada);
 
   return (
     <div className="space-y-3">
@@ -255,62 +422,191 @@ export default function MapaSelectorDireccion({
         </div>
       )}
 
-      {/* Selector interactivo de radio de entrega integrado */}
-      {mostrarRadio && onRadioChange && (
-        <div className="p-3.5 rounded-2xl bg-zinc-900/90 border border-cyan-500/30 space-y-2.5 shadow-lg">
+      {/* PANEL SUPERIOR DE COBERTURA DE ENVÍOS: Radio (km) o Polígono por Puntos */}
+      {mostrarRadio && (
+        <div className="p-3.5 rounded-2xl bg-zinc-900/90 border border-cyan-500/30 space-y-3 shadow-lg animate-in fade-in duration-200">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <span className="text-xs font-bold text-white flex items-center gap-1.5">
               <Bike className="w-4 h-4 text-cyan-400" />
-              Radio de Entrega a Domicilio: <span className="text-cyan-400 font-mono">{radioKmActual.toFixed(1)} km</span>
-              <span className="text-zinc-500 font-normal">({Math.round(radioKmActual * 1000)} metros)</span>
+              Radio / Zona de Cobertura de Envíos
             </span>
 
-            <div className="flex flex-wrap items-center gap-1">
-              {[1, 2, 3, 5, 8, 10, 15].map((km) => (
-                <button
-                  key={km}
-                  type="button"
-                  onClick={() => onRadioChange(km * 1000)}
-                  className={`px-2 py-0.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    Math.round(radioKmActual) === km
-                      ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/20'
-                      : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
-                  }`}
-                >
-                  {km} km
-                </button>
-              ))}
+            {/* Alternador de Modo: Radio o Polígono */}
+            <div className="flex items-center p-0.5 bg-zinc-950 border border-zinc-800 rounded-xl">
+              <button
+                type="button"
+                onClick={() => handleCambioModoZona('radio')}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  modoZonaInterno === 'radio'
+                    ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/20'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <span>⭕ Radio (km)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCambioModoZona('poligono')}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  modoZonaInterno === 'poligono'
+                    ? 'bg-amber-500 text-black font-bold shadow-md shadow-amber-500/20'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Hexagon className="w-3.5 h-3.5" />
+                <span>⬡ Polígono por Puntos</span>
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min="0.5"
-              max="25"
-              step="0.5"
-              value={radioKmActual}
-              onChange={(e) => onRadioChange(Math.round(parseFloat(e.target.value) * 1000))}
-              className="flex-1 accent-cyan-500 cursor-pointer"
-            />
-            <div className="flex items-center gap-1 shrink-0">
-              <input
-                type="number"
-                min="0.5"
-                max="50"
-                step="0.5"
-                value={radioKmActual}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  if (!isNaN(val) && val > 0) {
-                    onRadioChange(Math.round(val * 1000));
-                  }
-                }}
-                className="w-16 px-2 py-1 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white text-center font-mono focus:outline-none focus:border-cyan-500"
-              />
-              <span className="text-xs text-zinc-400">km</span>
+          {/* MODO RADIO: Selector de km con presets y barra deslizadora */}
+          {modoZonaInterno === 'radio' && onRadioChange && (
+            <div className="space-y-2.5 pt-1 border-t border-zinc-800/80 animate-in fade-in duration-150">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="text-xs text-zinc-300">
+                  Radio circular de reparto: <strong className="text-cyan-400 font-mono">{radioKmActual.toFixed(1)} km</strong>{' '}
+                  <span className="text-zinc-500 font-normal">({Math.round(radioKmActual * 1000)} metros)</span>
+                </span>
+
+                <div className="flex flex-wrap items-center gap-1">
+                  {[1, 2, 3, 5, 8, 10, 15].map((km) => (
+                    <button
+                      key={km}
+                      type="button"
+                      onClick={() => onRadioChange(km * 1000)}
+                      className={`px-2 py-0.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        Math.round(radioKmActual) === km
+                          ? 'bg-cyan-500 text-black font-bold shadow-md shadow-cyan-500/20'
+                          : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700'
+                      }`}
+                    >
+                      {km} km
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="0.5"
+                  max="25"
+                  step="0.5"
+                  value={radioKmActual}
+                  onChange={(e) => onRadioChange(Math.round(parseFloat(e.target.value) * 1000))}
+                  className="flex-1 accent-cyan-500 cursor-pointer"
+                />
+                <div className="flex items-center gap-1 shrink-0">
+                  <input
+                    type="number"
+                    min="0.5"
+                    max="50"
+                    step="0.5"
+                    value={radioKmActual}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val) && val > 0) {
+                        onRadioChange(Math.round(val * 1000));
+                      }
+                    }}
+                    className="w-16 px-2 py-1 bg-zinc-950 border border-zinc-700 rounded-lg text-xs text-white text-center font-mono focus:outline-none focus:border-cyan-500"
+                  />
+                  <span className="text-xs text-zinc-400">km</span>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* MODO POLÍGONO: Herramientas de delimitación por esquinas/puntos */}
+          {modoZonaInterno === 'poligono' && (
+            <div className="space-y-2.5 pt-1 border-t border-zinc-800/80 animate-in fade-in duration-150">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-zinc-300">Puntos del polígono:</span>
+                  {zonaCerrada && puntosPoligono.length >= 3 ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      Zona cerrada ({puntosPoligono.length} puntos)
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-950/90 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                      {puntosPoligono.length === 0
+                        ? 'Haz clic sobre el mapa para marcar esquinas'
+                        : `Marcando esquinas (${puntosPoligono.length} puntos)`}
+                    </span>
+                  )}
+                </div>
+
+                {/* Botones de acción del polígono */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {!zonaCerrada ? (
+                    <button
+                      type="button"
+                      onClick={handleCerrarZona}
+                      disabled={puntosPoligono.length < 3}
+                      className={`py-1 px-3 rounded-lg font-bold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-md ${
+                        puntosPoligono.length >= 3
+                          ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-950/50 animate-pulse'
+                          : 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed opacity-60'
+                      }`}
+                      title={
+                        puntosPoligono.length >= 3
+                          ? 'Unir el último punto con el primero y cubrir toda la zona'
+                          : 'Marca al menos 3 puntos en el mapa para cerrar la zona'
+                      }
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Cerrar Zona {puntosPoligono.length >= 3 ? '(Unir)' : `(${puntosPoligono.length}/3)`}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setZonaCerrada(false)}
+                      className="py-1 px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-500/40 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Permite agregar más esquinas o ajustar puntos"
+                    >
+                      <Unlock className="w-3.5 h-3.5" />
+                      <span>Agregar Puntos</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleGenerarHexagono}
+                    className="py-1 px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Genera un hexágono simétrico de 6 puntos en torno a tu comercio"
+                  >
+                    <Hexagon className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Hexágono</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleUndoPoint}
+                    disabled={puntosPoligono.length === 0}
+                    className="py-1 px-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 disabled:opacity-40 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Eliminar último punto marcado"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span>Deshacer</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleClearPolygon}
+                    disabled={puntosPoligono.length === 0}
+                    className="py-1 px-2 rounded-lg bg-zinc-800 hover:bg-rose-950/80 text-zinc-400 hover:text-rose-300 border border-zinc-700 disabled:opacity-40 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    title="Borrar todos los puntos del mapa"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Limpiar</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -363,10 +659,12 @@ export default function MapaSelectorDireccion({
             onMapClick={(clickLat, clickLng) => {
               reverseGeocode(clickLat, clickLng);
             }}
+            modoPoligonoActivo={modoPoligonoActivo}
+            onAddPoint={handleAddPoint}
           />
 
-          {/* Círculo que marca el radio de cobertura/envíos en el mismo mapa */}
-          {mostrarRadio && radioEntregaMetros && radioEntregaMetros > 0 && (
+          {/* Modo Radio: Círculo de cobertura/envíos */}
+          {mostrarRadio && modoZonaInterno === 'radio' && radioEntregaMetros && radioEntregaMetros > 0 && (
             <Circle
               center={[latitud, longitud]}
               radius={radioEntregaMetros}
@@ -378,6 +676,70 @@ export default function MapaSelectorDireccion({
                 dashArray: '6, 6',
               }}
             />
+          )}
+
+          {/* Modo Polígono: Vértices interactivos, líneas y área sombreada */}
+          {mostrarRadio && modoZonaInterno === 'poligono' && (
+            <>
+              {/* Marcadores de vértices interactivos */}
+              {puntosPoligono.map((pt, idx) => (
+                <Marker
+                  key={`vertex-${idx}-${pt[0]}-${pt[1]}`}
+                  position={pt}
+                  draggable={true}
+                  icon={createVertexIcon(idx, idx === 0 && !zonaCerrada && puntosPoligono.length >= 3)}
+                  eventHandlers={{
+                    dragend: (e) => {
+                      const marker = e.target;
+                      const pos = marker.getLatLng();
+                      handleVertexDragEnd(idx, pos.lat, pos.lng);
+                    },
+                    click: () => {
+                      if (idx === 0 && !zonaCerrada && puntosPoligono.length >= 3) {
+                        handleCerrarZona();
+                      }
+                    },
+                  }}
+                />
+              ))}
+
+              {/* Si no está cerrada aún: trazo de polilínea abierto */}
+              {!zonaCerrada && puntosPoligono.length >= 2 && (
+                <Polyline
+                  positions={puntosPoligono}
+                  pathOptions={{
+                    color: '#f59e0b',
+                    weight: 3,
+                    dashArray: '6, 6',
+                  }}
+                />
+              )}
+
+              {/* Previsualización del cierre con línea punteada al punto inicial */}
+              {!zonaCerrada && puntosPoligono.length >= 3 && (
+                <Polyline
+                  positions={[puntosPoligono[puntosPoligono.length - 1], puntosPoligono[0]]}
+                  pathOptions={{
+                    color: '#10b981',
+                    weight: 2,
+                    dashArray: '4, 4',
+                  }}
+                />
+              )}
+
+              {/* Cuando está cerrada: Polígono completo sombreado */}
+              {zonaCerrada && puntosPoligono.length >= 3 && (
+                <Polygon
+                  positions={puntosPoligono}
+                  pathOptions={{
+                    color: '#f59e0b',
+                    fillColor: '#f59e0b',
+                    fillOpacity: 0.28,
+                    weight: 3,
+                  }}
+                />
+              )}
+            </>
           )}
 
           {/* Pin interactivo y arrastrable de ubicación del local */}
@@ -396,10 +758,23 @@ export default function MapaSelectorDireccion({
         <div className="absolute bottom-3 left-3 right-3 z-[400] bg-zinc-950/90 backdrop-blur-md border border-zinc-800 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-300 pointer-events-auto shadow-lg">
           <span className="flex items-center gap-1.5 font-medium">
             <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse" />
-            💡 <strong>Tip:</strong> Puedes <strong>arrastrar el pin</strong> o hacer clic en el mapa para ubicar la entrada exacta de tu local.
-            {mostrarRadio && radioEntregaMetros && radioEntregaMetros > 0 && (
-              <span className="text-cyan-400 font-semibold ml-1">
-                • Círculo celeste: radio de {radioKmActual.toFixed(1)} km.
+            {modoPoligonoActivo ? (
+              <span>
+                💡 <strong>Modo Polígono:</strong> Haz clic en el mapa para marcar esquinas de entrega. Al tener 3 o más, presiona <strong>&quot;Cerrar Zona&quot;</strong>.
+              </span>
+            ) : (
+              <span>
+                💡 <strong>Tip:</strong> Puedes <strong>arrastrar el pin</strong> para fijar la puerta de tu local.
+                {mostrarRadio && modoZonaInterno === 'radio' && (
+                  <span className="text-cyan-400 font-semibold ml-1">
+                    • Círculo celeste: radio de {radioKmActual.toFixed(1)} km.
+                  </span>
+                )}
+                {mostrarRadio && modoZonaInterno === 'poligono' && zonaCerrada && (
+                  <span className="text-amber-400 font-semibold ml-1">
+                    • Polígono cerrado ({puntosPoligono.length} puntos).
+                  </span>
+                )}
               </span>
             )}
           </span>

@@ -13,6 +13,10 @@ export interface MapaSelectorWrapperProps {
   mostrarRadio?: boolean;
   onRadioChange?: (radioMetros: number) => void;
   ocultarBuscador?: boolean;
+  poligono?: [number, number][];
+  onPoligonoChange?: (poligono: [number, number][]) => void;
+  modoZona?: 'radio' | 'poligono';
+  onModoZonaChange?: (modo: 'radio' | 'poligono') => void;
 }
 
 const MapaSelectorDireccion = dynamic(() => import('./MapaSelectorDireccion'), {
