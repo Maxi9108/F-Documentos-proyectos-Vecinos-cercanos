@@ -364,24 +364,13 @@ export default function AdminPage() {
       const eliminadosRaw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_COMERCIOS_ELIMINADOS) : null;
       const eliminadosSet = new Set<string>(eliminadosRaw ? JSON.parse(eliminadosRaw) : []);
 
-      const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
-      if (localesRaw) {
-        const locales: Comercio[] = JSON.parse(localesRaw);
-        locales.forEach((loc) => {
-          if (eliminadosSet.has(loc.id)) return; // Nunca resucitar eliminados
-
-          const idx = lista.findIndex((c) => c.id === loc.id);
-          if (idx >= 0) {
-            const serverItem = lista[idx];
-            // Respetar estado rechazado si existe en el servidor o local
-            const esRechazado = serverItem.estado_aprobacion === 'rechazado' || loc.estado_aprobacion === 'rechazado';
-            const esPendiente = !esRechazado && (serverItem.estado_aprobacion === 'pendiente' || loc.estado_aprobacion === 'pendiente');
-            const estadoFinal = esRechazado ? 'rechazado' : (esPendiente ? 'pendiente' : 'aprobado');
-            lista[idx] = { ...loc, ...serverItem, estado_aprobacion: estadoFinal };
-          } else {
-            lista.unshift(loc);
-          }
-        });
+      // Solo consultar almacenamiento local si la base online está vacía (modo offline)
+      if (lista.length === 0) {
+        const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
+        if (localesRaw) {
+          const locales: Comercio[] = JSON.parse(localesRaw);
+          lista = locales.filter((loc) => !eliminadosSet.has(loc.id));
+        }
       }
       // Filtrar definitivamente cualquier comercio eliminado
       lista = lista.filter((c) => c.estado_aprobacion !== 'eliminado' && !eliminadosSet.has(c.id));
