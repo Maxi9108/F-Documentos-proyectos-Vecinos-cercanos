@@ -54,30 +54,22 @@ export default function DirectorioComercios({
     }
   }, [comercios.length]);
 
+  // Solo sincronizar con almacenamiento local si no hay conexión y la lista en línea vino vacía (modo offline)
   useEffect(() => {
-    try {
-      const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
-      if (localesRaw) {
-        const locales: Comercio[] = JSON.parse(localesRaw);
-        if (locales.length > 0) {
-          setComercios((prev) => {
-            const combinados = [...prev];
-            locales.forEach((nuevo) => {
-              const idx = combinados.findIndex((c) => c.id === nuevo.id);
-              if (idx >= 0) {
-                combinados[idx] = nuevo;
-              } else {
-                combinados.unshift(nuevo);
-              }
-            });
-            return combinados;
-          });
+    if (comercios.length === 0) {
+      try {
+        const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
+        if (localesRaw) {
+          const locales: Comercio[] = JSON.parse(localesRaw);
+          if (locales.length > 0) {
+            setComercios(locales);
+          }
         }
+      } catch (e) {
+        console.warn('[DirectorioComercios] Error al leer respaldo offline:', e);
       }
-    } catch (e) {
-      console.warn(e);
     }
-  }, []);
+  }, [comercios.length]);
 
   const [busqueda, setBusqueda] = useState('');
   const [rubroSeleccionado, setRubroSeleccionado] = useState('Todos');

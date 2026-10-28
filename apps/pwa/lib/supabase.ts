@@ -490,38 +490,20 @@ export async function getComercios(): Promise<Comercio[]> {
       }
     });
 
-    // 3. Hidratar además los comercios creados localmente en el navegador para sincronía inmediata
-    if (typeof window !== 'undefined') {
+    // 3. La base de datos online de Supabase es la única fuente de verdad 24/7.
+    // Solo si Supabase no tiene comercios (p. ej. falla de red o modo offline total), se recurre al almacenamiento local de respaldo.
+    if (typeof window !== 'undefined' && mapa.size === 0) {
       try {
         const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
         if (localesRaw) {
           const locales: Comercio[] = JSON.parse(localesRaw);
-          // Filtrar eliminados del almacenamiento local para que no sigan ocupando espacio
           const localesFiltrados = locales.filter((loc) => !eliminadosSet.has(loc.id));
-          if (localesFiltrados.length !== locales.length) {
-            localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(localesFiltrados));
-          }
-
           localesFiltrados.forEach((loc) => {
-            if (mapa.has(loc.id)) {
-              const existente = mapa.get(loc.id)!;
-              // Si fue rechazado explícitamente en el servidor o local, respetarlo firmemente
-              if (existente.estado_aprobacion === 'rechazado' || loc.estado_aprobacion === 'rechazado') {
-                existente.estado_aprobacion = 'rechazado';
-                existente.motivo_rechazo = existente.motivo_rechazo || loc.motivo_rechazo;
-              } else if (existente.estado_aprobacion === 'aprobado' || loc.estado_aprobacion === 'aprobado') {
-                existente.estado_aprobacion = 'aprobado';
-              } else {
-                existente.estado_aprobacion = 'pendiente';
-              }
-              mapa.set(loc.id, { ...loc, ...existente, estado_aprobacion: existente.estado_aprobacion });
-            } else {
-              mapa.set(loc.id, loc);
-            }
+            mapa.set(loc.id, loc);
           });
         }
       } catch (e) {
-        console.warn('[LocalStorage] Error al combinar comercios locales:', e);
+        console.warn('[LocalStorage] Error al cargar respaldo local offline:', e);
       }
     }
 
