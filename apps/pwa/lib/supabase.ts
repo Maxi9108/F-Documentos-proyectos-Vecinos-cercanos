@@ -675,6 +675,26 @@ export async function aprobarComercio(
   aprobadoPor: string = 'maxi0802@gmail.com',
   nivelAsignado: NivelComercio = 'standar'
 ): Promise<{ success: boolean; error?: string }> {
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch('/api/admin/comercios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'aprobar',
+          id,
+          rubro: rubroAsignado,
+          aprobadoPor,
+          nivel: nivelAsignado,
+        }),
+      });
+      if (resp.ok) {
+        return { success: true };
+      }
+    } catch (eApi) {
+      console.warn('[aprobarComercio API] Fallback:', eApi);
+    }
+  }
   const ahora = new Date();
   const fechaAprobacion = ahora.toISOString();
   
@@ -900,6 +920,24 @@ export async function rechazarComercio(
   id: string,
   motivo: string = 'No cumple con las pautas de moderación'
 ): Promise<{ success: boolean; error?: string }> {
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch('/api/admin/comercios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'rechazar',
+          id,
+          motivo,
+        }),
+      });
+      if (resp.ok) {
+        return { success: true };
+      }
+    } catch (eApi) {
+      console.warn('[rechazarComercio API] Fallback:', eApi);
+    }
+  }
   if (typeof window !== 'undefined') {
     try {
       const guardadosRaw = localStorage.getItem('vecinos_comercios_nuevos');

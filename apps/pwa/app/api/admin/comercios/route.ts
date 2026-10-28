@@ -3,6 +3,91 @@ import { getSupabaseAdminClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { action, id, rubro, aprobadoPor, nivel, motivo } = body;
+
+    if (!id) {
+      return NextResponse.json({ ok: false, error: 'ID de comercio requerido' }, { status: 400 });
+    }
+
+    const sb = getSupabaseAdminClient();
+
+    if (action === 'aprobar') {
+      const ahora = new Date();
+      const fechaAprobacion = ahora.toISOString();
+      const fechaInicioNivel = fechaAprobacion;
+      let fechaVencimiento: string | null = null;
+      if (nivel === 'premium' || nivel === 'gold') {
+        fechaVencimiento = new Date(ahora.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      }
+
+      await sb
+        .from('solicitudes_modificacion')
+        .update({
+          estado: 'aprobado',
+          aprobado_por: aprobadoPor || 'Administrador',
+          fecha_aprobacion: fechaAprobacion,
+        })
+        .eq('comercio_id', id);
+
+      const updates: Record<string, unknown> = {
+        estado_aprobacion: 'aprobado',
+        aprobado_por: aprobadoPor || 'Administrador',
+        fecha_aprobacion: fechaAprobacion,
+        nivel: nivel || 'standar',
+        fecha_inicio_nivel: fechaInicioNivel,
+        fecha_vencimiento_nivel: fechaVencimiento,
+      };
+      if (rubro) updates.rubro = rubro;
+
+      const { data, error } = await sb.from('comercios').update(updates).eq('id', id).select();
+
+      if (error) {
+        console.error('[/api/admin/comercios POST aprobar] Error:', error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ ok: true, data });
+    }
+
+    if (action === 'rechazar') {
+      await sb
+        .from('solicitudes_modificacion')
+        .update({
+          estado: 'rechazado',
+          motivo_rechazo: motivo || 'No cumple con las pautas de moderación',
+        })
+        .eq('comercio_id', id);
+
+      const { data, error } = await sb
+        .from('comercios')
+        .update({
+          estado_aprobacion: 'rechazado',
+          esta_abierto: false,
+        })
+        .eq('id', id)
+        .select();
+
+      if (error) {
+        console.error('[/api/admin/comercios POST rechazar] Error:', error);
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ ok: true, data });
+    }
+
+    return NextResponse.json({ ok: false, error: 'Acción no reconocida' }, { status: 400 });
+  } catch (error: any) {
+    console.error('[/api/admin/comercios POST] Error:', error);
+    return NextResponse.json(
+      { ok: false, error: error?.message || 'Error interno en administración de comercio' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   try {
     const { id } = await req.json();
