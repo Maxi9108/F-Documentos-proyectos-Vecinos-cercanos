@@ -113,6 +113,8 @@ export interface Comercio {
     localidades?: string[];
     partidos?: string[];
     provincias?: string[];
+    paises?: string[];
+    alcance_internacional?: 'todo_el_mundo' | 'latinoamerica' | 'paises_especificos' | 'ninguno';
   } | string[];
   // Campos de moderación y aprobación
   estado_aprobacion?: EstadoAprobacion;

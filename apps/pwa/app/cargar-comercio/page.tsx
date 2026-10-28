@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Comercio, Producto, NivelComercio, NIVELES_CONFIG, HorariosConfig } from '@/types/comercio';
 import MapaSelectorWrapper from '@/components/MapaSelectorWrapper';
+import SelectorAlcanceTerritorial from '@/components/SelectorAlcanceTerritorial';
 import { guardarComercio, getComercios, supabase, isSupabaseConfigured } from '@/lib/supabase';
 import {
   Store,
@@ -135,7 +136,11 @@ export default function CargarComercioPage() {
   const [alcanceEnvio, setAlcanceEnvio] = useState<'radio' | 'poligono' | 'territorial'>('radio');
   const [enviosNacional, setEnviosNacional] = useState(false);
   const [enviosExterior, setEnviosExterior] = useState(false);
-  const [zonasEntregaDetalle, setZonasEntregaDetalle] = useState<string[]>([]);
+  const [alcanceInternacionalTipo, setAlcanceInternacionalTipo] = useState<'todo_el_mundo' | 'latinoamerica' | 'paises_especificos'>('paises_especificos');
+  const [localidadesEnvio, setLocalidadesEnvio] = useState<string[]>([]);
+  const [partidosEnvio, setPartidosEnvio] = useState<string[]>([]);
+  const [provinciasEnvio, setProvinciasEnvio] = useState<string[]>([]);
+  const [paisesEnvio, setPaisesEnvio] = useState<string[]>([]);
 
   // Coordenadas geográficas por defecto (centro de referencia)
   const [latitud, setLatitud] = useState(-34.6000);
@@ -626,7 +631,13 @@ export default function CargarComercioPage() {
       alcance_envio: tipoAtencion !== 'local_fisico' ? alcanceEnvio : undefined,
       envios_nacional: tipoAtencion !== 'local_fisico' ? enviosNacional : false,
       envios_exterior: tipoAtencion !== 'local_fisico' ? enviosExterior : false,
-      zonas_entrega_detalle: tipoAtencion !== 'local_fisico' ? zonasEntregaDetalle : undefined,
+      zonas_entrega_detalle: tipoAtencion !== 'local_fisico' ? {
+        localidades: localidadesEnvio,
+        partidos: partidosEnvio,
+        provincias: provinciasEnvio,
+        paises: paisesEnvio,
+        alcance_internacional: alcanceInternacionalTipo,
+      } : undefined,
       // Estado de moderación previa: todo local nuevo ingresa en pendiente
       estado_aprobacion: 'pendiente',
       categoria_solicitada: solicitaNuevaCategoria && categoriaSolicitada.trim() ? categoriaSolicitada.trim() : undefined,
@@ -1150,11 +1161,38 @@ export default function CargarComercioPage() {
                   </div>
 
                   {tipoAtencion !== 'local_fisico' && (
-                    <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/30 flex items-center gap-2 text-xs text-cyan-300 animate-in fade-in duration-200">
-                      <Bike className="w-4 h-4 shrink-0 text-cyan-400" />
-                      <span>
-                        El radio o polígono con puntos de tu zona de entrega se ajusta en los controles situados <strong>arriba del mapa</strong>.
-                      </span>
+                    <div className="space-y-4 pt-1 animate-in fade-in duration-200">
+                      <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/30 flex items-center gap-2 text-xs text-cyan-300">
+                        <Bike className="w-4 h-4 shrink-0 text-cyan-400" />
+                        <span>
+                          El radio circular o polígono con puntos de tu zona de entrega inmediata se ajusta en los controles situados <strong>arriba del mapa</strong>.
+                        </span>
+                      </div>
+
+                      {/* Configuración de Envíos a Localidades, Partidos, Provincias, País o Exterior */}
+                      <SelectorAlcanceTerritorial
+                        localidades={localidadesEnvio}
+                        partidos={partidosEnvio}
+                        provincias={provinciasEnvio}
+                        enviosNacional={enviosNacional}
+                        enviosExterior={enviosExterior}
+                        alcanceInternacionalTipo={alcanceInternacionalTipo}
+                        paises={paisesEnvio}
+                        onChange={(nuevo) => {
+                          setLocalidadesEnvio(nuevo.localidades);
+                          setPartidosEnvio(nuevo.partidos);
+                          setProvinciasEnvio(nuevo.provincias);
+                          setEnviosNacional(nuevo.enviosNacional);
+                          setEnviosExterior(nuevo.enviosExterior);
+                          if (nuevo.alcanceInternacionalTipo) {
+                            setAlcanceInternacionalTipo(nuevo.alcanceInternacionalTipo);
+                          }
+                          setPaisesEnvio(nuevo.paises);
+                          if (nuevo.descripcionGenerada) {
+                            setZonaEnvioDescripcion(nuevo.descripcionGenerada);
+                          }
+                        }}
+                      />
                     </div>
                   )}
                 </div>

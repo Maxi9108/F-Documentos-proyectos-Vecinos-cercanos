@@ -104,6 +104,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import MapaSelectorWrapper from '@/components/MapaSelectorWrapper';
+import SelectorAlcanceTerritorial from '@/components/SelectorAlcanceTerritorial';
 
 function normalizarUrlWeb(url?: string): string | undefined {
   if (!url) return undefined;
@@ -179,7 +180,11 @@ export default function MiComercioPage() {
   const [alcanceEnvio, setAlcanceEnvio] = useState<'radio' | 'poligono' | 'territorial'>('radio');
   const [enviosNacional, setEnviosNacional] = useState(false);
   const [enviosExterior, setEnviosExterior] = useState(false);
-  const [zonasEntregaDetalle, setZonasEntregaDetalle] = useState<string[]>([]);
+  const [alcanceInternacionalTipo, setAlcanceInternacionalTipo] = useState<'todo_el_mundo' | 'latinoamerica' | 'paises_especificos'>('paises_especificos');
+  const [localidadesEnvio, setLocalidadesEnvio] = useState<string[]>([]);
+  const [partidosEnvio, setPartidosEnvio] = useState<string[]>([]);
+  const [provinciasEnvio, setProvinciasEnvio] = useState<string[]>([]);
+  const [paisesEnvio, setPaisesEnvio] = useState<string[]>([]);
   const [enVacaciones, setEnVacaciones] = useState(false);
   const [vacacionesDesde, setVacacionesDesde] = useState('');
   const [vacacionesHasta, setVacacionesHasta] = useState('');
@@ -414,17 +419,25 @@ export default function MiComercioPage() {
     setAlcanceEnvio(alcanceVal);
     setEnviosNacional(Boolean(comercio.envios_nacional));
     setEnviosExterior(Boolean(comercio.envios_exterior));
-    let detalleArray: string[] = [];
-    if (Array.isArray(comercio.zonas_entrega_detalle)) {
-      detalleArray = comercio.zonas_entrega_detalle;
-    } else if (comercio.zonas_entrega_detalle) {
-      detalleArray = [
-        ...(comercio.zonas_entrega_detalle.localidades || []),
-        ...(comercio.zonas_entrega_detalle.partidos || []),
-        ...(comercio.zonas_entrega_detalle.provincias || []),
-      ];
+    if (comercio.zonas_entrega_detalle && typeof comercio.zonas_entrega_detalle === 'object' && !Array.isArray(comercio.zonas_entrega_detalle)) {
+      setLocalidadesEnvio(comercio.zonas_entrega_detalle.localidades || []);
+      setPartidosEnvio(comercio.zonas_entrega_detalle.partidos || []);
+      setProvinciasEnvio(comercio.zonas_entrega_detalle.provincias || []);
+      setPaisesEnvio(comercio.zonas_entrega_detalle.paises || []);
+      if (comercio.zonas_entrega_detalle.alcance_internacional && comercio.zonas_entrega_detalle.alcance_internacional !== 'ninguno') {
+        setAlcanceInternacionalTipo(comercio.zonas_entrega_detalle.alcance_internacional);
+      }
+    } else if (Array.isArray(comercio.zonas_entrega_detalle)) {
+      setPartidosEnvio(comercio.zonas_entrega_detalle);
+      setLocalidadesEnvio([]);
+      setProvinciasEnvio([]);
+      setPaisesEnvio([]);
+    } else {
+      setLocalidadesEnvio([]);
+      setPartidosEnvio([]);
+      setProvinciasEnvio([]);
+      setPaisesEnvio([]);
     }
-    setZonasEntregaDetalle(detalleArray);
     setEnVacaciones(Boolean(comercio.en_vacaciones));
     setVacacionesDesde(comercio.vacaciones_desde || '');
     setVacacionesHasta(comercio.vacaciones_hasta || '');
@@ -1315,7 +1328,13 @@ export default function MiComercioPage() {
       alcance_envio: tipoAtencion !== 'local_fisico' ? alcanceEnvio : undefined,
       envios_nacional: tipoAtencion !== 'local_fisico' ? enviosNacional : false,
       envios_exterior: tipoAtencion !== 'local_fisico' ? enviosExterior : false,
-      zonas_entrega_detalle: tipoAtencion !== 'local_fisico' ? zonasEntregaDetalle : undefined,
+      zonas_entrega_detalle: tipoAtencion !== 'local_fisico' ? {
+        localidades: localidadesEnvio,
+        partidos: partidosEnvio,
+        provincias: provinciasEnvio,
+        paises: paisesEnvio,
+        alcance_internacional: alcanceInternacionalTipo,
+      } : undefined,
       en_vacaciones: enVacaciones,
       modalidad_vacaciones: enVacaciones ? modalidadVacaciones : undefined,
       dias_vacaciones_acumulados: enVacaciones ? diasTotalesVac : 0,
@@ -3212,11 +3231,38 @@ export default function MiComercioPage() {
                     </div>
 
                     {tipoAtencion !== 'local_fisico' && (
-                      <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/30 flex items-center gap-2 text-xs text-cyan-300 animate-in fade-in duration-200">
-                        <Bike className="w-4 h-4 shrink-0 text-cyan-400" />
-                        <span>
-                          El radio o polígono con puntos de tu zona de entrega se ajusta en los controles situados <strong>arriba del mapa</strong>.
-                        </span>
+                      <div className="space-y-4 pt-1 animate-in fade-in duration-200">
+                        <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/30 flex items-center gap-2 text-xs text-cyan-300">
+                          <Bike className="w-4 h-4 shrink-0 text-cyan-400" />
+                          <span>
+                            El radio circular o polígono con puntos de tu zona de entrega inmediata se ajusta en los controles situados <strong>arriba del mapa</strong>.
+                          </span>
+                        </div>
+
+                        {/* Configuración de Envíos a Localidades, Partidos, Provincias, País o Exterior */}
+                        <SelectorAlcanceTerritorial
+                          localidades={localidadesEnvio}
+                          partidos={partidosEnvio}
+                          provincias={provinciasEnvio}
+                          enviosNacional={enviosNacional}
+                          enviosExterior={enviosExterior}
+                          alcanceInternacionalTipo={alcanceInternacionalTipo}
+                          paises={paisesEnvio}
+                          onChange={(nuevo) => {
+                            setLocalidadesEnvio(nuevo.localidades);
+                            setPartidosEnvio(nuevo.partidos);
+                            setProvinciasEnvio(nuevo.provincias);
+                            setEnviosNacional(nuevo.enviosNacional);
+                            setEnviosExterior(nuevo.enviosExterior);
+                            if (nuevo.alcanceInternacionalTipo) {
+                              setAlcanceInternacionalTipo(nuevo.alcanceInternacionalTipo);
+                            }
+                            setPaisesEnvio(nuevo.paises);
+                            if (nuevo.descripcionGenerada) {
+                              setZonaEnvioDescripcion(nuevo.descripcionGenerada);
+                            }
+                          }}
+                        />
                       </div>
                     )}
                   </div>
