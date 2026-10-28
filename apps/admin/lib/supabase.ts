@@ -181,6 +181,22 @@ export async function updateComercio(
  * Elimina un comercio por ID definitivamente en todas las tablas asociadas
  */
 export async function deleteComercio(id: string): Promise<{ success: boolean; error: string | null }> {
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch('/api/comercios', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (resp.ok) {
+        memoryStore = memoryStore.filter((c) => c.id !== id);
+        return { success: true, error: null };
+      }
+    } catch (eApi) {
+      console.warn('[deleteComercio API] Fallback a cliente:', eApi);
+    }
+  }
+
   if (!isSupabaseConfigured) {
     memoryStore = memoryStore.filter((c) => c.id !== id);
     return { success: true, error: null };

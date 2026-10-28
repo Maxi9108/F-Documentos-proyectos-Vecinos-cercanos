@@ -32,6 +32,16 @@ export default function DirectorioComercios({
 
   useEffect(() => {
     registrarEvento('visita_portal');
+    // Limpieza única preventiva de comercios de prueba o residuo en caché local
+    if (typeof window !== 'undefined') {
+      try {
+        const purga = localStorage.getItem('neofaro_limpieza_comercios_v3');
+        if (!purga) {
+          localStorage.removeItem('vecinos_comercios_nuevos');
+          localStorage.setItem('neofaro_limpieza_comercios_v3', 'true');
+        }
+      } catch (e) {}
+    }
   }, []);
 
   useEffect(() => {
@@ -54,22 +64,7 @@ export default function DirectorioComercios({
     }
   }, [comercios.length]);
 
-  // Solo sincronizar con almacenamiento local si no hay conexión y la lista en línea vino vacía (modo offline)
-  useEffect(() => {
-    if (comercios.length === 0) {
-      try {
-        const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
-        if (localesRaw) {
-          const locales: Comercio[] = JSON.parse(localesRaw);
-          if (locales.length > 0) {
-            setComercios(locales);
-          }
-        }
-      } catch (e) {
-        console.warn('[DirectorioComercios] Error al leer respaldo offline:', e);
-      }
-    }
-  }, [comercios.length]);
+  // No auto-poblar con comercios residuales de prueba si la base en línea está limpia
 
   const [busqueda, setBusqueda] = useState('');
   const [rubroSeleccionado, setRubroSeleccionado] = useState('Todos');

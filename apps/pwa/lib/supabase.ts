@@ -492,7 +492,7 @@ export async function getComercios(): Promise<Comercio[]> {
 
     // 3. La base de datos online de Supabase es la única fuente de verdad 24/7.
     // Solo si Supabase no tiene comercios (p. ej. falla de red o modo offline total), se recurre al almacenamiento local de respaldo.
-    if (typeof window !== 'undefined' && mapa.size === 0) {
+    if (typeof window !== 'undefined' && mapa.size === 0 && !isSupabaseConfigured) {
       try {
         const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
         if (localesRaw) {
@@ -954,6 +954,35 @@ export async function rechazarComercio(
  * registrándolo en una lista de exclusión definitiva para que jamás resucite.
  */
 export async function eliminarComercio(id: string): Promise<{ success: boolean; error?: string }> {
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch('/api/admin/comercios', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (resp.ok) {
+        // También limpiar de localStorage local
+        try {
+          const elimRaw = localStorage.getItem(STORAGE_KEY_COMERCIOS_ELIMINADOS);
+          const eliminados: string[] = elimRaw ? JSON.parse(elimRaw) : [];
+          if (!eliminados.includes(id)) {
+            eliminados.push(id);
+            localStorage.setItem(STORAGE_KEY_COMERCIOS_ELIMINADOS, JSON.stringify(eliminados));
+          }
+          const guardadosRaw = localStorage.getItem('vecinos_comercios_nuevos');
+          if (guardadosRaw) {
+            const guardados = JSON.parse(guardadosRaw);
+            localStorage.setItem('vecinos_comercios_nuevos', JSON.stringify(guardados.filter((c: any) => c.id !== id)));
+          }
+        } catch (_) {}
+        return { success: true };
+      }
+    } catch (eApi) {
+      console.warn('[eliminarComercio API] Fallback:', eApi);
+    }
+  }
+
   // 1. Registrar siempre en eliminados para que no resucite desde ninguna caché
   if (typeof window !== 'undefined') {
     try {

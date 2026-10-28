@@ -365,7 +365,7 @@ export default function AdminPage() {
       const eliminadosSet = new Set<string>(eliminadosRaw ? JSON.parse(eliminadosRaw) : []);
 
       // Solo consultar almacenamiento local si la base online está vacía (modo offline)
-      if (lista.length === 0) {
+      if (lista.length === 0 && !isSupabaseConfigured) {
         const localesRaw = localStorage.getItem('vecinos_comercios_nuevos');
         if (localesRaw) {
           const locales: Comercio[] = JSON.parse(localesRaw);
