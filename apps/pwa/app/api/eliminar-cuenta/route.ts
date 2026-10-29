@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { getSupabaseAdminClient, isSupabaseConfigured } from '@/lib/supabase';
 import { verifyPassword } from '@/lib/crypto';
 import { obtenerAdminPorEmail } from '@/lib/auth-admin';
 
@@ -59,9 +59,11 @@ export async function POST(req: NextRequest) {
     let usuarioDb: any = null;
 
 
-    if (isSupabaseConfigured) {
+    const sb = isSupabaseConfigured ? getSupabaseAdminClient() : null;
+
+    if (sb) {
       // 1. Buscar en tabla usuarios
-      const { data, error } = await supabase
+      const { data, error } = await sb
         .from('usuarios')
         .select('*')
         .eq('email', cleanEmail)
@@ -77,7 +79,7 @@ export async function POST(req: NextRequest) {
       // 2. Si no autenticó por hash, verificar con Supabase Auth
       if (!autenticado) {
         try {
-          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          const { data: authData, error: authError } = await sb.auth.signInWithPassword({
             email: cleanEmail,
             password,
           });
@@ -138,14 +140,13 @@ export async function POST(req: NextRequest) {
     // Éxito: limpiar limitador
     rateLimitsEliminar.delete(rateLimitKey);
 
-    // 5. Ejecutar borrado permanente en Supabase
-    if (isSupabaseConfigured) {
-
-      await supabase.from('usuarios').delete().eq('email', cleanEmail);
+    // 5. Ejecutar borrado permanente en Supabase con service_role
+    if (sb) {
+      await sb.from('usuarios').delete().eq('email', cleanEmail);
       if (usuarioDb?.id) {
-        await supabase.from('usuarios').delete().eq('id', usuarioDb.id);
+        await sb.from('usuarios').delete().eq('id', usuarioDb.id);
       }
-      await supabase.from('tokens_registro').delete().eq('email', cleanEmail);
+      await sb.from('tokens_registro').delete().eq('email', cleanEmail);
     }
 
     return NextResponse.json({

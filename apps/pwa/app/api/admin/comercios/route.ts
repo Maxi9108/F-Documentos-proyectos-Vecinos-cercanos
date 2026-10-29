@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdminClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -23,16 +23,15 @@ export async function POST(req: NextRequest) {
         fechaVencimiento = new Date(ahora.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
       }
 
-      await sb
+      // 1. Obtener solicitud previa para actualizar metadatos enriquecidos (vigencia nivel, etc)
+      const { data: solPrevia } = await sb
         .from('solicitudes_modificacion')
-        .update({
-          estado: 'aprobado',
-          aprobado_por: aprobadoPor || 'Administrador',
-          fecha_aprobacion: fechaAprobacion,
-        })
-        .eq('comercio_id', id);
+        .select('*')
+        .or(`comercio_id.eq.${id},id.eq.${id}`)
+        .maybeSingle();
 
-      const updates: Record<string, unknown> = {
+      const cambiosActualizados = {
+        ...(solPrevia?.cambios || {}),
         estado_aprobacion: 'aprobado',
         aprobado_por: aprobadoPor || 'Administrador',
         fecha_aprobacion: fechaAprobacion,
@@ -40,12 +39,32 @@ export async function POST(req: NextRequest) {
         fecha_inicio_nivel: fechaInicioNivel,
         fecha_vencimiento_nivel: fechaVencimiento,
       };
+      if (rubro) cambiosActualizados.rubro = rubro;
+
+      await sb
+        .from('solicitudes_modificacion')
+        .update({
+          estado: 'aprobado',
+          aprobado_por: aprobadoPor || 'Administrador',
+          fecha_aprobacion: fechaAprobacion,
+          cambios: cambiosActualizados,
+        })
+        .or(`comercio_id.eq.${id},id.eq.${id}`);
+
+      // 2. Actualizar solo las columnas existentes en public.comercios
+      const updates: Record<string, unknown> = {
+        estado_aprobacion: 'aprobado',
+        aprobado_por: aprobadoPor || 'Administrador',
+        fecha_aprobacion: fechaAprobacion,
+        nivel: nivel || 'standar',
+        esta_abierto: true,
+      };
       if (rubro) updates.rubro = rubro;
 
       const { data, error } = await sb.from('comercios').update(updates).eq('id', id).select();
 
       if (error) {
-        console.error('[/api/admin/comercios POST aprobar] Error:', error);
+        console.error('[/api/admin/comercios POST aprobar] Error al actualizar comercios:', error);
         return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       }
 
@@ -53,13 +72,27 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === 'rechazar') {
+      const { data: solPrevia } = await sb
+        .from('solicitudes_modificacion')
+        .select('*')
+        .or(`comercio_id.eq.${id},id.eq.${id}`)
+        .maybeSingle();
+
+      const cambiosActualizados = {
+        ...(solPrevia?.cambios || {}),
+        estado_aprobacion: 'rechazado',
+        esta_abierto: false,
+        motivo_rechazo: motivo || 'No cumple con las pautas de moderación',
+      };
+
       await sb
         .from('solicitudes_modificacion')
         .update({
           estado: 'rechazado',
           motivo_rechazo: motivo || 'No cumple con las pautas de moderación',
+          cambios: cambiosActualizados,
         })
-        .eq('comercio_id', id);
+        .or(`comercio_id.eq.${id},id.eq.${id}`);
 
       const { data, error } = await sb
         .from('comercios')

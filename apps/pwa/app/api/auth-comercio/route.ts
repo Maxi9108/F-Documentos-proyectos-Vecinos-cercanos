@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { getSupabaseAdminClient, isSupabaseConfigured } from '@/lib/supabase';
 import { verifyPassword } from '@/lib/crypto';
 
 // Limitador de intentos fallidos por IP e identificador (Anti Brute-Force)
@@ -59,8 +59,10 @@ export async function POST(req: NextRequest) {
 
     // 2. Consulta en base de datos si Supabase está activo
     if (isSupabaseConfigured) {
+      const sb = getSupabaseAdminClient();
+
       if (comercioId) {
-        const { data, error } = await supabase
+        const { data, error } = await sb
           .from('comercios')
           .select('*')
           .eq('id', comercioId)
@@ -71,7 +73,7 @@ export async function POST(req: NextRequest) {
 
         // Buscar también en solicitudes_modificacion para asegurar obtención de password y metadatos
         try {
-          const { data: solData } = await supabase
+          const { data: solData } = await sb
             .from('solicitudes_modificacion')
             .select('*')
             .eq('comercio_id', comercioId)
@@ -91,7 +93,7 @@ export async function POST(req: NextRequest) {
 
         // A. Buscar en solicitudes_modificacion donde se almacena el email y credenciales
         try {
-          const { data: sols } = await supabase
+          const { data: sols } = await sb
             .from('solicitudes_modificacion')
             .select('*')
             .limit(150);
@@ -104,7 +106,7 @@ export async function POST(req: NextRequest) {
 
           if (solMatch?.cambios) {
             const targetId = solMatch.comercio_id || solMatch.id;
-            const { data: cData } = await supabase
+            const { data: cData } = await sb
               .from('comercios')
               .select('*')
               .eq('id', targetId)
@@ -122,7 +124,7 @@ export async function POST(req: NextRequest) {
         // B. Si aún no se encontró, consultar directamente en comercios
         if (!comercioEncontrado) {
           try {
-            const { data } = await supabase
+            const { data } = await sb
               .from('comercios')
               .select('*')
               .or(`email_comercio.ilike.${cleanMail},email.ilike.${cleanMail}`)

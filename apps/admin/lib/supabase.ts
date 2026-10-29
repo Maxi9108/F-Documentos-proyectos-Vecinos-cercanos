@@ -21,6 +21,20 @@ let memoryStore: Comercio[] = [...INITIAL_MOCK_COMERCIOS];
  * Obtiene todos los comercios ordenados por nombre, incorporando solicitudes de moderación
  */
 export async function getComercios(): Promise<Comercio[]> {
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch('/api/comercios', { cache: 'no-store' });
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json.data && Array.isArray(json.data)) {
+          return json.data;
+        }
+      }
+    } catch (eApi) {
+      console.warn('[getComercios Client API] Fallback a cliente:', eApi);
+    }
+  }
+
   if (!isSupabaseConfigured) {
     return [...memoryStore]
       .filter((c) => c.estado_aprobacion !== 'eliminado')
@@ -115,6 +129,23 @@ export async function getComercios(): Promise<Comercio[]> {
  * Crea un nuevo comercio en Supabase
  */
 export async function createComercio(input: CreateComercioInput): Promise<{ data: Comercio | null; error: string | null }> {
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch('/api/comercios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', input }),
+      });
+      const json = await resp.json();
+      if (resp.ok && json.ok) {
+        return { data: json.data, error: null };
+      }
+      return { data: null, error: json.error || 'Error al crear comercio' };
+    } catch (eApi: any) {
+      return { data: null, error: eApi?.message || 'Error al crear comercio' };
+    }
+  }
+
   if (!isSupabaseConfigured) {
     const nuevo: Comercio = {
       ...input,
@@ -149,6 +180,23 @@ export async function updateComercio(
   id: string,
   input: UpdateComercioInput
 ): Promise<{ data: Comercio | null; error: string | null }> {
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch('/api/comercios', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, input }),
+      });
+      const json = await resp.json();
+      if (resp.ok && json.ok) {
+        return { data: { id, ...input } as any, error: null };
+      }
+      return { data: null, error: json.error || 'Error al actualizar comercio' };
+    } catch (eApi: any) {
+      return { data: null, error: eApi?.message || 'Error al actualizar comercio' };
+    }
+  }
+
   if (!isSupabaseConfigured) {
     const index = memoryStore.findIndex((c) => c.id === id);
     if (index === -1) {
@@ -242,6 +290,23 @@ export async function rechazarComercio(
   id: string,
   motivo: string = 'No cumple con las pautas de moderación'
 ): Promise<{ success: boolean; error?: string }> {
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch('/api/comercios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'rechazar', id, motivo }),
+      });
+      const json = await resp.json();
+      if (resp.ok && json.ok) {
+        return { success: true };
+      }
+      return { success: false, error: json.error || 'Error al rechazar comercio' };
+    } catch (eApi: any) {
+      return { success: false, error: eApi?.message || 'Error de conexión' };
+    }
+  }
+
   if (!isSupabaseConfigured) {
     const idx = memoryStore.findIndex((c) => c.id === id);
     if (idx >= 0) {
@@ -284,6 +349,23 @@ export async function aprobarComercio(
   id: string,
   nivel: NivelComercio = 'standar'
 ): Promise<{ success: boolean; error?: string }> {
+  if (typeof window !== 'undefined') {
+    try {
+      const resp = await fetch('/api/comercios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'aprobar', id, nivel }),
+      });
+      const json = await resp.json();
+      if (resp.ok && json.ok) {
+        return { success: true };
+      }
+      return { success: false, error: json.error || 'Error al aprobar comercio' };
+    } catch (eApi: any) {
+      return { success: false, error: eApi?.message || 'Error de conexión' };
+    }
+  }
+
   if (!isSupabaseConfigured) {
     const idx = memoryStore.findIndex((c) => c.id === id);
     if (idx >= 0) {
